@@ -1,16 +1,86 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
-    <style name="Theme.Stockzilla" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+    <!-- Dark theme application theme. -->
+    <style name="Theme.Stockzilla" parent="Theme.Material3.DayNight">
         <!-- Primary brand color. -->
-        <item name="colorPrimary">@color/purple_200</item>
-        <item name="colorPrimaryVariant">@color/purple_700</item>
+        <item name="colorPrimary">@color/colorPrimaryDark</item>
+        <item name="colorPrimaryVariant">@color/colorPrimaryVariant</item>
         <item name="colorOnPrimary">@color/black</item>
+
         <!-- Secondary brand color. -->
         <item name="colorSecondary">@color/teal_200</item>
         <item name="colorSecondaryVariant">@color/teal_200</item>
         <item name="colorOnSecondary">@color/black</item>
+
+        <!-- Surface colors -->
+        <item name="colorSurface">@color/colorSurfaceDark</item>
+        <item name="colorOnSurface">@color/colorOnSurfaceDark</item>
+        <item name="colorSurfaceVariant">@color/colorBackgroundDark</item>
+
+        <!-- Background colors -->
+        <item name="android:colorBackground">@color/colorBackgroundDark</item>
+        <item name="colorOnBackground">@color/textPrimaryDark</item>
+
+        <!-- Error colors -->
+        <item name="colorError">@color/colorError</item>
+        <item name="colorOnError">@color/colorOnError</item>
+
         <!-- Status bar color. -->
-        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
-        <!-- Customize your theme here. -->
+        <item name="android:statusBarColor">@color/colorBackgroundDark</item>
+
+        <!-- Window background -->
+        <item name="android:windowBackground">@color/colorBackgroundDark</item>
+
+        <!-- Material Components overrides -->
+        <item name="textAppearanceHeadline1">@style/TextAppearance.Stockzilla.Headline1.Dark</item>
+        <item name="textAppearanceHeadline2">@style/TextAppearance.Stockzilla.Headline2.Dark</item>
+        <item name="textAppearanceSubtitle1">@style/TextAppearance.Stockzilla.Subtitle1.Dark</item>
+        <item name="textAppearanceBody1">@style/TextAppearance.Stockzilla.Body1.Dark</item>
+        <item name="textAppearanceBody2">@style/TextAppearance.Stockzilla.Body2.Dark</item>
+        <item name="textAppearanceButton">@style/TextAppearance.Stockzilla.Button.Dark</item>
+        <item name="textAppearanceCaption">@style/TextAppearance.Stockzilla.Caption.Dark</item>
+    </style>
+
+    <!-- Dark Text Appearances -->
+    <style name="TextAppearance.Stockzilla.Headline1.Dark" parent="TextAppearance.Material3.HeadlineLarge">
+        <item name="android:textColor">@color/textPrimaryDark</item>
+        <item name="android:textSize">28sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Stockzilla.Headline2.Dark" parent="TextAppearance.Material3.HeadlineMedium">
+        <item name="android:textColor">@color/textPrimaryDark</item>
+        <item name="android:textSize">24sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Stockzilla.Subtitle1.Dark" parent="TextAppearance.Material3.TitleMedium">
+        <item name="android:textColor">@color/textPrimaryDark</item>
+        <item name="android:textSize">18sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+    </style>
+
+    <style name="TextAppearance.Stockzilla.Body1.Dark" parent="TextAppearance.Material3.BodyLarge">
+        <item name="android:textColor">@color/textPrimaryDark</item>
+        <item name="android:textSize">16sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Stockzilla.Body2.Dark" parent="TextAppearance.Material3.BodyMedium">
+        <item name="android:textColor">@color/textSecondaryDark</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif</item>
+    </style>
+
+    <style name="TextAppearance.Stockzilla.Button.Dark" parent="TextAppearance.Material3.LabelLarge">
+        <item name="android:textColor">@color/black</item>
+        <item name="android:textSize">14sp</item>
+        <item name="android:fontFamily">sans-serif-medium</item>
+        <item name="android:textAllCaps">false</item>
+    </style>
+
+    <style name="TextAppearance.Stockzilla.Caption.Dark" parent="TextAppearance.Material3.BodySmall">
+        <item name="android:textColor">@color/textSecondaryDark</item>
+        <item name="android:textSize">12sp</item>
+        <item name="android:fontFamily">sans-serif</item>
     </style>
 </resources>

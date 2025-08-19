@@ -30,4 +30,12 @@
     <string name="revenue_394_3b_nnet_income_99_8b_np_e_ratio_25_4">Revenue: $394.3B\nNet Income: $99.8B\nP/E Ratio: 25.4</string>
     <string name="health_score_format">%1$d/10</string>
     <string name="analyze">Analyze</string>
+    <string name="setup_api_key">Setup API Key</string>
+    <string name="to_get_stock_data_you_need_a_free_api_key_from_financial_modeling_prep">To get stock data, you need a free API key from Financial Modeling Prep</string>
+    <string name="enter_your_api_key">Enter your API key</string>
+    <string name="get_free_api_key">Get Free API Key</string>
+    <string name="skip_demo">Skip (Demo)</string>
+    <string name="save_continue"><![CDATA[Save & Continue]]></string>
+    <string name="sign_up_at_financialmodelingprep_com_n_go_to_your_dashboard_n_copy_your_api_key_n_paste_it_above">• Sign up at financialmodelingprep.com\n• Go to your dashboard\n• Copy your API key\n• Paste it above</string>
+    <string name="api_settings">API Settings</string>
 </resources>

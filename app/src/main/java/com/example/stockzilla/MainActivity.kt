@@ -1,28 +1,31 @@
-// MainActivity.kt - Main stock search and analysis screen
+// MainActivity.kt - Updated to handle API key setup
 package com.example.stockzilla
 
 import android.content.Intent
 import android.os.Bundle
+import android.view.Menu
+import android.view.MenuItem
 import android.widget.Toast
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.net.toUri
 import androidx.core.widget.addTextChangedListener
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.LiveData
+import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
-import kotlinx.coroutines.launch
+import com.example.stockzilla.databinding.ActivityMainBinding
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
-import androidx.core.net.toUri
-import androidx.lifecycle.AndroidViewModel
-import com.example.stockzilla.databinding.ActivityMainBinding
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.LiveData
+import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
 
     private val viewModel: StockViewModel by viewModels()
     private lateinit var binding: ActivityMainBinding
     private lateinit var favoritesAdapter: FavoritesAdapter
+    private lateinit var apiKeyManager: ApiKeyManager
     private var searchJob: Job? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -30,9 +33,55 @@ class MainActivity : AppCompatActivity() {
         binding = ActivityMainBinding.inflate(layoutInflater)
         setContentView(binding.root)
 
+        apiKeyManager = ApiKeyManager(this)
+
+        // MainActivity.onCreate()
+        supportActionBar?.hide()
+
         setupUI()
         setupObservers()
         loadFavorites()
+
+        // Check if we need to setup API key
+        checkApiKeySetup()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.main_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            R.id.action_api_settings -> {
+                showApiKeyDialog(forceShow = true)
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
+    }
+
+    private fun checkApiKeySetup() {
+        if (!apiKeyManager.hasApiKey() || !apiKeyManager.isApiKeyValidated()) {
+            showApiKeyDialog()
+        } else {
+            // Initialize ViewModel with saved API key
+            viewModel.updateApiKey(apiKeyManager.getApiKey()!!)
+        }
+    }
+
+    private fun showApiKeyDialog(forceShow: Boolean = false) {
+        if (forceShow || !apiKeyManager.hasApiKey()) {
+            val dialog = ApiKeySetupDialog { apiKey ->
+                viewModel.updateApiKey(apiKey)
+                if (apiKey != "demo") {
+                    Toast.makeText(this, "API key configured successfully!", Toast.LENGTH_SHORT).show()
+                } else {
+                    Toast.makeText(this, "Using demo mode - limited functionality", Toast.LENGTH_LONG).show()
+                }
+            }
+            dialog.show(supportFragmentManager, "api_key_setup")
+        }
     }
 
     private fun setupUI() {
@@ -64,7 +113,11 @@ class MainActivity : AppCompatActivity() {
         binding.btnAnalyze.setOnClickListener {
             val ticker = binding.etSearch.text.toString().uppercase()
             if (ticker.isNotBlank()) {
-                analyzeStock(ticker)
+                if (apiKeyManager.hasApiKey()) {
+                    analyzeStock(ticker)
+                } else {
+                    showApiKeyDialog()
+                }
             } else {
                 Toast.makeText(this, "Please enter a stock ticker", Toast.LENGTH_SHORT).show()
             }
@@ -78,7 +131,14 @@ class MainActivity : AppCompatActivity() {
 
         binding.btnAddToFavorites.setOnClickListener {
             viewModel.currentStockData.value?.let { stockData ->
-                addToFavorites(stockData)
+                addToFavorites(stockData, healthScore = null)
+            }
+        }
+
+        binding.btnAddToFavorites.setOnClickListener {
+            viewModel.currentStockData.value?.let { stockData ->
+                val healthScore = viewModel.healthScore.value?.compositeScore
+                addToFavorites(stockData, healthScore)  // Update this call
             }
         }
     }
@@ -101,6 +161,11 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // Add this new observer in setupObservers()
+        viewModel.isFavorited.observe(this) { isFavorited ->
+            updateFavoriteButton(isFavorited)
+        }
+
         viewModel.loading.observe(this) { isLoading ->
             binding.progressBar.visibility = if (isLoading) {
                 android.view.View.VISIBLE
@@ -111,19 +176,42 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.error.observe(this) { error ->
             error?.let {
-                Toast.makeText(this, "Error: $it", Toast.LENGTH_LONG).show()
+                if (it.contains("401") || it.contains("Unauthorized")) {
+                    Toast.makeText(this, "API key issue - please check your key", Toast.LENGTH_LONG).show()
+                    showApiKeyDialog(forceShow = true)
+                } else {
+                    Toast.makeText(this, "Error: $it", Toast.LENGTH_LONG).show()
+                }
                 viewModel.clearError()
             }
         }
     }
 
+    private fun updateFavoriteButton(isFavorited: Boolean) {
+        binding.btnAddToFavorites.text = if (isFavorited) {
+            "Update Favorite"
+        } else {
+            "Add to Favorites"
+        }
+    }
+
     private fun searchStock(ticker: String) {
+        if (!apiKeyManager.hasApiKey()) {
+            showApiKeyDialog()
+            return
+        }
+
         lifecycleScope.launch {
             viewModel.searchStock(ticker)
         }
     }
 
     fun analyzeStock(ticker: String) {
+        if (!apiKeyManager.hasApiKey()) {
+            showApiKeyDialog()
+            return
+        }
+
         lifecycleScope.launch {
             viewModel.analyzeStock(ticker)
         }
@@ -150,13 +238,16 @@ class MainActivity : AppCompatActivity() {
 
             // Show action buttons
             layoutActions.visibility = android.view.View.VISIBLE
+            cardStockInfo.visibility = android.view.View.VISIBLE
+            lifecycleScope.launch {
+                viewModel.checkIfFavorited(stockData.symbol)
+            }
         }
     }
 
     private fun displayHealthScore(healthScore: HealthScore) {
         binding.apply {
             tvHealthScore.text = getString(R.string.health_score_format, healthScore.compositeScore)
-
 
             // Color code the score
             val color = when (healthScore.compositeScore) {
@@ -165,6 +256,8 @@ class MainActivity : AppCompatActivity() {
                 else -> getColor(R.color.scorePoor)
             }
             tvHealthScore.setTextColor(color)
+            tvHealthScoreSmall.setTextColor(color)
+            tvHealthScoreSmall.text = getString(R.string.health_score_format, healthScore.compositeScore)
 
             // Show recommendation
             val recommendation = when (healthScore.compositeScore) {
@@ -182,12 +275,23 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun addToFavorites(stockData: StockData) {
+    private fun addToFavorites(stockData: StockData, healthScore: Int?) {
         lifecycleScope.launch {
-            viewModel.addToFavorites(stockData)
-            Toast.makeText(this@MainActivity,
-                "${stockData.symbol} added to favorites",
-                Toast.LENGTH_SHORT).show()
+            val isFavorited = viewModel.isFavorited.value == true
+
+            if (isFavorited) {
+                // Update existing favorite
+                viewModel.updateFavorite(stockData, healthScore)
+                Toast.makeText(this@MainActivity,
+                    "${stockData.symbol} favorite updated with latest data",
+                    Toast.LENGTH_SHORT).show()
+            } else {
+                // Add new favorite
+                viewModel.addToFavorites(stockData)
+                Toast.makeText(this@MainActivity,
+                    "${stockData.symbol} added to favorites",
+                    Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -201,18 +305,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun openFullAnalysisLink(ticker: String) {
-        val url = "https://finance.yahoo.com/quote/$ticker"
+        val url = "https://stockanalysis.com/stocks/${ticker.lowercase()}/"
         val intent = Intent(Intent.ACTION_VIEW, url.toUri())
         startActivity(intent)
     }
 
+
     private fun showStockDetails(stockData: StockData) {
-        // Show detailed view in a dialog or bottom sheet
         StockDetailsDialog.show(supportFragmentManager, stockData)
     }
 
     private fun clearSearchResult() {
         binding.layoutActions.visibility = android.view.View.GONE
+        binding.cardStockInfo.visibility = android.view.View.GONE
         viewModel.clearCurrentStock()
     }
 
@@ -241,10 +346,10 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-
-
 class StockViewModel(application: android.app.Application) : AndroidViewModel(application) {
-    private val stockRepository = StockRepository("YOUR_FMP_API_KEY") // Replace with actual key
+
+    private var currentApiKey: String = ApiConstants.DEFAULT_DEMO_KEY
+    private var stockRepository = StockRepository(currentApiKey)
 
     // Initialize database and repository properly
     private val database = StockzillaDatabase.getDatabase(application)
@@ -266,11 +371,23 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
     private val _error = MutableLiveData<String?>()
     val error: LiveData<String?> = _error
 
+    // LiveData property
+    private val _isFavorited = MutableLiveData<Boolean>()
+    val isFavorited: LiveData<Boolean> = _isFavorited
+
+
+
+    fun updateApiKey(apiKey: String) {
+        currentApiKey = apiKey
+        stockRepository = StockRepository(apiKey)
+    }
+
     suspend fun searchStock(ticker: String) {
         _loading.value = true
         stockRepository.getStockData(ticker)
             .onSuccess { stockData ->
                 _currentStockData.value = stockData
+                checkIfFavorited(ticker)  // Add this line
                 _loading.value = false
             }
             .onFailure { exception ->
@@ -286,6 +403,14 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                 _currentStockData.value = stockData
                 val score = financialAnalyzer.calculateCompositeScore(stockData)
                 _healthScore.value = score
+                checkIfFavorited(ticker)
+
+                // Auto-update favorite if it exists
+                if (favoritesRepository.isFavorite(ticker)) {
+                    favoritesRepository.updateFavoriteData(stockData, score.compositeScore)
+                    loadFavorites() // Refresh favorites list
+                }
+
                 _loading.value = false
             }
             .onFailure { exception ->
@@ -301,19 +426,37 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
     suspend fun removeFromFavorites(stockData: StockData) {
         favoritesRepository.removeFavorite(stockData.symbol)
+
+        // Update isFavorited if this is the current stock
+        if (_currentStockData.value?.symbol == stockData.symbol) {
+            _isFavorited.value = false
+        }
+
         loadFavorites()
     }
+
 
     suspend fun loadFavorites() {
         _favorites.value = favoritesRepository.getAllFavorites()
     }
 
+    suspend fun updateFavorite(stockData: StockData, healthScore: Int? = null) {
+        favoritesRepository.updateFavoriteData(stockData, healthScore)
+        loadFavorites()
+    }
+
+    suspend fun checkIfFavorited(symbol: String) {
+        _isFavorited.value = favoritesRepository.isFavorite(symbol)
+    }
     fun clearCurrentStock() {
         _currentStockData.value = null
         _healthScore.value = null
+        _isFavorited.value = false  // Add this line
     }
 
     fun clearError() {
         _error.value = null
     }
+
+
 }
