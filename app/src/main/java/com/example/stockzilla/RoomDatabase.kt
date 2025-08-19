@@ -1,10 +1,15 @@
-// RoomDatabase.kt - Local SQLite database using Room
-package com.example.stockzilla
+package com.example.stockzilla// RoomDatabase.kt - Local SQLite database using Room (Cleaned up version)
 
-import androidx.room.*
+import android.content.Context
+import androidx.room.Dao
 import androidx.room.Database
+import androidx.room.Entity
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.PrimaryKey
+import androidx.room.Query
+import androidx.room.Room
 import androidx.room.RoomDatabase
-import kotlinx.coroutines.flow.Flow
 
 @Entity(tableName = "favorites")
 data class FavoriteEntity(
@@ -30,35 +35,11 @@ interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY addedDate DESC")
     suspend fun getAllFavorites(): List<FavoriteEntity>
 
-    @Query("SELECT * FROM favorites ORDER BY addedDate DESC")
-    fun getAllFavoritesFlow(): Flow<List<FavoriteEntity>>
-
-    @Query("SELECT * FROM favorites WHERE symbol = :symbol")
-    suspend fun getFavorite(symbol: String): FavoriteEntity?
-
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertFavorite(favorite: FavoriteEntity)
 
-    @Delete
-    suspend fun deleteFavorite(favorite: FavoriteEntity)
-
     @Query("DELETE FROM favorites WHERE symbol = :symbol")
     suspend fun deleteFavoriteBySymbol(symbol: String)
-
-    @Query("UPDATE favorites SET notes = :notes WHERE symbol = :symbol")
-    suspend fun updateNotes(symbol: String, notes: String)
-}
-
-@Dao
-interface StockCacheDao {
-    @Query("SELECT * FROM stock_cache WHERE symbol = :symbol AND expiresAt > :currentTime")
-    suspend fun getCachedStock(symbol: String, currentTime: Long): StockCacheEntity?
-
-    @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun insertCachedStock(cache: StockCacheEntity)
-
-    @Query("DELETE FROM stock_cache WHERE expiresAt < :currentTime")
-    suspend fun clearExpiredCache(currentTime: Long)
 }
 
 @Database(
@@ -66,16 +47,14 @@ interface StockCacheDao {
     version = 1,
     exportSchema = false
 )
-@TypeConverters(Converters::class)
 abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun favoritesDao(): FavoritesDao
-    abstract fun stockCacheDao(): StockCacheDao
 
     companion object {
         @Volatile
         private var INSTANCE: StockzillaDatabase? = null
 
-        fun getDatabase(context: android.content.Context): StockzillaDatabase {
+        fun getDatabase(context: Context): StockzillaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
                     context.applicationContext,
@@ -89,11 +68,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
     }
 }
 
-class Converters {
-    // Add any type converters if needed
-}
-
-// Repository for managing favorites
+// Repository for managing favorites (Simplified to only used functions)
 class FavoritesRepository(private val favoritesDao: FavoritesDao) {
 
     suspend fun getAllFavorites(): List<StockData> {
@@ -102,7 +77,7 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
                 symbol = entity.symbol,
                 companyName = entity.companyName,
                 price = entity.price,
-                marketCap = null, // Not stored in favorites
+                marketCap = null,
                 revenue = null,
                 netIncome = null,
                 eps = null,
@@ -114,29 +89,6 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
                 sector = entity.sector,
                 industry = null
             )
-        }
-    }
-
-    fun getAllFavoritesFlow(): Flow<List<StockData>> {
-        return favoritesDao.getAllFavoritesFlow().map { entities ->
-            entities.map { entity ->
-                StockData(
-                    symbol = entity.symbol,
-                    companyName = entity.companyName,
-                    price = entity.price,
-                    marketCap = null,
-                    revenue = null,
-                    netIncome = null,
-                    eps = null,
-                    peRatio = null,
-                    psRatio = null,
-                    roe = null,
-                    debtToEquity = null,
-                    freeCashFlow = null,
-                    sector = entity.sector,
-                    industry = null
-                )
-            }
         }
     }
 
@@ -157,55 +109,5 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
         favoritesDao.deleteFavoriteBySymbol(symbol)
     }
 
-    suspend fun updateNotes(symbol: String, notes: String) {
-        favoritesDao.updateNotes(symbol, notes)
-    }
-
-    suspend fun isFavorite(symbol: String): Boolean {
-        return favoritesDao.getFavorite(symbol) != null
-    }
 }
 
-// Repository for stock data caching
-class StockCacheRepository(private val stockCacheDao: StockCacheDao) {
-
-    suspend fun getCachedStock(symbol: String): StockData? {
-        val currentTime = System.currentTimeMillis()
-        val cached = stockCacheDao.getCachedStock(symbol, currentTime)
-        return cached?.let {
-            // Parse JSON back to StockData
-            parseStockDataFromJson(it.stockDataJson)
-        }
-    }
-
-    suspend fun cacheStock(stockData: StockData, cacheDurationMinutes: Long = 15) {
-        val currentTime = System.currentTimeMillis()
-        val expiryTime = currentTime + (cacheDurationMinutes * 60 * 1000)
-
-        val cache = StockCacheEntity(
-            symbol = stockData.symbol,
-            stockDataJson = stockDataToJson(stockData),
-            cachedAt = currentTime,
-            expiresAt = expiryTime
-        )
-
-        stockCacheDao.insertCachedStock(cache)
-    }
-
-    suspend fun clearExpiredCache() {
-        stockCacheDao.clearExpiredCache(System.currentTimeMillis())
-    }
-
-    private fun stockDataToJson(stockData: StockData): String {
-        // Use Gson or similar to convert to JSON
-        return com.google.gson.Gson().toJson(stockData)
-    }
-
-    private fun parseStockDataFromJson(json: String): StockData? {
-        return try {
-            com.google.gson.Gson().fromJson(json, StockData::class.java)
-        } catch (e: Exception) {
-            null
-        }
-    }
-}

@@ -28,4 +28,6 @@
     <string name="full_analysis">Full Analysis</string>
     <string name="show_score_breakdown">Show Score Breakdown</string>
     <string name="revenue_394_3b_nnet_income_99_8b_np_e_ratio_25_4">Revenue: $394.3B\nNet Income: $99.8B\nP/E Ratio: 25.4</string>
+    <string name="health_score_format">%1$d/10</string>
+    <string name="analyze">Analyze</string>
 </resources>

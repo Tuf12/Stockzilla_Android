@@ -104,7 +104,7 @@ class StockRepository(private val apiKey: String) {
             }
 
             // Calculate derived metrics
-            val psRatio = calculatePSRatio(quote?.price, income?.revenue, profile?.marketCap)
+            val psRatio = calculatePSRatio(income?.revenue, profile?.marketCap)
             val roe = calculateROE(income?.netIncome, balance?.totalEquity)
             val debtToEquity = calculateDebtToEquity(balance?.totalDebt, balance?.totalEquity)
 
@@ -131,9 +131,9 @@ class StockRepository(private val apiKey: String) {
         }
     }
 
-    private fun calculatePSRatio(price: Double?, revenue: Double?, marketCap: Double?): Double? {
+    private fun calculatePSRatio(revenue: Double?, marketCap: Double?): Double? {
         return when {
-            marketCap != null && revenue != null && revenue > 0 -> marketCap / revenue
+        marketCap != null && revenue != null && revenue > 0 -> marketCap / revenue
             else -> null
         }
     }

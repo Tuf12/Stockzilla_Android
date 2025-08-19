@@ -2,7 +2,6 @@
 package com.example.stockzilla
 
 import android.content.Intent
-import android.net.Uri
 import android.os.Bundle
 import android.widget.Toast
 import androidx.activity.viewModels
@@ -14,7 +13,10 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import androidx.core.net.toUri
+import androidx.lifecycle.AndroidViewModel
 import com.example.stockzilla.databinding.ActivityMainBinding
+import androidx.lifecycle.MutableLiveData
+import androidx.lifecycle.LiveData
 
 class MainActivity : AppCompatActivity() {
 
@@ -121,7 +123,7 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    private fun analyzeStock(ticker: String) {
+    fun analyzeStock(ticker: String) {
         lifecycleScope.launch {
             viewModel.analyzeStock(ticker)
         }
@@ -153,13 +155,14 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayHealthScore(healthScore: HealthScore) {
         binding.apply {
-            tvHealthScore.text = "${healthScore.compositeScore}/10"
+            tvHealthScore.text = getString(R.string.health_score_format, healthScore.compositeScore)
+
 
             // Color code the score
             val color = when (healthScore.compositeScore) {
-                in 7..10 -> getColor(R.color.score_good)
-                in 4..6 -> getColor(R.color.score_medium)
-                else -> getColor(R.color.score_poor)
+                in 7..10 -> getColor(R.color.scoreGood)
+                in 4..6 -> getColor(R.color.scoreMedium)
+                else -> getColor(R.color.scorePoor)
             }
             tvHealthScore.setTextColor(color)
 
@@ -238,14 +241,14 @@ class MainActivity : AppCompatActivity() {
     }
 }
 
-// ViewModel for managing UI state
-import androidx.lifecycle.ViewModel
-import androidx.lifecycle.MutableLiveData
-import androidx.lifecycle.LiveData
 
-class StockViewModel : ViewModel() {
+
+class StockViewModel(application: android.app.Application) : AndroidViewModel(application) {
     private val stockRepository = StockRepository("YOUR_FMP_API_KEY") // Replace with actual key
-    private val favoritesRepository = FavoritesRepository() // Local database
+
+    // Initialize database and repository properly
+    private val database = StockzillaDatabase.getDatabase(application)
+    private val favoritesRepository = FavoritesRepository(database.favoritesDao())
     private val financialAnalyzer = FinancialHealthAnalyzer()
 
     private val _currentStockData = MutableLiveData<StockData?>()
