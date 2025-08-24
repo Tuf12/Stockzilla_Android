@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
                 showApiKeyDialog(forceShow = true)
                 true
             }
+
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -75,9 +76,14 @@ class MainActivity : AppCompatActivity() {
             val dialog = ApiKeySetupDialog { apiKey ->
                 viewModel.updateApiKey(apiKey)
                 if (apiKey != "demo") {
-                    Toast.makeText(this, "API key configured successfully!", Toast.LENGTH_SHORT).show()
+                    Toast.makeText(this, "API key configured successfully!", Toast.LENGTH_SHORT)
+                        .show()
                 } else {
-                    Toast.makeText(this, "Using demo mode - limited functionality", Toast.LENGTH_LONG).show()
+                    Toast.makeText(
+                        this,
+                        "Using demo mode - limited functionality",
+                        Toast.LENGTH_LONG
+                    ).show()
                 }
             }
             dialog.show(supportFragmentManager, "api_key_setup")
@@ -177,7 +183,8 @@ class MainActivity : AppCompatActivity() {
         viewModel.error.observe(this) { error ->
             error?.let {
                 if (it.contains("401") || it.contains("Unauthorized")) {
-                    Toast.makeText(this, "API key issue - please check your key", Toast.LENGTH_LONG).show()
+                    Toast.makeText(this, "API key issue - please check your key", Toast.LENGTH_LONG)
+                        .show()
                     showApiKeyDialog(forceShow = true)
                 } else {
                     Toast.makeText(this, "Error: $it", Toast.LENGTH_LONG).show()
@@ -229,21 +236,29 @@ class MainActivity : AppCompatActivity() {
             tvPrice.text = stockData.price?.let { "$%.2f".format(it) } ?: "N/A"
             tvSector.text = stockData.sector ?: "Unknown"
 
-            // Key metrics
+            // Get smart display metrics based on net income
+            val displayMetrics = BenchmarkData.getDisplayMetrics(stockData)
+
+            // Key metrics with smart PE/PS display
             tvMarketCap.text = stockData.marketCap?.let { formatMarketCap(it) } ?: "N/A"
-            tvPeRatio.text = stockData.peRatio?.let { "%.2f".format(it) } ?: "N/A"
-            tvPsRatio.text = stockData.psRatio?.let { "%.2f".format(it) } ?: "N/A"
+
+            // Update first ratio and its label (PE for positive income, PS for negative income)
+            tvPeRatioLabel.text = displayMetrics.primaryLabel
+            tvPeRatio.text = displayMetrics.primaryRatio?.let { "%.2f".format(it) } ?: "N/A"
+
+            // Update second position with benchmark average and its label
+            tvPsRatioLabel.text = displayMetrics.benchmarkLabel
+            tvPsRatio.text = displayMetrics.benchmarkRatio?.let { "%.2f".format(it) } ?: "N/A"
+
             tvRevenue.text = stockData.revenue?.let { formatLargeNumber(it) } ?: "N/A"
             tvNetIncome.text = stockData.netIncome?.let { formatLargeNumber(it) } ?: "N/A"
 
             // Show action buttons
             layoutActions.visibility = android.view.View.VISIBLE
             cardStockInfo.visibility = android.view.View.VISIBLE
-            lifecycleScope.launch {
-                viewModel.checkIfFavorited(stockData.symbol)
-            }
         }
     }
+
 
     private fun displayHealthScore(healthScore: HealthScore) {
         binding.apply {
@@ -257,7 +272,8 @@ class MainActivity : AppCompatActivity() {
             }
             tvHealthScore.setTextColor(color)
             tvHealthScoreSmall.setTextColor(color)
-            tvHealthScoreSmall.text = getString(R.string.health_score_format, healthScore.compositeScore)
+            tvHealthScoreSmall.text =
+                getString(R.string.health_score_format, healthScore.compositeScore)
 
             // Show recommendation
             val recommendation = when (healthScore.compositeScore) {
@@ -282,15 +298,19 @@ class MainActivity : AppCompatActivity() {
             if (isFavorited) {
                 // Update existing favorite
                 viewModel.updateFavorite(stockData, healthScore)
-                Toast.makeText(this@MainActivity,
+                Toast.makeText(
+                    this@MainActivity,
                     "${stockData.symbol} favorite updated with latest data",
-                    Toast.LENGTH_SHORT).show()
+                    Toast.LENGTH_SHORT
+                ).show()
             } else {
                 // Add new favorite
                 viewModel.addToFavorites(stockData)
-                Toast.makeText(this@MainActivity,
+                Toast.makeText(
+                    this@MainActivity,
                     "${stockData.symbol} added to favorites",
-                    Toast.LENGTH_SHORT).show()
+                    Toast.LENGTH_SHORT
+                ).show()
             }
         }
     }
@@ -298,9 +318,11 @@ class MainActivity : AppCompatActivity() {
     private fun removeFavorite(stockData: StockData) {
         lifecycleScope.launch {
             viewModel.removeFromFavorites(stockData)
-            Toast.makeText(this@MainActivity,
+            Toast.makeText(
+                this@MainActivity,
                 "${stockData.symbol} removed from favorites",
-                Toast.LENGTH_SHORT).show()
+                Toast.LENGTH_SHORT
+            ).show()
         }
     }
 
@@ -337,14 +359,19 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun formatLargeNumber(number: Double): String {
+        val sign = if (number < 0) "-" else ""
+        val absNumber = kotlin.math.abs(number)
+
         return when {
-            number >= 1_000_000_000 -> "$%.2fB".format(number / 1_000_000_000)
-            number >= 1_000_000 -> "$%.2fM".format(number / 1_000_000)
-            number >= 1_000 -> "$%.2fK".format(number / 1_000)
-            else -> "$%.0f".format(number)
+            absNumber >= 1_000_000_000 -> "$sign${"%.2f".format(absNumber / 1_000_000_000)}B"
+            absNumber >= 1_000_000 -> "$sign${"%.2f".format(absNumber / 1_000_000)}M"
+            absNumber >= 1_000 -> "$sign${"%.2f".format(absNumber / 1_000)}K"
+            else -> "$sign${"%.0f".format(absNumber)}"
         }
     }
+
 }
+
 
 class StockViewModel(application: android.app.Application) : AndroidViewModel(application) {
 
