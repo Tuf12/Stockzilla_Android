@@ -129,16 +129,17 @@ class FinancialHealthAnalyzer {
                         zSubScore * 1.0
                 )
 
+
         val compositeScore = when {
-            weightedScore < 11 -> 1
-            weightedScore < 13 -> 2
-            weightedScore < 15 -> 3
-            weightedScore < 17 -> 4
-            weightedScore < 19 -> 5
-            weightedScore < 21 -> 6
-            weightedScore < 23 -> 7
-            weightedScore < 25 -> 8
-            weightedScore < 27 -> 9
+            weightedScore < 7.5 -> 1
+            weightedScore < 9.5 -> 2
+            weightedScore < 11.5 -> 3
+            weightedScore < 13.5 -> 4
+            weightedScore < 15.5 -> 5
+            weightedScore < 17.5 -> 6
+            weightedScore < 19.5 -> 7
+            weightedScore < 21.5 -> 8
+            weightedScore < 23.5 -> 9
             else -> 10
         }
 
@@ -271,14 +272,26 @@ class FinancialHealthAnalyzer {
         // Simplified forecast scoring based on P/E and P/S ratios
         var score = 1
 
-        stockData.psRatio?.let { ps ->
-            if (ps < 3) score += 2
-            else if (ps < 8) score += 1
-        }
+        val psBonus = stockData.psRatio?.let { ps ->
+            when {
+                ps < 3 -> 2
+                ps < 8 -> 1
+                else -> 0
+            }
+        } ?: 0
 
-        stockData.peRatio?.let { pe ->
-            if (pe < 15 && pe > 0) score += 1
-            else if (pe < 25 && pe > 0) score += 1
+        val peBonus = stockData.peRatio?.takeIf { it > 0 }?.let { pe ->
+            when {
+                pe < 15 -> 2
+                pe < 25 -> 1
+                else -> 0
+            }
+        } ?: 0
+
+        score += psBonus + peBonus
+
+        if (psBonus == 2 && peBonus == 2) {
+            score += 1
         }
 
         return score.coerceIn(1, 5)
