@@ -413,28 +413,19 @@
 
                 <!-- Score Breakdown (Expandable) -->
                 <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnToggleBreakdown"
+                    android:id="@+id/btnViewHealthDetails"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginHorizontal="24dp"
-                    android:text="@string/show_score_breakdown"
+                    android:layout_marginTop="8dp"
+                    android:alpha="0.5"
+                    android:enabled="false"
+                    android:text="@string/view_health_score_details"
                     android:textColor="@color/colorPrimary"
                     app:backgroundTint="@android:color/transparent"
-                    app:icon="@drawable/ic_expand_more"
+                    app:icon="@drawable/ic_open_in_new"
                     app:iconTint="@color/colorPrimary"
-                    style="@style/Widget.MaterialComponents.Button.TextButton"
-                    android:layout_marginTop="8dp" />
-
-                <TextView
-                    android:id="@+id/tvScoreBreakdown"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/revenue_394_3b_nnet_income_99_8b_np_e_ratio_25_4"
-                    android:textSize="12sp"
-                    android:textColor="@color/textSecondary"
-                    android:visibility="gone"
-                    android:padding="12dp"
-                    android:background="@drawable/breakdown_background" />
+                    style="@style/Widget.MaterialComponents.Button.TextButton" />
 
             </LinearLayout>
 

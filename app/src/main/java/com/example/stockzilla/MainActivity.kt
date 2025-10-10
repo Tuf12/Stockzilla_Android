@@ -27,6 +27,8 @@ class MainActivity : AppCompatActivity() {
     private lateinit var favoritesAdapter: FavoritesAdapter
     private lateinit var apiKeyManager: ApiKeyManager
     private var searchJob: Job? = null
+    private var latestStockData: StockData? = null
+    private var latestHealthScore: HealthScore? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -147,14 +149,25 @@ class MainActivity : AppCompatActivity() {
                 addToFavorites(stockData, healthScore)  // Update this call
             }
         }
+        binding.btnViewHealthDetails.apply {
+            isEnabled = false
+            alpha = 0.5f
+            setOnClickListener { openHealthScoreDetails() }
+        }
     }
+
 
     private fun setupObservers() {
         viewModel.currentStockData.observe(this) { stockData ->
+            latestStockData = stockData
+            latestHealthScore = null
+            updateHealthDetailsAvailability()
             stockData?.let { displayStockData(it) }
         }
 
         viewModel.healthScore.observe(this) { healthScore ->
+            latestHealthScore = healthScore
+            updateHealthDetailsAvailability()
             healthScore?.let { displayHealthScore(it) }
         }
 
@@ -283,11 +296,6 @@ class MainActivity : AppCompatActivity() {
             }
             tvRecommendation.text = recommendation
 
-            // Show breakdown
-            val breakdown = healthScore.breakdown.joinToString("\n") { metric ->
-                "${metric.metric}: ${metric.value?.let { "%.2f".format(it) } ?: "N/A"}"
-            }
-            tvScoreBreakdown.text = breakdown
         }
     }
 
@@ -341,6 +349,9 @@ class MainActivity : AppCompatActivity() {
         binding.layoutActions.visibility = android.view.View.GONE
         binding.cardStockInfo.visibility = android.view.View.GONE
         viewModel.clearCurrentStock()
+        latestStockData = null
+        latestHealthScore = null
+        updateHealthDetailsAvailability()
     }
 
     private fun loadFavorites() {
@@ -355,6 +366,24 @@ class MainActivity : AppCompatActivity() {
             marketCap >= 1_000_000_000 -> "$%.2fB".format(marketCap / 1_000_000_000)
             marketCap >= 1_000_000 -> "$%.2fM".format(marketCap / 1_000_000)
             else -> "$%.0f".format(marketCap)
+        }
+    }
+
+    private fun updateHealthDetailsAvailability() {
+        val isReady = latestStockData != null && latestHealthScore != null
+        binding.btnViewHealthDetails.isEnabled = isReady
+        binding.btnViewHealthDetails.alpha = if (isReady) 1f else 0.5f
+    }
+
+    private fun openHealthScoreDetails() {
+        val stockData = latestStockData
+        val healthScore = latestHealthScore
+        if (stockData != null && healthScore != null) {
+            val intent = Intent(this, HealthScoreDetailsActivity::class.java).apply {
+                putExtra(HealthScoreDetailsActivity.EXTRA_STOCK_DATA, stockData)
+                putExtra(HealthScoreDetailsActivity.EXTRA_HEALTH_SCORE, healthScore)
+            }
+            startActivity(intent)
         }
     }
 

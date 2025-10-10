@@ -1,6 +1,8 @@
 // FinancialHealthAnalyzer.kt - Core financial analysis logic ported to Kotlin
 package com.example.stockzilla
 
+import java.io.Serializable
+
 enum class Direction { HIGHER_IS_BETTER, LOWER_IS_BETTER }
 
 data class MetricConfig(
@@ -94,7 +96,7 @@ data class StockData(
     val freeCashFlow: Double?,
     val sector: String?,
     val industry: String?
-)
+): Serializable
 
 data class HealthScore(
     val compositeScore: Int,
@@ -102,7 +104,7 @@ data class HealthScore(
     val forecastSubScore: Int,
     val zSubScore: Int,
     val breakdown: List<MetricScore>
-)
+): Serializable
 
 data class MetricScore(
     val metric: String,
@@ -110,7 +112,7 @@ data class MetricScore(
     val normalized: Double,
     val weight: Double,
     val score: Double
-)
+): Serializable
 
 @Suppress("UNCHECKED_CAST")
 class FinancialHealthAnalyzer {
