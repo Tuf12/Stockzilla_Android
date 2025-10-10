@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <androidx.core.widget.NestedScrollView xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
+    xmlns:tools="http://schemas.android.com/tools"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/colorBackground"
@@ -47,10 +48,10 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="8/10"
                     android:textColor="@color/colorPrimary"
                     android:textSize="36sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    tools:text="@string/preview_composite_score" />
 
                 <TextView
                     android:id="@+id/tvCompositeSummary"
@@ -86,10 +87,10 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="4 / 5"
                             android:textColor="@color/textPrimary"
                             android:textSize="16sp"
-                            android:textStyle="bold" />
+                            android:textStyle="bold"
+                            tools:text="@string/preview_core_health_score" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -113,10 +114,11 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="3 / 5"
                             android:textColor="@color/textPrimary"
                             android:textSize="16sp"
-                            android:textStyle="bold" />
+
+                        android:textStyle="bold"
+                        tools:text="@string/preview_forecast_score" />
                     </LinearLayout>
 
                     <LinearLayout
@@ -138,10 +140,10 @@
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:layout_marginTop="4dp"
-                            android:text="3 / 5"
                             android:textColor="@color/textPrimary"
                             android:textSize="16sp"
-                            android:textStyle="bold" />
+                        android:textStyle="bold"
+                        tools:text="@string/preview_balance_sheet_score" />
                     </LinearLayout>
                 </LinearLayout>
             </LinearLayout>
@@ -189,9 +191,9 @@
                         android:id="@+id/tvSymbolValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="AAPL"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_stock_symbol" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -213,9 +215,9 @@
                         android:id="@+id/tvCompanyValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Apple Inc."
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_company_name" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -237,9 +239,9 @@
                         android:id="@+id/tvPriceValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$180.34"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_share_price" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -261,9 +263,9 @@
                         android:id="@+id/tvMarketCapValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$2.50T"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_market_cap" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -285,9 +287,9 @@
                         android:id="@+id/tvRevenueValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$365.82B"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_revenue" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -309,9 +311,9 @@
                         android:id="@+id/tvNetIncomeValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$94.68B"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_net_income" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -333,9 +335,9 @@
                         android:id="@+id/tvEpsValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$5.12"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_eps" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -357,9 +359,9 @@
                         android:id="@+id/tvPeRatioValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="24.8"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_pe_ratio" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -381,9 +383,10 @@
                         android:id="@+id/tvPsRatioValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="7.1"
+
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_ps_ratio" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -405,9 +408,9 @@
                         android:id="@+id/tvRoeValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="21.5%"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_roe" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -429,9 +432,9 @@
                         android:id="@+id/tvDebtToEquityValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="1.8"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_debt_to_equity" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -453,9 +456,9 @@
                         android:id="@+id/tvFreeCashFlowValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="$112.0B"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_free_cash_flow" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -477,9 +480,9 @@
                         android:id="@+id/tvSectorValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Technology"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_sector" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -500,9 +503,9 @@
                         android:id="@+id/tvIndustryValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-                        android:text="Consumer Electronics"
                         android:textColor="@color/textPrimary"
-                        android:textSize="16sp" />
+                    android:textSize="16sp"
+                    tools:text="@string/preview_industry" />
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
