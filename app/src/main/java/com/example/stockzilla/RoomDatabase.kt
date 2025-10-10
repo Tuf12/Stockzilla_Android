@@ -26,6 +26,11 @@ data class FavoriteEntity(
     val roe: Double?,
     val debtToEquity: Double?,
     val freeCashFlow: Double?,
+    val pbRatio: Double?,
+    val ebitda: Double?,
+    val outstandingShares: Double?,
+    val totalAssets: Double?,
+    val totalLiabilities: Double?,
     val sector: String?,
     val industry: String?,
     val healthScore: Int?,
@@ -59,7 +64,7 @@ interface FavoritesDao {
 
 @Database(
     entities = [FavoriteEntity::class, StockCacheEntity::class],
-    version = 2, // Increment version due to schema change
+    version = 3, // Increment version due to schema change
     exportSchema = false
 )
 abstract class StockzillaDatabase : RoomDatabase() {
@@ -76,7 +81,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .fallbackToDestructiveMigration() // Add this for schema changes
+                    .fallbackToDestructiveMigration(false) // Add this for schema changes
                     .build()
                 INSTANCE = instance
                 instance
@@ -103,6 +108,11 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
                 roe = entity.roe,
                 debtToEquity = entity.debtToEquity,
                 freeCashFlow = entity.freeCashFlow,
+                pbRatio = entity.pbRatio,
+                ebitda = entity.ebitda,
+                outstandingShares = entity.outstandingShares,
+                totalAssets = entity.totalAssets,
+                totalLiabilities = entity.totalLiabilities,
                 sector = entity.sector,
                 industry = entity.industry
             )
@@ -123,6 +133,11 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
             roe = stockData.roe,
             debtToEquity = stockData.debtToEquity,
             freeCashFlow = stockData.freeCashFlow,
+            pbRatio = stockData.pbRatio,
+            ebitda = stockData.ebitda,
+            outstandingShares = stockData.outstandingShares,
+            totalAssets = stockData.totalAssets,
+            totalLiabilities = stockData.totalLiabilities,
             sector = stockData.sector,
             industry = stockData.industry,
             healthScore = healthScore,
@@ -149,6 +164,11 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
                 roe = stockData.roe,
                 debtToEquity = stockData.debtToEquity,
                 freeCashFlow = stockData.freeCashFlow,
+                pbRatio = stockData.pbRatio,
+                ebitda = stockData.ebitda,
+                outstandingShares = stockData.outstandingShares,
+                totalAssets = stockData.totalAssets,
+                totalLiabilities = stockData.totalLiabilities,
                 sector = stockData.sector,
                 industry = stockData.industry,
                 healthScore = healthScore,

@@ -23,13 +23,15 @@ data class FMPQuote(
     @SerializedName("symbol") val symbol: String,
     @SerializedName("price") val price: Double?,
     @SerializedName("volume") val volume: Long?,
-    @SerializedName("pe") val peRatio: Double?
+    @SerializedName("pe") val peRatio: Double?,
+    @SerializedName("sharesOutstanding") val sharesOutstanding: Long?
 )
 
 data class FMPIncomeStatement(
     @SerializedName("revenue") val revenue: Double?,
     @SerializedName("netIncome") val netIncome: Double?,
     @SerializedName("eps") val eps: Double?,
+    @SerializedName("ebitda") val ebitda: Double?,
     @SerializedName("calendarYear") val year: String?
 )
 
@@ -107,6 +109,12 @@ class StockRepository(private val apiKey: String) {
             val psRatio = calculatePSRatio(income?.revenue, profile?.marketCap)
             val roe = calculateROE(income?.netIncome, balance?.totalEquity)
             val debtToEquity = calculateDebtToEquity(balance?.totalDebt, balance?.totalEquity)
+            val priceToBook = calculatePriceToBook(profile?.marketCap, balance?.totalEquity)
+            val outstandingShares = calculateSharesOutstanding(
+                directValue = quote?.sharesOutstanding,
+                marketCap = profile?.marketCap,
+                price = quote?.price
+            )
 
             val stockData = StockData(
                 symbol = symbol,
@@ -121,6 +129,11 @@ class StockRepository(private val apiKey: String) {
                 roe = roe,
                 debtToEquity = debtToEquity,
                 freeCashFlow = cashFlow?.freeCashFlow,
+                pbRatio = priceToBook,
+                ebitda = income?.ebitda,
+                outstandingShares = outstandingShares,
+                totalAssets = balance?.totalAssets,
+                totalLiabilities = balance?.totalLiabilities,
                 sector = profile?.sector,
                 industry = profile?.industry
             )
@@ -133,7 +146,7 @@ class StockRepository(private val apiKey: String) {
 
     private fun calculatePSRatio(revenue: Double?, marketCap: Double?): Double? {
         return when {
-        marketCap != null && revenue != null && revenue > 0 -> marketCap / revenue
+            marketCap != null && revenue != null && revenue > 0 -> marketCap / revenue
             else -> null
         }
     }
@@ -148,5 +161,22 @@ class StockRepository(private val apiKey: String) {
         return if (debt != null && equity != null && equity > 0) {
             debt / equity
         } else null
+    }
+    private fun calculatePriceToBook(marketCap: Double?, equity: Double?): Double? {
+        return if (marketCap != null && equity != null && equity > 0) {
+            marketCap / equity
+        } else null
+    }
+
+    private fun calculateSharesOutstanding(
+        directValue: Long?,
+        marketCap: Double?,
+        price: Double?
+    ): Double? {
+        return when {
+            directValue != null && directValue > 0 -> directValue.toDouble()
+            marketCap != null && price != null && price > 0 -> marketCap / price
+            else -> null
+        }
     }
 }

@@ -64,12 +64,12 @@
         android:layout_height="wrap_content"
         android:layout_marginBottom="16dp"
         android:text="@string/get_free_api_key"
-        android:textColor="@color/colorPrimary"
+        android:textColor="@color/buttonPrimaryText"
         app:backgroundTint="@android:color/transparent"
-        app:strokeColor="@color/colorPrimary"
+        app:strokeColor="@color/buttonPrimaryText"
         app:strokeWidth="1dp"
         app:icon="@drawable/ic_open_in_new"
-        app:iconTint="@color/colorPrimary"
+        app:iconTint="@color/buttonPrimaryText"
         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
     <!-- Progress Bar -->
@@ -102,7 +102,7 @@
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnSave"
-            android:layout_width="0dp"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:layout_marginStart="8dp"

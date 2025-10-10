@@ -50,6 +50,11 @@ class StockDetailsDialog : DialogFragment() {
                 appendLine("• ROE: ${stock.roe?.let { "%.1f%%".format(it * 100) } ?: "N/A"}")
                 appendLine("• Debt/Equity: ${stock.debtToEquity?.let { "%.2f".format(it) } ?: "N/A"}")
                 appendLine("• Free Cash Flow: ${stock.freeCashFlow?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Price/Book: ${stock.pbRatio?.let { "%.2f".format(it) } ?: "N/A"}")
+                appendLine("• EBITDA: ${stock.ebitda?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Outstanding Shares: ${stock.outstandingShares?.let { formatShareCount(it) } ?: "N/A"}")
+                appendLine("• Total Assets: ${stock.totalAssets?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Total Liabilities: ${stock.totalLiabilities?.let { formatLargeNumber(it) } ?: "N/A"}")
             } ?: append("No stock data available")
         }
 
@@ -82,6 +87,14 @@ class StockDetailsDialog : DialogFragment() {
             number >= 1_000_000 -> "$%.2fM".format(number / 1_000_000)
             number >= 1_000 -> "$%.2fK".format(number / 1_000)
             else -> "$%.0f".format(number)
+        }
+    }
+    private fun formatShareCount(number: Double): String {
+        return when {
+            number >= 1_000_000_000 -> "%.2fB".format(number / 1_000_000_000)
+            number >= 1_000_000 -> "%.2fM".format(number / 1_000_000)
+            number >= 1_000 -> "%.2fK".format(number / 1_000)
+            else -> "%.0f".format(number)
         }
     }
 }

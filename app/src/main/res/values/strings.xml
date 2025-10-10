@@ -37,7 +37,7 @@
     <string name="sub_score_format">%1$d / 5</string>
     <string name="recent_metrics_heading">Latest fundamentals</string>
     <string name="score_breakdown_heading">How each metric contributes</string>
-    <string name="score_breakdown_description">Each metric is scaled to a 0–1 range, weighted for the company’s sector and size, and then combined to produce the overall score. Higher weights signal the factors that matter most for this business profile.</string>
+    <string name="score_breakdown_description">Each metric is scaled to a percentage, weighted for the company’s sector and size, and then combined to produce the overall score. Higher weights signal the factors that matter most for this business profile.</string>
     <string name="not_available">N/A</string>
     <string name="symbol_label">Symbol</string>
     <string name="company_label">Company</string>
@@ -46,13 +46,18 @@
     <string name="metric_roe">ROE</string>
     <string name="metric_debt_to_equity">Debt to Equity</string>
     <string name="metric_free_cash_flow">Free Cash Flow</string>
+    <string name="metric_pb_ratio">Price to Book</string>
+    <string name="metric_ebitda">EBITDA</string>
+    <string name="metric_outstanding_shares">Outstanding Shares</string>
+    <string name="metric_total_assets">Total Assets</string>
+    <string name="metric_total_liabilities">Total Liabilities</string>
     <string name="sector">Sector</string>
     <string name="industry">Industry</string>
     <string name="breakdown_actual_value">Latest value: %1$s</string>
     <string name="breakdown_weight_value">Weight: %1$.1f%%</string>
     <string name="breakdown_weight_value_na">Weight: N/A</string>
-    <string name="breakdown_normalized_value">Normalized (0–1): %1$.2f</string>
-    <string name="breakdown_normalized_value_na">Normalized (0–1): N/A</string>
+    <string name="breakdown_normalized_value">Normalized: %1$.1f%%</string>
+    <string name="breakdown_normalized_value_na">Normalized: N/A</string>
     <string name="breakdown_contribution_value">Score contribution: %1$.2f</string>
     <string name="breakdown_contribution_value_na">Score contribution: N/A</string>
     <string name="health_score_format">%1$d/10</string>
@@ -67,7 +72,7 @@
     <string name="api_settings">API Settings</string>
     <string name="latest_value_0_00">Latest value: $0.00</string>
     <string name="weight_15">Weight: 15%</string>
-    <string name="normalized_0_1_0_70">Normalized (0-1): 0.70</string>
+    <string name="normalized_0_1_0_70">Normalized (0–1): 0.70</string>
     <string name="score_contribution_1_05">Score contribution: 1.05</string>
     <string name="preview_composite_score">8/10</string>
     <string name="preview_core_health_score">4 / 5</string>
@@ -85,6 +90,11 @@
     <string name="preview_roe">21.5%</string>
     <string name="preview_debt_to_equity">1.8</string>
     <string name="preview_free_cash_flow">$112.0B</string>
+    <string name="preview_pb_ratio">4.5</string>
+    <string name="preview_ebitda">$86.3B</string>
+    <string name="preview_outstanding_shares">16.2B</string>
+    <string name="preview_total_assets">$352.0B</string>
+    <string name="preview_total_liabilities">$287.0B</string>
     <string name="preview_sector">Technology</string>
     <string name="preview_industry">Consumer Electronics</string>
 </resources>

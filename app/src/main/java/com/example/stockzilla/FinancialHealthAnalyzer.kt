@@ -20,7 +20,12 @@ private val DEFAULT_METRIC_CONFIG = mapOf(
     "pe_ratio"       to MetricConfig(5.0, 50.0, 0.10, Direction.LOWER_IS_BETTER, transform = "log"),
     "ps_ratio"       to MetricConfig(1.0, 15.0, 0.10, Direction.LOWER_IS_BETTER, transform = "log"),
     "roe"            to MetricConfig(0.0, 0.30, 0.15, Direction.HIGHER_IS_BETTER),
-    "debt_to_equity" to MetricConfig(0.0, 2.0, 0.10, Direction.LOWER_IS_BETTER)
+    "debt_to_equity" to MetricConfig(0.0, 2.0, 0.10, Direction.LOWER_IS_BETTER),
+    "pb_ratio"       to MetricConfig(0.5, 15.0, 0.08, Direction.LOWER_IS_BETTER, transform = "log"),
+    "ebitda"         to MetricConfig(-100_000_000.0, 500_000_000.0, 0.12, Direction.HIGHER_IS_BETTER),
+    "outstanding_shares" to MetricConfig(5_000_000.0, 10_000_000_000.0, 0.05, Direction.LOWER_IS_BETTER, transform = "log"),
+    "total_assets"   to MetricConfig(50_000_000.0, 2_000_000_000_000.0, 0.07, Direction.HIGHER_IS_BETTER, transform = "log"),
+    "total_liabilities" to MetricConfig(10_000_000.0, 1_000_000_000_000.0, 0.07, Direction.LOWER_IS_BETTER, transform = "log")
 )
 
 
@@ -33,7 +38,12 @@ private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>
         "pe_ratio" to (8.0 to 80.0),
         "ps_ratio" to (2.0 to 20.0),
         "roe" to (0.0 to 0.35),
-        "debt_to_equity" to (0.0 to 1.5)
+        "debt_to_equity" to (0.0 to 1.5),
+        "pb_ratio" to (1.0 to 20.0),
+        "ebitda" to (-150_000_000.0 to 800_000_000.0),
+        "outstanding_shares" to (10_000_000.0 to 8_000_000_000.0),
+        "total_assets" to (100_000_000.0 to 2_500_000_000_000.0),
+        "total_liabilities" to (50_000_000.0 to 1_200_000_000_000.0)
     ),
     "Healthcare" to mapOf(
         "revenue" to (0.0 to 1_000_000_000.0),
@@ -42,7 +52,12 @@ private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>
         "pe_ratio" to (10.0 to 60.0),
         "ps_ratio" to (2.0 to 18.0),
         "roe" to (-0.10 to 0.30),
-        "debt_to_equity" to (0.0 to 2.0)
+        "debt_to_equity" to (0.0 to 2.0),
+        "pb_ratio" to (0.8 to 18.0),
+        "ebitda" to (-200_000_000.0 to 600_000_000.0),
+        "outstanding_shares" to (8_000_000.0 to 6_000_000_000.0),
+        "total_assets" to (80_000_000.0 to 1_500_000_000_000.0),
+        "total_liabilities" to (30_000_000.0 to 800_000_000_000.0)
     ),
     "Financial Services" to mapOf(
         "revenue" to (0.0 to 2_000_000_000.0),
@@ -51,7 +66,12 @@ private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>
         "pe_ratio" to (6.0 to 30.0),
         "ps_ratio" to (1.0 to 10.0),
         "roe" to (0.05 to 0.25),
-        "debt_to_equity" to (0.0 to 3.0)
+        "debt_to_equity" to (0.0 to 3.0),
+        "pb_ratio" to (0.6 to 8.0),
+        "ebitda" to (-150_000_000.0 to 1_200_000_000.0),
+        "outstanding_shares" to (12_000_000.0 to 9_000_000_000.0),
+        "total_assets" to (150_000_000.0 to 5_000_000_000_000.0),
+        "total_liabilities" to (80_000_000.0 to 3_500_000_000_000.0)
     ),
     "Cannabis" to mapOf(
         "revenue" to (0.0 to 600_000_000.0),
@@ -60,7 +80,12 @@ private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>
         "pe_ratio" to (0.0 to 80.0),        // often N/A or noisy; keep wide
         "ps_ratio" to (0.5 to 12.0),
         "roe" to (-0.40 to 0.15),
-        "debt_to_equity" to (0.0 to 2.5)
+        "debt_to_equity" to (0.0 to 2.5),
+        "pb_ratio" to (0.3 to 25.0),
+        "ebitda" to (-300_000_000.0 to 400_000_000.0),
+        "outstanding_shares" to (20_000_000.0 to 9_000_000_000.0),
+        "total_assets" to (40_000_000.0 to 900_000_000_000.0),
+        "total_liabilities" to (20_000_000.0 to 500_000_000_000.0)
     ),
     "Industrials" to mapOf(
         "revenue" to (0.0 to 2_500_000_000.0),
@@ -69,7 +94,12 @@ private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>
         "pe_ratio" to (8.0 to 35.0),
         "ps_ratio" to (0.8 to 8.0),
         "roe" to (0.03 to 0.25),
-        "debt_to_equity" to (0.0 to 2.0)
+        "debt_to_equity" to (0.0 to 2.0),
+        "pb_ratio" to (0.7 to 15.0),
+        "ebitda" to (-200_000_000.0 to 1_000_000_000.0),
+        "outstanding_shares" to (10_000_000.0 to 7_000_000_000.0),
+        "total_assets" to (120_000_000.0 to 3_000_000_000_000.0),
+        "total_liabilities" to (60_000_000.0 to 1_600_000_000_000.0)
     )
 )
 
@@ -94,6 +124,11 @@ data class StockData(
     val roe: Double?,
     val debtToEquity: Double?,
     val freeCashFlow: Double?,
+    val pbRatio: Double?,
+    val ebitda: Double?,
+    val outstandingShares: Double?,
+    val totalAssets: Double?,
+    val totalLiabilities: Double?,
     val sector: String?,
     val industry: String?
 ): Serializable
@@ -109,7 +144,7 @@ data class HealthScore(
 data class MetricScore(
     val metric: String,
     val value: Double?,
-    val normalized: Double,
+    val normalizedPercent: Double,
     val weight: Double,
     val score: Double
 ): Serializable
@@ -172,7 +207,12 @@ class FinancialHealthAnalyzer {
             "pe_ratio"       to md("pe_ratio", stockData.peRatio),
             "ps_ratio"       to md("ps_ratio", stockData.psRatio),
             "roe"            to md("roe", stockData.roe),
-            "debt_to_equity" to md("debt_to_equity", stockData.debtToEquity)
+            "debt_to_equity" to md("debt_to_equity", stockData.debtToEquity),
+            "pb_ratio"       to md("pb_ratio", stockData.pbRatio),
+            "ebitda"         to md("ebitda", stockData.ebitda),
+            "outstanding_shares" to md("outstanding_shares", stockData.outstandingShares),
+            "total_assets"   to md("total_assets", stockData.totalAssets),
+            "total_liabilities" to md("total_liabilities", stockData.totalLiabilities)
         ).toMap() as Map<String, MetricData>
     }
 
@@ -215,18 +255,19 @@ class FinancialHealthAnalyzer {
         healthData.forEach { (name, metric) ->
             metric.value?.let { value ->
                 val cfg = DEFAULT_METRIC_CONFIG[name]
-                val normalized = if (cfg != null)
+                val normalizedFraction = if (cfg != null)
                     normalizeValueWithConfig(value, metric.min, metric.max, cfg)
                 else
                     normalizeValue(value, metric.min, metric.max)
 
-                val weighted = normalized * metric.weight
+                val weighted = normalizedFraction * metric.weight
+                val normalizedPercent = normalizedFraction * 100.0
 
                 breakdown.add(
                     MetricScore(
                         metric = name,
                         value = value,
-                        normalized = normalized,
+                        normalizedPercent = normalizedPercent,
                         weight = metric.weight,
                         score = weighted
                     )
@@ -254,10 +295,12 @@ class FinancialHealthAnalyzer {
         }
         val tMin = tx(min)
         val tMax = tx(max)
-        if (tMin >= tMax) return 0.0
+        if (tMin >= tMax) return 0.5
+
 
         val tVal = tx(value)
-        val frac = ((tVal - tMin) / (tMax - tMin)).coerceIn(0.0, 1.0)
+        val denominator = (tMax - tMin).takeIf { it > 0.0 } ?: return 0.5
+        val frac = ((tVal - tMin) / denominator).coerceIn(0.0, 1.0)
 
         return when (cfg.direction) {
             Direction.HIGHER_IS_BETTER -> frac
@@ -267,7 +310,8 @@ class FinancialHealthAnalyzer {
 
 
     private fun normalizeValue(value: Double, min: Double, max: Double): Double {
-        return ((value - min) / (max - min)).coerceIn(0.0, 1.0)
+        val denominator = (max - min).takeIf { it > 0.0 } ?: return 0.5
+        return ((value - min) / denominator).coerceIn(0.0, 1.0)
     }
 
     private fun calculateForecastScore(stockData: StockData): Int {

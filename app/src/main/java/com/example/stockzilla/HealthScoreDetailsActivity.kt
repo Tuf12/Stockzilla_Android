@@ -23,7 +23,12 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         "pe_ratio" to R.string.p_e_ratio,
         "ps_ratio" to R.string.p_s_ratio,
         "roe" to R.string.metric_roe,
-        "debt_to_equity" to R.string.metric_debt_to_equity
+        "debt_to_equity" to R.string.metric_debt_to_equity,
+        "pb_ratio" to R.string.metric_pb_ratio,
+        "ebitda" to R.string.metric_ebitda,
+        "outstanding_shares" to R.string.metric_outstanding_shares,
+        "total_assets" to R.string.metric_total_assets,
+        "total_liabilities" to R.string.metric_total_liabilities
     )
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -89,6 +94,11 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvRoeValue.text = formatPercent(stockData.roe)
             tvDebtToEquityValue.text = formatTwoDecimals(stockData.debtToEquity)
             tvFreeCashFlowValue.text = formatLargeCurrency(stockData.freeCashFlow)
+            tvPbRatioValue.text = formatTwoDecimals(stockData.pbRatio)
+            tvEbitdaValue.text = formatLargeCurrency(stockData.ebitda)
+            tvOutstandingSharesValue.text = formatLargeNumber(stockData.outstandingShares)
+            tvTotalAssetsValue.text = formatLargeCurrency(stockData.totalAssets)
+            tvTotalLiabilitiesValue.text = formatLargeCurrency(stockData.totalLiabilities)
             tvSectorValue.text = stockData.sector ?: getString(R.string.not_available)
             tvIndustryValue.text = stockData.industry ?: getString(R.string.not_available)
         }
@@ -104,9 +114,12 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
     private fun formatMetricValue(metricName: String, value: Double?): String {
         return when (metricName) {
             "revenue", "net_income" -> formatLargeCurrency(value)
+            "ebitda" -> formatLargeCurrency(value)
+            "total_assets", "total_liabilities" -> formatLargeCurrency(value)
             "eps" -> formatTwoDecimals(value)
             "roe" -> formatPercent(value)
-            "pe_ratio", "ps_ratio", "debt_to_equity" -> formatTwoDecimals(value)
+            "pe_ratio", "ps_ratio", "debt_to_equity", "pb_ratio" -> formatTwoDecimals(value)
+            "outstanding_shares" -> formatLargeNumber(value)
             else -> formatTwoDecimals(value)
         }
     }
@@ -139,6 +152,30 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         val suffix = unit.second.orEmpty()
         val currencySymbol = "$"
         return "$sign$currencySymbol$formatted$suffix"
+    }
+
+    private fun formatLargeNumber(value: Double?): String {
+        val safeValue = value?.takeIf { it.isFinite() } ?: return getString(R.string.not_available)
+        val sign = if (safeValue < 0) "-" else ""
+        val absValue = abs(safeValue)
+        val unit = when {
+            absValue >= 1_000_000_000_000 -> Pair(absValue / 1_000_000_000_000, "T")
+            absValue >= 1_000_000_000 -> Pair(absValue / 1_000_000_000, "B")
+            absValue >= 1_000_000 -> Pair(absValue / 1_000_000, "M")
+            absValue >= 1_000 -> Pair(absValue / 1_000, "K")
+            else -> Pair(absValue, null)
+        }
+        val formatted = if (unit.second == null) {
+            if (unit.first >= 1000) {
+                "%.0f".format(unit.first)
+            } else {
+                "%.2f".format(unit.first)
+            }
+        } else {
+            "%.2f".format(unit.first)
+        }
+        val suffix = unit.second.orEmpty()
+        return "$sign$formatted$suffix"
     }
 
     private fun formatTwoDecimals(value: Double?): String {
@@ -194,7 +231,7 @@ private class HealthBreakdownAdapter(
             } ?: context.getString(R.string.breakdown_weight_value_na)
             tvMetricWeight.text = weightText
 
-            val normalizedText = item.normalized.takeIf { it.isFinite() }?.let {
+            val normalizedText = item.normalizedPercent.takeIf { it.isFinite() }?.let {
                 context.getString(R.string.breakdown_normalized_value, it)
             } ?: context.getString(R.string.breakdown_normalized_value_na)
             tvMetricNormalized.text = normalizedText

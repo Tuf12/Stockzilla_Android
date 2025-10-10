@@ -159,8 +159,11 @@ class MainActivity : AppCompatActivity() {
 
     private fun setupObservers() {
         viewModel.currentStockData.observe(this) { stockData ->
+            val previousSymbol = latestStockData?.symbol
             latestStockData = stockData
-            latestHealthScore = null
+            if (stockData == null || stockData.symbol != previousSymbol) {
+                latestHealthScore = null
+            }
             updateHealthDetailsAvailability()
             stockData?.let { displayStockData(it) }
         }
@@ -370,14 +373,17 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun updateHealthDetailsAvailability() {
-        val isReady = latestStockData != null && latestHealthScore != null
+        val stockData = latestStockData ?: viewModel.currentStockData.value
+        val healthScore = latestHealthScore ?: viewModel.healthScore.value
+        val isReady = stockData != null && healthScore != null
         binding.btnViewHealthDetails.isEnabled = isReady
         binding.btnViewHealthDetails.alpha = if (isReady) 1f else 0.5f
     }
 
     private fun openHealthScoreDetails() {
-        val stockData = latestStockData
-        val healthScore = latestHealthScore
+        val stockData = latestStockData ?: viewModel.currentStockData.value
+        val healthScore = latestHealthScore ?: viewModel.healthScore.value
+
         if (stockData != null && healthScore != null) {
             val intent = Intent(this, HealthScoreDetailsActivity::class.java).apply {
                 putExtra(HealthScoreDetailsActivity.EXTRA_STOCK_DATA, stockData)
