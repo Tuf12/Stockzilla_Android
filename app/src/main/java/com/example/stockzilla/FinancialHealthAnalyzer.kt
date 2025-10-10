@@ -15,7 +15,12 @@ data class StockData(
     val debtToEquity: Double?,
     val freeCashFlow: Double?,
     val sector: String?,
-    val industry: String?
+    val industry: String?,
+    val pbRatio: Double?,
+    val ebitda: Double?,
+    val totalAssets: Double?,
+    val totalLiabilities: Double?
+
 )
 
 data class HealthScore(
@@ -83,20 +88,40 @@ class FinancialHealthAnalyzer {
             "pe_ratio" to MetricData(stockData.peRatio, 5.0, 50.0, weights["pe_ratio"] ?: 0.10),
             "ps_ratio" to MetricData(stockData.psRatio, 1.0, 15.0, weights["ps_ratio"] ?: 0.10),
             "roe" to MetricData(stockData.roe, 0.0, 0.3, weights["roe"] ?: 0.15),
-            "debt_to_equity" to MetricData(stockData.debtToEquity, 0.0, 2.0, weights["debt_to_equity"] ?: 0.10)
+            "debt_to_equity" to MetricData(stockData.debtToEquity, 0.0, 2.0, weights["debt_to_equity"] ?: 0.10),
+            "pb_ratio" to MetricData(stockData.pbRatio, 0.5, 10.0, weights["pb_ratio"] ?: 0.10),
+            "ebitda" to MetricData(stockData.ebitda, -20_000_000.0, 200_000_000.0, weights["ebitda"] ?: 0.10),
+            "assets" to MetricData(stockData.totalAssets, 10_000_000.0, 1_000_000_000_000.0, weights["assets"] ?: 0.10),
+            "liabilities" to MetricData(stockData.totalLiabilities, 1_000_000.0, 500_000_000_000.0, weights["liabilities"] ?: 0.10),
+            "current_ratio" to MetricData(
+                if (stockData.totalLiabilities != null && stockData.totalLiabilities > 0)
+                    stockData.totalAssets?.div(stockData.totalLiabilities)
+                else null,
+                0.5,
+                3.0,
+                weights["current_ratio"] ?: 0.10
+            )
+
+
         )
     }
 
     private fun getSectorSpecificWeights(sector: String, marketCap: Double?): Map<String, Double> {
         val baseWeights = mutableMapOf(
-            "revenue" to 0.15,
-            "net_income" to 0.15,
-            "eps" to 0.10,
-            "pe_ratio" to 0.10,
-            "ps_ratio" to 0.10,
-            "roe" to 0.15,
-            "debt_to_equity" to 0.10
+            "revenue" to 0.12,
+            "net_income" to 0.12,
+            "eps" to 0.08,
+            "pe_ratio" to 0.08,
+            "ps_ratio" to 0.08,
+            "pb_ratio" to 0.08,
+            "roe" to 0.10,
+            "debt_to_equity" to 0.08,
+            "current_ratio" to 0.08,
+            "ebitda" to 0.08,
+            "assets" to 0.06,
+            "liabilities" to 0.06
         )
+
 
         // Sector-specific adjustments
         when (sector) {
