@@ -47,7 +47,7 @@ android {
             // freeCompilerArgs.addAll("-Xjsr305=strict")
         }
     }
-
+}
 dependencies {
     // Core Android dependencies
     implementation(libs.androidx.core.ktx)
@@ -60,6 +60,7 @@ dependencies {
     // Lifecycle dependencies
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
     implementation(libs.androidx.lifecycle.livedata.ktx)
+    implementation(libs.androidx.lifecycle.runtime.ktx)
 
     // Room dependencies
     implementation(libs.androidx.room.runtime.android)
@@ -78,7 +79,5 @@ dependencies {
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
-}}
-dependencies {
-    implementation(libs.androidx.ui.android)
+
 }

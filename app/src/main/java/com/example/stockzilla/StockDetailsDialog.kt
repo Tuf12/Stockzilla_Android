@@ -1,4 +1,6 @@
-package com.example.stockzilla// com.example.stockzilla.StockDetailsDialog.kt - Dialog to show detailed stock information
+// StockDetailsDialog.kt - Dialog to show detailed stock information
+package com.example.stockzilla
+
 
 import android.app.Dialog
 import android.os.Bundle
@@ -13,9 +15,10 @@ class StockDetailsDialog : DialogFragment() {
 
         fun show(fragmentManager: FragmentManager, stockData: StockData) {
             val dialog = StockDetailsDialog()
-            val args = Bundle()
-            // Convert stockData to JSON string for passing
-            args.putString(ARG_STOCK_DATA, stockDataToJson(stockData))
+            val args = Bundle().apply {
+                // Convert stockData to JSON string for passing
+                putString(ARG_STOCK_DATA, stockDataToJson(stockData))
+            }
             dialog.arguments = args
             dialog.show(fragmentManager, "com.example.stockzilla.StockDetailsDialog")
         }
@@ -59,7 +62,7 @@ class StockDetailsDialog : DialogFragment() {
         }
 
         return MaterialAlertDialogBuilder(requireContext())
-            .setTitle("${stockData?.symbol} Details")
+            .setTitle("${stockData?.symbol ?: "Stock"} Details")
             .setMessage(message)
             .setPositiveButton("Close") { dialog, _ -> dialog.dismiss() }
             .setNeutralButton("Analyze") { dialog, _ ->

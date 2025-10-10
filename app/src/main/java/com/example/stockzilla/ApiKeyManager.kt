@@ -18,7 +18,8 @@ class ApiKeyManager(context: Context) {
     fun saveApiKey(apiKey: String) {
         sharedPreferences.edit {
             putString(API_KEY_PREF, apiKey)
-                .putBoolean(API_KEY_VALIDATED_PREF, false) // Reset validation when new key is saved
+            // Reset validation when new key is saved
+            putBoolean(API_KEY_VALIDATED_PREF, false)
         }
     }
 

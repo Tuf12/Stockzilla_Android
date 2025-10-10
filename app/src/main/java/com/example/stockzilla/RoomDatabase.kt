@@ -81,7 +81,8 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .fallbackToDestructiveMigration(false) // Add this for schema changes
+                    // Allow destructive migrations while schema is stabilizing
+                    .fallbackToDestructiveMigration(false)
                     .build()
                 INSTANCE = instance
                 instance
