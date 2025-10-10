@@ -77,7 +77,7 @@ object BenchmarkData {
     /**
      * Get benchmark for a stock, preferring industry over sector
      */
-    fun getBenchmark(industry: String?, sector: String?): Benchmark {
+    private fun getBenchmark(industry: String?, sector: String?): Benchmark {
         // Try industry first (most specific)
         industry?.let { industryBenchmarks[it] }?.let { return it }
 

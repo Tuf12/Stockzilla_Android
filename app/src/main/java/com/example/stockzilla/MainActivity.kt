@@ -472,7 +472,7 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         loadFavorites()
     }
 
-    suspend fun checkIfFavorited(symbol: String) {
+    private suspend fun checkIfFavorited(symbol: String) {
         _isFavorited.value = favoritesRepository.isFavorite(symbol)
     }
     fun clearCurrentStock() {
