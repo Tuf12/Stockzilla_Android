@@ -8,7 +8,7 @@ plugins {
 
 android {
     namespace = "com.example.stockzilla"
-    compileSdk = 35
+    compileSdk = 36
 
     buildFeatures {
         viewBinding = true
@@ -17,7 +17,7 @@ android {
     defaultConfig {
         applicationId = "com.example.stockzilla"
         minSdk = 24
-        targetSdk = 35
+        targetSdk = 36
         versionCode = 1
         versionName = "1.0"
 
