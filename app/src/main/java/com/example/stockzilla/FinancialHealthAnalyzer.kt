@@ -3,6 +3,10 @@ package com.example.stockzilla
 
 import java.io.Serializable
 import kotlin.math.roundToInt
+import kotlin.math.exp
+import kotlin.math.pow
+
+
 
 enum class Direction { HIGHER_IS_BETTER, LOWER_IS_BETTER }
 
@@ -28,7 +32,7 @@ private val DEFAULT_METRIC_CONFIG = mapOf(
     "total_assets"   to MetricConfig(50_000_000.0, 2_000_000_000_000.0, 0.07, Direction.HIGHER_IS_BETTER, transform = "log"),
     "total_liabilities" to MetricConfig(10_000_000.0, 1_000_000_000_000.0, 0.07, Direction.LOWER_IS_BETTER, transform = "log")
 )
-
+private val ABSOLUTE_METRICS = setOf("revenue", "net_income", "ebitda", "total_assets", "total_liabilities")
 
 // Optional: tune per-sector ranges (examples; adjust as you gather data)
 private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>>> = mapOf(
@@ -132,6 +136,7 @@ data class StockData(
     val totalLiabilities: Double?,
     val sector: String?,
     val industry: String?,
+    val revenueGrowth: Double? = null,
     val averageRevenueGrowth: Double? = null,
     val averageNetIncomeGrowth: Double? = null
 ): Serializable
@@ -174,10 +179,11 @@ class FinancialHealthAnalyzer {
 
     private fun buildHealthData(stockData: StockData): Map<String, MetricData> {
         val sector = stockData.sector ?: "Unknown"
-        val weights = getSectorSpecificWeights(sector, stockData.marketCap)
+        val revenueGrowthSignal = stockData.revenueGrowth ?: stockData.averageRevenueGrowth
+        val weights = getSectorSpecificWeights(sector, stockData.marketCap, revenueGrowthSignal)
 
         fun md(metric: String, value: Double?): MetricData? {
-            val (min, max) = getSectorRange(metric, sector)
+            val (min, max) = getSectorRange(metric, sector, stockData.marketCap)
             if (min >= max) return null
             val w = weights[metric] ?: DEFAULT_METRIC_CONFIG[metric]?.baseWeight ?: return null
             return MetricData(value = value, min = min, max = max, weight = w)
@@ -200,31 +206,106 @@ class FinancialHealthAnalyzer {
     }
 
 
-    private fun getSectorSpecificWeights(sector: String, marketCap: Double?): Map<String, Double> {
+    private fun getSectorSpecificWeights(
+        sector: String,
+        marketCap: Double?,
+        revenueGrowth: Double?
+    ): Map<String, Double> {
         val baseWeights = DEFAULT_METRIC_CONFIG.mapValues { it.value.baseWeight }.toMutableMap()
         SECTOR_WEIGHT_OVERRIDES[sector]?.forEach { (metric, w) -> baseWeights[metric] = w }
 
+        val isHighGrowth = (revenueGrowth ?: 0.0) > 0.15
+
         marketCap?.let { cap ->
             when {
-                cap < 2_000_000_000 -> { // Small cap
-                    baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * 1.2
-                    baseWeights["ps_ratio"] = (baseWeights["ps_ratio"] ?: 0.0) * 1.3
-                    baseWeights["net_income"] = (baseWeights["net_income"] ?: 0.0) * 0.8
+                cap < 2_000_000_000 -> {
+                    val revenueBump = if (isHighGrowth) 1.4 else 1.2
+                    val psBump = if (isHighGrowth) 1.35 else 1.2
+                    baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * revenueBump
+                    baseWeights["ps_ratio"] = (baseWeights["ps_ratio"] ?: 0.0) * psBump
+                    baseWeights["net_income"] = (baseWeights["net_income"] ?: 0.0) * 0.75
+                    if (isHighGrowth) {
+                        baseWeights["roe"] = (baseWeights["roe"] ?: 0.0) * 0.9
+                        baseWeights["debt_to_equity"] = (baseWeights["debt_to_equity"] ?: 0.0) * 0.9
+                    }
                 }
-                cap > 100_000_000_000 -> { // Large cap
-                    baseWeights["net_income"] = (baseWeights["net_income"] ?: 0.0) * 1.2
-                    baseWeights["roe"] = (baseWeights["roe"] ?: 0.0) * 1.2
+
+                cap > 100_000_000_000 -> {
+                    baseWeights["roe"] = (baseWeights["roe"] ?: 0.0) * if (isHighGrowth) 1.15 else 1.3
+                    baseWeights["debt_to_equity"] = (baseWeights["debt_to_equity"] ?: 0.0) * if (isHighGrowth) 1.1 else 1.25
+                    baseWeights["ps_ratio"] = (baseWeights["ps_ratio"] ?: 0.0) * 0.85
+                    baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * if (isHighGrowth) 1.05 else 0.9
                 }
+                else -> {
+                    if (isHighGrowth) {
+                        baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * 1.25
+                        baseWeights["ps_ratio"] = (baseWeights["ps_ratio"] ?: 0.0) * 1.2
+                    }
+                }
+            }
+        } ?: run {
+            if (isHighGrowth) {
+                baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * 1.25
+                baseWeights["ps_ratio"] = (baseWeights["ps_ratio"] ?: 0.0) * 1.2
             }
         }
         return baseWeights
     }
 
-    private fun getSectorRange(metric: String, sector: String): Pair<Double, Double> {
+    private fun getSectorRange(metric: String, sector: String, marketCap: Double?): Pair<Double, Double> {
         val override = SECTOR_RANGE_OVERRIDES[sector]?.get(metric)
-        if (override != null && override.first < override.second) return override
-        val def = DEFAULT_METRIC_CONFIG[metric] ?: error("Missing default config for $metric")
-        return def.min to def.max
+        val baseRange = if (override != null && override.first < override.second) {
+            override
+        } else {
+            val def = DEFAULT_METRIC_CONFIG[metric] ?: error("Missing default config for $metric")
+            def.min to def.max
+        }
+
+        return applyDynamicRangeAdjustments(metric, baseRange, marketCap)
+    }
+
+    private fun applyDynamicRangeAdjustments(
+        metric: String,
+        baseRange: Pair<Double, Double>,
+        marketCap: Double?
+    ): Pair<Double, Double> {
+        var (min, max) = baseRange
+        val cap = marketCap
+
+        if (cap != null && cap > 0) {
+            val largeCapThreshold = 100_000_000_000.0
+            if (metric in ABSOLUTE_METRICS) {
+                val scaleBase = cap / 1_000_000_000.0
+                val scale = if (scaleBase > 1.0) scaleBase.pow(0.25) else 1.0
+                if (scale.isFinite() && scale > 0) {
+                    if (min < 0) min *= scale
+                    max *= scale
+                }
+            }
+
+            if (cap >= largeCapThreshold) {
+                when (metric) {
+                    "pe_ratio" -> {
+                        val tightenedMax = max - (max - min) * 0.15
+                        if (tightenedMax > min) {
+                            max = tightenedMax
+                        }
+                    }
+
+                    "roe" -> {
+                        val uplift = (max - min) * 0.1
+                        min += uplift
+                    }
+                }
+            }
+        }
+
+        if (min >= max) {
+            val epsilon = kotlin.math.abs(max) * 0.01 + 1e-6
+            max = min + epsilon
+        }
+
+        return min to max
     }
 
 
@@ -283,18 +364,28 @@ class FinancialHealthAnalyzer {
 
         val tVal = tx(value)
         val denominator = (tMax - tMin).takeIf { it > 0.0 } ?: return 0.5
-        val frac = ((tVal - tMin) / denominator).coerceIn(0.0, 1.0)
+        val frac = (tVal - tMin) / denominator
+        val normalized = sigmoidNormalizeFraction(frac)
 
         return when (cfg.direction) {
-            Direction.HIGHER_IS_BETTER -> frac
-            Direction.LOWER_IS_BETTER  -> 1.0 - frac
+            Direction.HIGHER_IS_BETTER -> normalized
+            Direction.LOWER_IS_BETTER  -> 1.0 - normalized
+
         }
     }
 
 
     private fun normalizeValue(value: Double, min: Double, max: Double): Double {
         val denominator = (max - min).takeIf { it > 0.0 } ?: return 0.5
-        return ((value - min) / denominator).coerceIn(0.0, 1.0)
+        val frac = (value - min) / denominator
+        return sigmoidNormalizeFraction(frac)
+    }
+
+    private fun sigmoidNormalizeFraction(frac: Double): Double {
+        if (!frac.isFinite()) return 0.5
+        val scaled = (frac - 0.5) * 6.0
+        val logistic = 1.0 / (1.0 + exp(-scaled))
+        return logistic.coerceIn(0.0, 1.0)
     }
 
     private fun calculateForecastScore(stockData: StockData): Double {

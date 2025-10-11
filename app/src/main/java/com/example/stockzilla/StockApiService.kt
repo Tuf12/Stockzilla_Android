@@ -106,6 +106,7 @@ class StockRepository(private val apiKey: String) {
             val latestCashFlow = cashFlows.firstOrNull()
 
             val averageRevenueGrowth = calculateAverageGrowth(incomeStatements.map { it.revenue })
+            val latestRevenueGrowth = calculateLatestGrowth(incomeStatements.map { it.revenue })
             val averageNetIncomeGrowth = calculateAverageGrowth(incomeStatements.map { it.netIncome })
 
 
@@ -144,6 +145,7 @@ class StockRepository(private val apiKey: String) {
                 totalLiabilities = latestBalance?.totalLiabilities,
                 sector = profile?.sector,
                 industry = profile?.industry,
+                revenueGrowth = latestRevenueGrowth,
                 averageRevenueGrowth = averageRevenueGrowth,
                 averageNetIncomeGrowth = averageNetIncomeGrowth
             )
@@ -153,6 +155,8 @@ class StockRepository(private val apiKey: String) {
             Result.failure(e)
         }
     }
+
+
 
     private fun calculateAverageGrowth(values: List<Double?>): Double? {
         if (values.size < 2) return null
@@ -167,6 +171,16 @@ class StockRepository(private val apiKey: String) {
         }
 
         return if (growthRates.isNotEmpty()) growthRates.average() else null
+    }
+
+    private fun calculateLatestGrowth(values: List<Double?>): Double? {
+        if (values.size < 2) return null
+        val current = values[0]
+        val previous = values[1]
+        if (current != null && previous != null && kotlin.math.abs(previous) > 1e-9) {
+            return (current - previous) / kotlin.math.abs(previous)
+        }
+        return null
     }
 
     private fun calculatePSRatio(revenue: Double?, marketCap: Double?): Double? {
