@@ -5,31 +5,13 @@ import android.os.Bundle
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
 import com.example.stockzilla.databinding.ActivityHealthScoreDetailsBinding
-import com.example.stockzilla.databinding.ItemHealthBreakdownBinding
 import kotlin.math.abs
 
 @Suppress("DEPRECATION")
 class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityHealthScoreDetailsBinding
-
-    private val metricLabels = mapOf(
-        "revenue" to R.string.revenue,
-        "net_income" to R.string.net_income,
-        "eps" to R.string.metric_eps,
-        "pe_ratio" to R.string.p_e_ratio,
-        "ps_ratio" to R.string.p_s_ratio,
-        "roe" to R.string.metric_roe,
-        "debt_to_equity" to R.string.metric_debt_to_equity,
-        "pb_ratio" to R.string.metric_pb_ratio,
-        "ebitda" to R.string.metric_ebitda,
-        "outstanding_shares" to R.string.metric_outstanding_shares,
-        "total_assets" to R.string.metric_total_assets,
-        "total_liabilities" to R.string.metric_total_liabilities
-    )
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,7 +31,6 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
         bindSummary(healthScore)
         bindStockMetrics(stockData)
-        setupBreakdownList(healthScore.breakdown)
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
@@ -67,8 +48,43 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvCompositeScore.text = getString(R.string.health_score_format, healthScore.compositeScore)
             tvCompositeSummary.text = getString(R.string.composite_score_description)
             tvHealthSubScoreValue.text = getString(R.string.sub_score_format, healthScore.healthSubScore)
+            tvHealthDescription.text = getString(R.string.core_health_description)
+            tvHealthMetricsUsed.text = getString(
+                R.string.metrics_used_value,
+                listOf(
+                    getString(R.string.revenue),
+                    getString(R.string.net_income),
+                    getString(R.string.metric_eps),
+                    getString(R.string.metric_roe),
+                    getString(R.string.metric_ebitda)
+                ).joinToString(", ")
+            )
+
             tvForecastSubScoreValue.text = getString(R.string.sub_score_format, healthScore.forecastSubScore)
+            tvForecastDescription.text = getString(R.string.growth_forecast_description)
+            tvForecastMetricsUsed.text = getString(
+                R.string.metrics_used_value,
+                listOf(
+                    getString(R.string.p_s_ratio),
+                    getString(R.string.p_e_ratio),
+                    getString(R.string.metric_revenue_growth),
+                    getString(R.string.metric_average_revenue_growth),
+                    getString(R.string.metric_average_net_income_growth)
+                ).joinToString(", ")
+            )
+
             tvZScoreValue.text = getString(R.string.sub_score_format, healthScore.zSubScore)
+            tvResilienceDescription.text = getString(R.string.balance_sheet_resilience_description)
+            tvResilienceMetricsUsed.text = getString(
+                R.string.metrics_used_value,
+                listOf(
+                    getString(R.string.net_income),
+                    getString(R.string.metric_debt_to_equity),
+                    getString(R.string.metric_free_cash_flow),
+                    getString(R.string.metric_total_assets),
+                    getString(R.string.metric_total_liabilities)
+                ).joinToString(", ")
+            )
 
             val colorRes = when (healthScore.compositeScore) {
                 in 7..10 -> R.color.scoreGood
@@ -98,29 +114,12 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvEbitdaValue.text = formatLargeCurrency(stockData.ebitda)
             tvOutstandingSharesValue.text = formatLargeNumber(stockData.outstandingShares)
             tvTotalAssetsValue.text = formatLargeCurrency(stockData.totalAssets)
+            tvRevenueGrowthValue.text = formatPercent(stockData.revenueGrowth)
+            tvAverageRevenueGrowthValue.text = formatPercent(stockData.averageRevenueGrowth)
+            tvAverageNetIncomeGrowthValue.text = formatPercent(stockData.averageNetIncomeGrowth)
             tvTotalLiabilitiesValue.text = formatLargeCurrency(stockData.totalLiabilities)
             tvSectorValue.text = stockData.sector ?: getString(R.string.not_available)
             tvIndustryValue.text = stockData.industry ?: getString(R.string.not_available)
-        }
-    }
-
-    private fun setupBreakdownList(breakdown: List<MetricScore>) {
-        binding.rvBreakdown.apply {
-            layoutManager = LinearLayoutManager(this@HealthScoreDetailsActivity)
-            adapter = HealthBreakdownAdapter(breakdown, metricLabels, ::formatMetricValue)
-        }
-    }
-
-    private fun formatMetricValue(metricName: String, value: Double?): String {
-        return when (metricName) {
-            "revenue", "net_income" -> formatLargeCurrency(value)
-            "ebitda" -> formatLargeCurrency(value)
-            "total_assets", "total_liabilities" -> formatLargeCurrency(value)
-            "eps" -> formatTwoDecimals(value)
-            "roe" -> formatPercent(value)
-            "pe_ratio", "ps_ratio", "debt_to_equity", "pb_ratio" -> formatTwoDecimals(value)
-            "outstanding_shares" -> formatLargeNumber(value)
-            else -> formatTwoDecimals(value)
         }
     }
 
@@ -191,55 +190,5 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_STOCK_DATA = "extra_stock_data"
         const val EXTRA_HEALTH_SCORE = "extra_health_score"
-    }
-}
-
-private class HealthBreakdownAdapter(
-    private val items: List<MetricScore>,
-    private val metricLabels: Map<String, Int>,
-    private val valueFormatter: (String, Double?) -> String
-) : RecyclerView.Adapter<HealthBreakdownAdapter.ViewHolder>() {
-
-    inner class ViewHolder(val binding: ItemHealthBreakdownBinding) : RecyclerView.ViewHolder(binding.root)
-
-    override fun onCreateViewHolder(parent: android.view.ViewGroup, viewType: Int): ViewHolder {
-        val inflater = android.view.LayoutInflater.from(parent.context)
-        val binding = ItemHealthBreakdownBinding.inflate(inflater, parent, false)
-        return ViewHolder(binding)
-    }
-
-    override fun getItemCount(): Int = items.size
-
-    override fun onBindViewHolder(holder: ViewHolder, position: Int) {
-        val item = items[position]
-        val context = holder.itemView.context
-        val metricNameRes = metricLabels[item.metric]
-        val readableName = metricNameRes?.let { context.getString(it) }
-            ?: item.metric.split("_").joinToString(" ") { part ->
-                part.replaceFirstChar { char ->
-                    if (char.isLowerCase()) char.titlecase() else char.toString()
-                }
-            }
-
-        with(holder.binding) {
-            tvMetricName.text = readableName
-            val formattedValue = valueFormatter(item.metric, item.value)
-            tvMetricValue.text = context.getString(R.string.breakdown_actual_value, formattedValue)
-
-            val weightText = item.weight.takeIf { it.isFinite() }?.let {
-                context.getString(R.string.breakdown_weight_value, it * 100)
-            } ?: context.getString(R.string.breakdown_weight_value_na)
-            tvMetricWeight.text = weightText
-
-            val normalizedText = item.normalizedPercent.takeIf { it.isFinite() }?.let {
-                context.getString(R.string.breakdown_normalized_value, it)
-            } ?: context.getString(R.string.breakdown_normalized_value_na)
-            tvMetricNormalized.text = normalizedText
-
-            val contributionText = item.score.takeIf { it.isFinite() }?.let {
-                context.getString(R.string.breakdown_contribution_value, it)
-            } ?: context.getString(R.string.breakdown_contribution_value_na)
-            tvMetricContribution.text = contributionText
-        }
     }
 }

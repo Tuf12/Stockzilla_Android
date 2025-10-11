@@ -5,7 +5,8 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="@color/colorBackground"
-    android:padding="24dp">
+    android:padding="24dp"
+    tools:context=".HealthScoreDetailsActivity">
 
     <LinearLayout
         android:layout_width="match_parent"
@@ -16,144 +17,16 @@
             android:id="@+id/tvIntro"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="20dp"
             android:text="@string/health_score_details_intro"
             android:textColor="@color/textPrimary"
             android:textSize="16sp" />
-
-        <com.google.android.material.card.MaterialCardView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
-            app:cardBackgroundColor="@color/colorSurface"
-            app:cardCornerRadius="12dp"
-            app:cardElevation="4dp">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="20dp">
-
-                <TextView
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:text="@string/composite_score_heading"
-                    android:textColor="@color/textPrimary"
-                    android:textSize="18sp"
-                    android:textStyle="bold" />
-
-                <TextView
-                    android:id="@+id/tvCompositeScore"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="@color/colorPrimary"
-                    android:textSize="36sp"
-                    android:textStyle="bold"
-                    tools:text="@string/preview_composite_score" />
-
-                <TextView
-                    android:id="@+id/tvCompositeSummary"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:textColor="@color/textSecondary"
-                    android:textSize="14sp" />
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="16dp"
-                    android:baselineAligned="false"
-                    android:orientation="horizontal">
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/health_sub_score_label"
-                            android:textColor="@color/textSecondary"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/tvHealthSubScoreValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:textColor="@color/textPrimary"
-                            android:textSize="16sp"
-                            android:textStyle="bold"
-                            tools:text="@string/preview_core_health_score" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_marginStart="12dp"
-                        android:layout_marginEnd="12dp"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/forecast_sub_score_label"
-                            android:textColor="@color/textSecondary"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/tvForecastSubScoreValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:textColor="@color/textPrimary"
-                            android:textSize="16sp"
-
-                        android:textStyle="bold"
-                        tools:text="@string/preview_forecast_score" />
-                    </LinearLayout>
-
-                    <LinearLayout
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:orientation="vertical">
-
-                        <TextView
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:text="@string/z_sub_score_label"
-                            android:textColor="@color/textSecondary"
-                            android:textSize="12sp"
-                            android:textStyle="bold" />
-
-                        <TextView
-                            android:id="@+id/tvZScoreValue"
-                            android:layout_width="wrap_content"
-                            android:layout_height="wrap_content"
-                            android:layout_marginTop="4dp"
-                            android:textColor="@color/textPrimary"
-                            android:textSize="16sp"
-                        android:textStyle="bold"
-                        tools:text="@string/preview_balance_sheet_score" />
-                    </LinearLayout>
-                </LinearLayout>
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
 
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="8dp"
-            android:text="@string/recent_metrics_heading"
+            android:text="@string/financial_metrics_heading"
             android:textColor="@color/textPrimary"
             android:textSize="18sp"
             android:textStyle="bold" />
@@ -161,7 +34,7 @@
         <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="16dp"
+            android:layout_marginBottom="24dp"
             app:cardBackgroundColor="@color/colorSurface"
             app:cardCornerRadius="12dp"
             app:cardElevation="4dp">
@@ -192,8 +65,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_stock_symbol" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_stock_symbol" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -216,8 +89,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_company_name" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_company_name" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -240,8 +113,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_share_price" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_share_price" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -264,8 +137,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_market_cap" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_market_cap" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -288,8 +161,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_revenue" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_revenue" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -312,8 +185,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_net_income" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_net_income" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -336,8 +209,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_eps" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_eps" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -360,8 +233,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_pe_ratio" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_pe_ratio" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -383,10 +256,9 @@
                         android:id="@+id/tvPsRatioValue"
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
-
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_ps_ratio" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_ps_ratio" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -409,8 +281,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_roe" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_roe" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -433,8 +305,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_debt_to_equity" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_debt_to_equity" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -457,8 +329,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_free_cash_flow" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_free_cash_flow" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -591,6 +463,78 @@
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
+                        android:text="@string/metric_revenue_growth"
+                        android:textColor="@color/textSecondary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvRevenueGrowthValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="16sp"
+                        tools:text="15.0%" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/metric_average_revenue_growth"
+                        android:textColor="@color/textSecondary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvAverageRevenueGrowthValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="16sp"
+                        tools:text="12.5%" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/metric_average_net_income_growth"
+                        android:textColor="@color/textSecondary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvAverageNetIncomeGrowthValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="16sp"
+                        tools:text="9.8%" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
                         android:text="@string/sector"
                         android:textColor="@color/textSecondary"
                         android:textSize="14sp"
@@ -601,8 +545,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_sector" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_sector" />
                 </LinearLayout>
 
                 <LinearLayout
@@ -624,8 +568,8 @@
                         android:layout_width="wrap_content"
                         android:layout_height="wrap_content"
                         android:textColor="@color/textPrimary"
-                    android:textSize="16sp"
-                    tools:text="@string/preview_industry" />
+                        android:textSize="16sp"
+                        tools:text="@string/preview_industry" />
                 </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
@@ -633,26 +577,214 @@
         <TextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="@string/score_breakdown_heading"
+            android:text="@string/overall_score_heading"
             android:textColor="@color/textPrimary"
             android:textSize="18sp"
             android:textStyle="bold" />
 
         <TextView
+            android:id="@+id/tvCompositeScore"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginBottom="12dp"
-            android:layout_marginTop="4dp"
-            android:text="@string/score_breakdown_description"
-            android:textColor="@color/textSecondary"
-            android:textSize="14sp" />
+            android:layout_marginTop="8dp"
+            android:textColor="@color/colorPrimary"
+            android:textSize="36sp"
+            android:textStyle="bold"
+            android:textAlignment="center"
+            tools:text="@string/preview_composite_score" />
 
-        <androidx.recyclerview.widget.RecyclerView
-            android:id="@+id/rvBreakdown"
+        <TextView
+            android:id="@+id/tvCompositeSummary"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:layout_marginBottom="24dp"
+            android:textColor="@color/textSecondary"
+            android:textSize="14sp"
+            android:textAlignment="center" />
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardBackgroundColor="@color/colorSurface"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/health_sub_score_label"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvHealthSubScoreValue"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    tools:text="@string/preview_core_health_score" />
+
+                <TextView
+                    android:id="@+id/tvHealthDescription"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="14sp"
+                    tools:text="@string/core_health_description" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/metrics_used_label"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvHealthMetricsUsed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="14sp"
+                    tools:text="Revenue, Net Income, EPS, ROE, EBITDA" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginBottom="16dp"
+            app:cardBackgroundColor="@color/colorSurface"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/forecast_sub_score_label"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvForecastSubScoreValue"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    tools:text="@string/preview_forecast_score" />
+
+                <TextView
+                    android:id="@+id/tvForecastDescription"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="14sp"
+                    tools:text="@string/growth_forecast_description" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/metrics_used_label"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvForecastMetricsUsed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="14sp"
+                    tools:text="P/S Ratio, P/E Ratio, Revenue Growth, Avg. Growth" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
+
+        <com.google.android.material.card.MaterialCardView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginBottom="32dp"
-            android:nestedScrollingEnabled="false" />
+            app:cardBackgroundColor="@color/colorSurface"
+            app:cardCornerRadius="12dp"
+            app:cardElevation="4dp">
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:padding="20dp">
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="@string/z_sub_score_label"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="18sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvZScoreValue"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/textPrimary"
+                    android:textSize="24sp"
+                    android:textStyle="bold"
+                    tools:text="@string/preview_balance_sheet_score" />
+
+                <TextView
+                    android:id="@+id/tvResilienceDescription"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="14sp"
+                    tools:text="@string/balance_sheet_resilience_description" />
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    android:text="@string/metrics_used_label"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="12sp"
+                    android:textStyle="bold" />
+
+                <TextView
+                    android:id="@+id/tvResilienceMetricsUsed"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="4dp"
+                    android:textColor="@color/textSecondary"
+                    android:textSize="14sp"
+                    tools:text="Net Income, Debt-to-Equity, Free Cash Flow, Assets vs. Liabilities" />
+            </LinearLayout>
+        </com.google.android.material.card.MaterialCardView>
 
     </LinearLayout>
 </androidx.core.widget.NestedScrollView>
