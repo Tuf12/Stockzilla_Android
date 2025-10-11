@@ -97,19 +97,27 @@ class StockRepository(private val apiKey: String) {
             // Fetch all data concurrently
             val profile = apiService.getProfile(symbol, apiKey).firstOrNull()
             val quote = apiService.getQuote(symbol, apiKey).firstOrNull()
-            val income = apiService.getIncomeStatement(symbol, apiKey = apiKey).firstOrNull()
-            val balance = apiService.getBalanceSheet(symbol, apiKey = apiKey).firstOrNull()
-            val cashFlow = apiService.getCashFlow(symbol, apiKey = apiKey).firstOrNull()
+            val incomeStatements = apiService.getIncomeStatement(symbol, apiKey = apiKey)
+            val balanceSheets = apiService.getBalanceSheet(symbol, apiKey = apiKey)
+            val cashFlows = apiService.getCashFlow(symbol, apiKey = apiKey)
+
+            val latestIncome = incomeStatements.firstOrNull()
+            val latestBalance = balanceSheets.firstOrNull()
+            val latestCashFlow = cashFlows.firstOrNull()
+
+            val averageRevenueGrowth = calculateAverageGrowth(incomeStatements.map { it.revenue })
+            val averageNetIncomeGrowth = calculateAverageGrowth(incomeStatements.map { it.netIncome })
+
 
             if (profile == null && quote == null) {
                 return@withContext Result.failure(Exception("No data found for symbol $symbol"))
             }
 
             // Calculate derived metrics
-            val psRatio = calculatePSRatio(income?.revenue, profile?.marketCap)
-            val roe = calculateROE(income?.netIncome, balance?.totalEquity)
-            val debtToEquity = calculateDebtToEquity(balance?.totalDebt, balance?.totalEquity)
-            val priceToBook = calculatePriceToBook(profile?.marketCap, balance?.totalEquity)
+            val psRatio = calculatePSRatio(latestIncome?.revenue, profile?.marketCap)
+            val roe = calculateROE(latestIncome?.netIncome, latestBalance?.totalEquity)
+            val debtToEquity = calculateDebtToEquity(latestBalance?.totalDebt, latestBalance?.totalEquity)
+            val priceToBook = calculatePriceToBook(profile?.marketCap, latestBalance?.totalEquity)
             val outstandingShares = calculateSharesOutstanding(
                 directValue = quote?.sharesOutstanding,
                 marketCap = profile?.marketCap,
@@ -121,27 +129,44 @@ class StockRepository(private val apiKey: String) {
                 companyName = profile?.companyName,
                 price = quote?.price,
                 marketCap = profile?.marketCap,
-                revenue = income?.revenue,
-                netIncome = income?.netIncome,
-                eps = income?.eps,
+                revenue = latestIncome?.revenue,
+                netIncome = latestIncome?.netIncome,
+                eps = latestIncome?.eps,
                 peRatio = quote?.peRatio,
                 psRatio = psRatio,
                 roe = roe,
                 debtToEquity = debtToEquity,
-                freeCashFlow = cashFlow?.freeCashFlow,
+                freeCashFlow = latestCashFlow?.freeCashFlow,
                 pbRatio = priceToBook,
-                ebitda = income?.ebitda,
+                ebitda = latestIncome?.ebitda,
                 outstandingShares = outstandingShares,
-                totalAssets = balance?.totalAssets,
-                totalLiabilities = balance?.totalLiabilities,
+                totalAssets = latestBalance?.totalAssets,
+                totalLiabilities = latestBalance?.totalLiabilities,
                 sector = profile?.sector,
-                industry = profile?.industry
+                industry = profile?.industry,
+                averageRevenueGrowth = averageRevenueGrowth,
+                averageNetIncomeGrowth = averageNetIncomeGrowth
             )
 
             Result.success(stockData)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun calculateAverageGrowth(values: List<Double?>): Double? {
+        if (values.size < 2) return null
+
+        val growthRates = mutableListOf<Double>()
+        for (i in 1 until values.size) {
+            val previous = values[i]
+            val current = values[i - 1]
+            if (previous != null && current != null && kotlin.math.abs(previous) > 1e-9) {
+                growthRates.add((current - previous) / kotlin.math.abs(previous))
+            }
+        }
+
+        return if (growthRates.isNotEmpty()) growthRates.average() else null
     }
 
     private fun calculatePSRatio(revenue: Double?, marketCap: Double?): Double? {

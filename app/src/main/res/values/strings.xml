@@ -34,7 +34,7 @@
     <string name="health_sub_score_label">Core financial health</string>
     <string name="forecast_sub_score_label">Growth &amp; forecast</string>
     <string name="z_sub_score_label">Balance sheet resilience</string>
-    <string name="sub_score_format">%1$d / 5</string>
+    <string name="sub_score_format">%1$d / 10</string>
     <string name="recent_metrics_heading">Latest fundamentals</string>
     <string name="score_breakdown_heading">How each metric contributes</string>
     <string name="score_breakdown_description">Each metric is scaled to a percentage, weighted for the company’s sector and size, and then combined to produce the overall score. Higher weights signal the factors that matter most for this business profile.</string>
@@ -75,9 +75,9 @@
     <string name="normalized_0_1_0_70">Normalized (0–1): 0.70</string>
     <string name="score_contribution_1_05">Score contribution: 1.05</string>
     <string name="preview_composite_score">8/10</string>
-    <string name="preview_core_health_score">4 / 5</string>
-    <string name="preview_forecast_score">3 / 5</string>
-    <string name="preview_balance_sheet_score">3 / 5</string>
+    <string name="preview_core_health_score">7 / 10</string>
+    <string name="preview_forecast_score">6 / 10</string>
+    <string name="preview_balance_sheet_score">5 / 10</string>
     <string name="preview_stock_symbol">AAPL</string>
     <string name="preview_company_name">Apple Inc.</string>
     <string name="preview_share_price">$180.34</string>

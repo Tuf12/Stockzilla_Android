@@ -2,6 +2,7 @@
 package com.example.stockzilla
 
 import java.io.Serializable
+import kotlin.math.roundToInt
 
 enum class Direction { HIGHER_IS_BETTER, LOWER_IS_BETTER }
 
@@ -130,7 +131,9 @@ data class StockData(
     val totalAssets: Double?,
     val totalLiabilities: Double?,
     val sector: String?,
-    val industry: String?
+    val industry: String?,
+    val averageRevenueGrowth: Double? = null,
+    val averageNetIncomeGrowth: Double? = null
 ): Serializable
 
 data class HealthScore(
@@ -155,36 +158,16 @@ class FinancialHealthAnalyzer {
     fun calculateCompositeScore(stockData: StockData): HealthScore {
         val healthData = buildHealthData(stockData)
         val (healthScore, breakdown) = computeCompositeScore(healthData)
-        val healthSubScore = (healthScore / 2).coerceIn(1.0, 5.0).toInt()
+        val forecastScore = calculateForecastScore(stockData)
+        val bankruptcyScore = calculateBankruptcyScore(stockData)
 
-        val forecastSubScore = calculateForecastScore(stockData)
-        val zSubScore = calculateZScore(stockData)
-
-        val weightedScore = (
-                healthSubScore * 2.5 +
-                        forecastSubScore * 2.0 +
-                        zSubScore * 1.0
-                )
-
-
-        val compositeScore = when {
-            weightedScore < 7.5 -> 1
-            weightedScore < 9.5 -> 2
-            weightedScore < 11.5 -> 3
-            weightedScore < 13.5 -> 4
-            weightedScore < 15.5 -> 5
-            weightedScore < 17.5 -> 6
-            weightedScore < 19.5 -> 7
-            weightedScore < 21.5 -> 8
-            weightedScore < 23.5 -> 9
-            else -> 10
-        }
+        val composite = (healthScore * 0.5) + (forecastScore * 0.3) + (bankruptcyScore * 0.2)
 
         return HealthScore(
-            compositeScore = compositeScore,
-            healthSubScore = healthSubScore,
-            forecastSubScore = forecastSubScore,
-            zSubScore = zSubScore,
+            compositeScore = composite.roundToInt().coerceIn(0, 10),
+            healthSubScore = healthScore.roundToInt().coerceIn(0, 10),
+            forecastSubScore = forecastScore.roundToInt().coerceIn(0, 10),
+            zSubScore = bankruptcyScore.roundToInt().coerceIn(0, 10),
             breakdown = breakdown
         )
     }
@@ -314,46 +297,55 @@ class FinancialHealthAnalyzer {
         return ((value - min) / denominator).coerceIn(0.0, 1.0)
     }
 
-    private fun calculateForecastScore(stockData: StockData): Int {
-        // Simplified forecast scoring based on P/E and P/S ratios
-        var score = 1
-
-        val psBonus = stockData.psRatio?.let { ps ->
-            when {
-                ps < 3 -> 2
-                ps < 8 -> 1
-                else -> 0
+    private fun calculateForecastScore(stockData: StockData): Double {
+        var valuationRaw = 0.0
+        stockData.psRatio?.let { ps ->
+            valuationRaw += when {
+                ps < 3 -> 2.0
+                ps < 8 -> 1.0
+                else -> 0.0
             }
-        } ?: 0
-
-        val peBonus = stockData.peRatio?.takeIf { it > 0 }?.let { pe ->
-            when {
-                pe < 15 -> 2
-                pe < 25 -> 1
-                else -> 0
+        }
+        stockData.peRatio?.takeIf { it > 0 }?.let { pe ->
+            valuationRaw += when {
+                pe < 15 -> 2.0
+                pe < 25 -> 1.0
+                else -> 0.0
             }
-        } ?: 0
-
-        score += psBonus + peBonus
-
-        if (psBonus == 2 && peBonus == 2) {
-            score += 1
         }
 
-        return score.coerceIn(1, 5)
+        val valuationScore = (valuationRaw / 5.0) * 4.0
+
+        val revenueGrowthScore = scoreGrowthComponent(stockData.averageRevenueGrowth)
+        val incomeGrowthScore = scoreGrowthComponent(stockData.averageNetIncomeGrowth)
+        val growthScore = revenueGrowthScore + incomeGrowthScore
+
+        val synergyBonus = if (
+            (stockData.psRatio != null && stockData.psRatio < 3) &&
+            (stockData.peRatio != null && stockData.peRatio > 0 && stockData.peRatio < 15)
+        ) 2.0 else 0.0
+
+        return (valuationScore + growthScore + synergyBonus).coerceIn(0.0, 10.0)
     }
 
-    private fun calculateZScore(stockData: StockData): Int {
-        // Simplified Z-score approximation
+    private fun scoreGrowthComponent(growth: Double?): Double {
+        growth ?: return 1.5
+        val capped = growth.coerceIn(-0.5, 0.6)
+        val normalized = (capped + 0.5) / 1.1 // maps [-0.5, 0.6] to [0, 1]
+        return (normalized * 3.0).coerceIn(0.0, 3.0)
+    }
+
+    private fun calculateBankruptcyScore(stockData: StockData): Double {
         val hasPositiveIncome = (stockData.netIncome ?: 0.0) > 0
-        val hasReasonableDebt = (stockData.debtToEquity ?: 0.0) < 1.0
+        val hasReasonableDebt = (stockData.debtToEquity ?: Double.MAX_VALUE) < 1.0
         val hasCashFlow = (stockData.freeCashFlow ?: 0.0) > 0
 
-        return when {
+        val tier = when {
             hasPositiveIncome && hasReasonableDebt && hasCashFlow -> 3
             hasPositiveIncome && hasReasonableDebt -> 2
             else -> 1
         }
+        return ((tier - 1) / 2.0) * 10.0
     }
 }
 
