@@ -88,6 +88,9 @@ object BenchmarkData {
         return Benchmark(peAvg = null, psAvg = null)
     }
 
+    fun getBenchmarkAverages(stockData: StockData): Benchmark {
+        return getBenchmark(stockData.industry, stockData.sector)
+    }
     /**
      * Get the appropriate ratio and benchmark based on net income
      */

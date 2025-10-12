@@ -55,10 +55,17 @@
     <string name="metrics_used_label">Metrics considered</string>
     <string name="metrics_used_value">%1$s</string>
     <string name="core_health_description">Measures profitability, operational efficiency, and earnings quality to judge how sturdy the core business is today.</string>
-    <string name="growth_forecast_description">Looks at valuation ratios and growth momentum to gauge whether revenue and earnings are set to keep expanding.</string>
-    <string name="balance_sheet_resilience_description">Evaluates leverage, cash generation, and the assets-versus-liabilities mix to see how well the company can weather shocks.</string>
+    <string name="growth_forecast_description">Blends multi-year revenue and earnings trends with margin scalability and relative valuation to highlight long-term expansion potential.</string>
+    <string name="balance_sheet_resilience_description">Translates Ohlson&#39;s O-Score into a resilience grade by stress-testing leverage, liquidity, and profitability against bankruptcy odds.</string>
     <string name="metric_revenue_growth">Revenue Growth</string>
     <string name="metric_average_revenue_growth">Average Revenue Growth</string>
+    <string name="metric_free_cash_flow_margin">Free Cash Flow Margin</string>
+    <string name="metric_ebitda_margin_trend">EBITDA Margin Trend</string>
+    <string name="metric_relative_valuation">Relative Valuation</string>
+    <string name="metric_working_capital">Working Capital</string>
+    <string name="metric_current_ratio">Current Ratio</string>
+    <string name="metric_net_income_trend">Net Income Trend</string>
+    <string name="metric_operating_cash_flow">Operating Cash Flow</string>
     <string name="metric_average_net_income_growth">Average Net Income Growth</string>
     <string name="health_score_format">%1$d/10</string>
     <string name="analyze">Analyze</string>
@@ -97,4 +104,9 @@
     <string name="preview_total_liabilities">$287.0B</string>
     <string name="preview_sector">Technology</string>
     <string name="preview_industry">Consumer Electronics</string>
+    <string name="valuation_diff_detail"> (~%1$s)</string>
+    <string name="valuation_undervalued">Relative valuation: Under-valued vs %1$s peers%2$s.</string>
+    <string name="valuation_overvalued">Relative valuation: Over-valued vs %1$s peers%2$s.</string>
+    <string name="valuation_fair">Relative valuation: In line with %1$s peers.</string>
+    <string name="valuation_unknown">Relative valuation: Not enough data to compare %1$s.</string>
 </resources>

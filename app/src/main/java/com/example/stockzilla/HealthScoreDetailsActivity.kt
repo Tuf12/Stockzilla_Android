@@ -7,6 +7,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import com.example.stockzilla.databinding.ActivityHealthScoreDetailsBinding
 import kotlin.math.abs
+import java.util.Locale
 
 @Suppress("DEPRECATION")
 class HealthScoreDetailsActivity : AppCompatActivity() {
@@ -61,15 +62,22 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             )
 
             tvForecastSubScoreValue.text = getString(R.string.sub_score_format, healthScore.forecastSubScore)
-            tvForecastDescription.text = getString(R.string.growth_forecast_description)
+            val growthDescription = getString(R.string.growth_forecast_description)
+            val valuationInsight = formatValuationInsight(healthScore.valuationAssessment)
+            tvForecastDescription.text = if (valuationInsight != null) {
+                listOf(growthDescription, valuationInsight).joinToString("\n\n")
+            } else {
+                growthDescription
+            }
             tvForecastMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
-                    getString(R.string.p_s_ratio),
-                    getString(R.string.p_e_ratio),
-                    getString(R.string.metric_revenue_growth),
                     getString(R.string.metric_average_revenue_growth),
-                    getString(R.string.metric_average_net_income_growth)
+                    getString(R.string.metric_average_net_income_growth),
+                    getString(R.string.metric_revenue_growth),
+                    getString(R.string.metric_free_cash_flow_margin),
+                    getString(R.string.metric_ebitda_margin_trend),
+                    getString(R.string.metric_relative_valuation)
                 ).joinToString(", ")
             )
 
@@ -78,11 +86,12 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvResilienceMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
-                    getString(R.string.net_income),
-                    getString(R.string.metric_debt_to_equity),
-                    getString(R.string.metric_free_cash_flow),
                     getString(R.string.metric_total_assets),
-                    getString(R.string.metric_total_liabilities)
+                    getString(R.string.metric_total_liabilities),
+                    getString(R.string.metric_working_capital),
+                    getString(R.string.metric_current_ratio),
+                    getString(R.string.metric_net_income_trend),
+                    getString(R.string.metric_operating_cash_flow)
                 ).joinToString(", ")
             )
 
@@ -185,6 +194,29 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
     private fun formatPercent(value: Double?): String {
         val safeValue = value?.takeIf { it.isFinite() } ?: return getString(R.string.not_available)
         return "%.1f%%".format(safeValue * 100)
+    }
+
+    private fun formatValuationInsight(assessment: ValuationAssessment?): String? {
+        assessment ?: return null
+        val ratioLabel = assessment.ratioType
+        val deviationText = assessment.deviation?.let { deviation ->
+            val percent = abs(deviation) * 100
+            if (percent.isFinite()) {
+                String.format(Locale.US, "%.1f%%", percent)
+            } else null
+        }
+        val diffSuffix = deviationText?.let { getString(R.string.valuation_diff_detail, it) }.orEmpty()
+
+        return when (assessment.classification) {
+            ValuationClassification.UNDERVALUED ->
+                getString(R.string.valuation_undervalued, ratioLabel, diffSuffix)
+            ValuationClassification.OVERVALUED ->
+                getString(R.string.valuation_overvalued, ratioLabel, diffSuffix)
+            ValuationClassification.FAIRLY_VALUED ->
+                getString(R.string.valuation_fair, ratioLabel)
+            ValuationClassification.UNKNOWN ->
+                getString(R.string.valuation_unknown, ratioLabel)
+        }
     }
 
     companion object {

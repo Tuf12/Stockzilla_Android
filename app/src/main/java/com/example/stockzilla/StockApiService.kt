@@ -39,11 +39,16 @@ data class FMPBalanceSheet(
     @SerializedName("totalAssets") val totalAssets: Double?,
     @SerializedName("totalLiabilities") val totalLiabilities: Double?,
     @SerializedName("totalEquity") val totalEquity: Double?,
-    @SerializedName("totalDebt") val totalDebt: Double?
+    @SerializedName("totalDebt") val totalDebt: Double?,
+    @SerializedName("totalCurrentAssets") val totalCurrentAssets: Double?,
+    @SerializedName("totalCurrentLiabilities") val totalCurrentLiabilities: Double?,
+    @SerializedName("retainedEarnings") val retainedEarnings: Double?,
+    @SerializedName("workingCapital") val workingCapital: Double?
 )
 
 data class FMPCashFlow(
-    @SerializedName("freeCashFlow") val freeCashFlow: Double?
+    @SerializedName("freeCashFlow") val freeCashFlow: Double?,
+    @SerializedName("netCashProvidedByOperatingActivities") val operatingCashFlow: Double?
 )
 
 interface FMPApiService {
@@ -104,6 +109,7 @@ class StockRepository(private val apiKey: String) {
             val latestIncome = incomeStatements.firstOrNull()
             val latestBalance = balanceSheets.firstOrNull()
             val latestCashFlow = cashFlows.firstOrNull()
+            val previousIncome = incomeStatements.getOrNull(1)
 
             val averageRevenueGrowth = calculateAverageGrowth(incomeStatements.map { it.revenue })
             val latestRevenueGrowth = calculateLatestGrowth(incomeStatements.map { it.revenue })
@@ -125,6 +131,52 @@ class StockRepository(private val apiKey: String) {
                 price = quote?.price
             )
 
+            val freeCashFlowMargin = latestCashFlow?.freeCashFlow?.let { fcf ->
+                val revenue = latestIncome?.revenue
+                if (revenue != null && kotlin.math.abs(revenue) > 1e-9) fcf / revenue else null
+            }
+
+            val latestEbitdaMargin = latestIncome?.let { income ->
+                val revenue = income.revenue
+                val ebitda = income.ebitda
+                if (revenue != null && ebitda != null && kotlin.math.abs(revenue) > 1e-9) {
+                    ebitda / revenue
+                } else {
+                    null
+                }
+            }
+
+            val previousEbitdaMargin = previousIncome?.let { income ->
+                val revenue = income.revenue
+                val ebitda = income.ebitda
+                if (revenue != null && ebitda != null && kotlin.math.abs(revenue) > 1e-9) {
+                    ebitda / revenue
+                } else {
+                    null
+                }
+            }
+
+            val ebitdaMarginGrowth = if (latestEbitdaMargin != null && previousEbitdaMargin != null) {
+                latestEbitdaMargin - previousEbitdaMargin
+            } else {
+                null
+            }
+
+            val operatingCashFlow = latestCashFlow?.operatingCashFlow
+            val workingCapital = latestBalance?.workingCapital ?: run {
+                val currentAssets = latestBalance?.totalCurrentAssets
+                val currentLiabilities = latestBalance?.totalCurrentLiabilities
+                if (currentAssets != null && currentLiabilities != null) {
+                    currentAssets - currentLiabilities
+                } else {
+                    null
+                }
+            }
+
+            val revenueHistory = incomeStatements.map { it.revenue }
+            val netIncomeHistory = incomeStatements.map { it.netIncome }
+            val ebitdaHistory = incomeStatements.map { it.ebitda }
+
             val stockData = StockData(
                 symbol = symbol,
                 companyName = profile?.companyName,
@@ -143,11 +195,21 @@ class StockRepository(private val apiKey: String) {
                 outstandingShares = outstandingShares,
                 totalAssets = latestBalance?.totalAssets,
                 totalLiabilities = latestBalance?.totalLiabilities,
+                currentAssets = latestBalance?.totalCurrentAssets,
+                currentLiabilities = latestBalance?.totalCurrentLiabilities,
+                retainedEarnings = latestBalance?.retainedEarnings,
                 sector = profile?.sector,
                 industry = profile?.industry,
                 revenueGrowth = latestRevenueGrowth,
                 averageRevenueGrowth = averageRevenueGrowth,
-                averageNetIncomeGrowth = averageNetIncomeGrowth
+                averageNetIncomeGrowth = averageNetIncomeGrowth,
+                operatingCashFlow = operatingCashFlow,
+                freeCashFlowMargin = freeCashFlowMargin,
+                ebitdaMarginGrowth = ebitdaMarginGrowth,
+                workingCapital = workingCapital,
+                revenueHistory = revenueHistory,
+                netIncomeHistory = netIncomeHistory,
+                ebitdaHistory = ebitdaHistory
             )
 
             Result.success(stockData)

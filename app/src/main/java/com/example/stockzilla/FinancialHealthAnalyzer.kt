@@ -2,10 +2,11 @@
 package com.example.stockzilla
 
 import java.io.Serializable
-import kotlin.math.roundToInt
+import java.util.LinkedHashMap
+import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.pow
-
+import kotlin.math.roundToInt
 
 
 enum class Direction { HIGHER_IS_BETTER, LOWER_IS_BETTER }
@@ -138,7 +139,17 @@ data class StockData(
     val industry: String?,
     val revenueGrowth: Double? = null,
     val averageRevenueGrowth: Double? = null,
-    val averageNetIncomeGrowth: Double? = null
+    val averageNetIncomeGrowth: Double? = null,
+    val currentAssets: Double? = null,
+    val currentLiabilities: Double? = null,
+    val retainedEarnings: Double? = null,
+    val operatingCashFlow: Double? = null,
+    val freeCashFlowMargin: Double? = null,
+    val ebitdaMarginGrowth: Double? = null,
+    val workingCapital: Double? = null,
+    val revenueHistory: List<Double?> = emptyList(),
+    val netIncomeHistory: List<Double?> = emptyList(),
+    val ebitdaHistory: List<Double?> = emptyList()
 ): Serializable
 
 data class HealthScore(
@@ -146,7 +157,8 @@ data class HealthScore(
     val healthSubScore: Int,
     val forecastSubScore: Int,
     val zSubScore: Int,
-    val breakdown: List<MetricScore>
+    val breakdown: List<MetricScore>,
+    val valuationAssessment: ValuationAssessment? = null
 ): Serializable
 
 data class MetricScore(
@@ -161,23 +173,75 @@ data class MetricScore(
 class FinancialHealthAnalyzer {
 
     fun calculateCompositeScore(stockData: StockData): HealthScore {
-        val healthData = buildHealthData(stockData)
-        val (healthScore, breakdown) = computeCompositeScore(healthData)
-        val forecastScore = calculateForecastScore(stockData)
-        val bankruptcyScore = calculateBankruptcyScore(stockData)
+        val valuationAssessment = assessValuation(stockData)
+        val (coreHealthScoreRaw, breakdown) = computeCoreHealthScore(stockData)
+        val growthScoreRaw = calculateGrowthScore(stockData, valuationAssessment)
+        val resilienceScoreRaw = calculateResilienceScore(stockData)
 
-        val composite = (healthScore * 0.5) + (forecastScore * 0.3) + (bankruptcyScore * 0.2)
+        val coreHealthScore = coreHealthScoreRaw ?: DEFAULT_NEUTRAL_SCORE
+        val growthScore = growthScoreRaw ?: DEFAULT_NEUTRAL_SCORE
+        val resilienceScore = resilienceScoreRaw ?: DEFAULT_NEUTRAL_SCORE
+
+        val composite = (coreHealthScore * CORE_WEIGHT) +
+                (growthScore * GROWTH_WEIGHT) +
+                (resilienceScore * RESILIENCE_WEIGHT)
 
         return HealthScore(
             compositeScore = composite.roundToInt().coerceIn(0, 10),
-            healthSubScore = healthScore.roundToInt().coerceIn(0, 10),
-            forecastSubScore = forecastScore.roundToInt().coerceIn(0, 10),
-            zSubScore = bankruptcyScore.roundToInt().coerceIn(0, 10),
-            breakdown = breakdown
+            healthSubScore = coreHealthScore.roundToInt().coerceIn(0, 10),
+            forecastSubScore = growthScore.roundToInt().coerceIn(0, 10),
+            zSubScore = resilienceScore.roundToInt().coerceIn(0, 10),
+            breakdown = breakdown,
+            valuationAssessment = valuationAssessment
         )
     }
 
-    private fun buildHealthData(stockData: StockData): Map<String, MetricData> {
+    private fun computeCoreHealthScore(stockData: StockData): Pair<Double?, List<MetricScore>> {
+        val metricData = buildMetricData(stockData, CORE_METRICS)
+        if (metricData.isEmpty()) {
+            return null to emptyList()
+        }
+
+        var totalWeighted = 0.0
+        var totalWeight = 0.0
+        val breakdown = mutableListOf<MetricScore>()
+
+        metricData.forEach { (name, metric) ->
+            val value = metric.value ?: return@forEach
+            val cfg = DEFAULT_METRIC_CONFIG[name]
+            val normalizedFraction = if (cfg != null) {
+                normalizeValueWithConfig(value, metric.min, metric.max, cfg)
+            } else {
+                normalizeValue(value, metric.min, metric.max)
+            }
+
+            val weighted = normalizedFraction * metric.weight
+            totalWeighted += weighted
+            totalWeight += metric.weight
+
+            breakdown.add(
+                MetricScore(
+                    metric = name,
+                    value = value,
+                    normalizedPercent = normalizedFraction * 100.0,
+                    weight = metric.weight,
+                    score = weighted
+                )
+            )
+        }
+
+        if (totalWeight <= 0.0) {
+            return null to breakdown
+        }
+
+        val score = (totalWeighted / totalWeight) * 10.0
+        return score.coerceIn(0.0, 10.0) to breakdown
+    }
+
+    private fun buildMetricData(
+        stockData: StockData,
+        metrics: Set<String>
+    ): Map<String, MetricData> {
         val sector = stockData.sector ?: "Unknown"
         val revenueGrowthSignal = stockData.revenueGrowth ?: stockData.averageRevenueGrowth
         val weights = getSectorSpecificWeights(sector, stockData.marketCap, revenueGrowthSignal)
@@ -189,20 +253,107 @@ class FinancialHealthAnalyzer {
             return MetricData(value = value, min = min, max = max, weight = w)
         }
 
-        return listOfNotNull(
-            "revenue"        to md("revenue", stockData.revenue),
-            "net_income"     to md("net_income", stockData.netIncome),
-            "eps"            to md("eps", stockData.eps),
-            "pe_ratio"       to md("pe_ratio", stockData.peRatio),
-            "ps_ratio"       to md("ps_ratio", stockData.psRatio),
-            "roe"            to md("roe", stockData.roe),
-            "debt_to_equity" to md("debt_to_equity", stockData.debtToEquity),
-            "pb_ratio"       to md("pb_ratio", stockData.pbRatio),
-            "ebitda"         to md("ebitda", stockData.ebitda),
-            "outstanding_shares" to md("outstanding_shares", stockData.outstandingShares),
-            "total_assets"   to md("total_assets", stockData.totalAssets),
-            "total_liabilities" to md("total_liabilities", stockData.totalLiabilities)
-        ).toMap() as Map<String, MetricData>
+        val orderedMetrics = LinkedHashMap<String, MetricData>()
+        metrics.forEach { metric ->
+            val value = when (metric) {
+                "revenue" -> stockData.revenue
+                "net_income" -> stockData.netIncome
+                "eps" -> stockData.eps
+                "roe" -> stockData.roe
+                "ebitda" -> stockData.ebitda
+                else -> null
+            }
+            md(metric, value)?.let { orderedMetrics[metric] = it }
+        }
+
+        return orderedMetrics
+    }
+
+    private fun calculateGrowthScore(
+        stockData: StockData,
+        valuationAssessment: ValuationAssessment?
+    ): Double? {
+        val components = listOf(
+            normalizeGrowthRate(stockData.averageRevenueGrowth) to 0.15,
+            normalizeGrowthRate(stockData.averageNetIncomeGrowth) to 0.15,
+            normalizeGrowthRate(stockData.revenueGrowth) to 0.10,
+            normalizeMargin(stockData.freeCashFlowMargin) to 0.15,
+            normalizeMarginTrend(stockData.ebitdaMarginGrowth) to 0.15,
+            valuationAssessment?.normalizedScore to 0.30
+        )
+
+        return weightedScoreFromNormalizedComponents(components)
+    }
+
+    private fun calculateResilienceScore(stockData: StockData): Double? {
+        val totalAssets = stockData.totalAssets?.takeIf { it > 0 } ?: return null
+        val totalLiabilities = stockData.totalLiabilities?.takeIf { it >= 0 } ?: return null
+
+        var oScore = -1.32
+
+        val assetScale = (totalAssets / GNP_PRICE_LEVEL_INDEX).takeIf { it > 0 }
+        assetScale?.let { scale ->
+            val logged = kotlin.math.ln(scale)
+            if (logged.isFinite()) {
+                oScore += -0.407 * logged
+            }
+        }
+
+        oScore += 6.03 * (totalLiabilities / totalAssets)
+
+        val workingCapital = stockData.workingCapital ?: run {
+            val currentAssets = stockData.currentAssets
+            val currentLiabilities = stockData.currentLiabilities
+            if (currentAssets != null && currentLiabilities != null) {
+                currentAssets - currentLiabilities
+            } else {
+                null
+            }
+        }
+
+        workingCapital?.let {
+            oScore += -1.43 * (it / totalAssets)
+        }
+
+        val currentAssets = stockData.currentAssets
+        val currentLiabilities = stockData.currentLiabilities
+        if (currentAssets != null && currentAssets > 0 && currentLiabilities != null) {
+            oScore += 0.076 * (currentLiabilities / currentAssets)
+        }
+
+        if (totalLiabilities > totalAssets) {
+            oScore += -1.72
+        }
+
+        stockData.netIncome?.let { netIncome ->
+            oScore += -2.37 * (netIncome / totalAssets)
+        }
+
+        val fundsFromOps = stockData.operatingCashFlow ?: stockData.freeCashFlow ?: stockData.ebitda
+        if (fundsFromOps != null && totalLiabilities > 0) {
+            oScore += -1.83 * (fundsFromOps / totalLiabilities)
+        }
+
+        val hasTwoYearLoss = stockData.netIncomeHistory.take(2).let { history ->
+            history.size == 2 && history.all { it != null && it < 0 }
+        }
+        if (hasTwoYearLoss) {
+            oScore += 0.285
+        }
+
+        computeNetIncomeChange(stockData.netIncomeHistory)?.let { change ->
+            oScore += -0.521 * change
+        }
+
+        val bankruptcyProbability = 1.0 / (1.0 + exp(-oScore))
+        val resilience = when {
+            bankruptcyProbability <= SAFE_PROBABILITY -> 10.0
+            bankruptcyProbability >= DISTRESS_PROBABILITY -> 0.0
+            else -> ((DISTRESS_PROBABILITY - bankruptcyProbability) /
+                    (DISTRESS_PROBABILITY - SAFE_PROBABILITY)) * 10.0
+        }
+
+        return resilience.coerceIn(0.0, 10.0)
     }
 
 
@@ -309,43 +460,6 @@ class FinancialHealthAnalyzer {
     }
 
 
-
-
-    private fun computeCompositeScore(healthData: Map<String, MetricData>): Pair<Double, List<MetricScore>> {
-        var total = 0.0
-        var totalWeight = 0.0
-        val breakdown = mutableListOf<MetricScore>()
-
-        healthData.forEach { (name, metric) ->
-            metric.value?.let { value ->
-                val cfg = DEFAULT_METRIC_CONFIG[name]
-                val normalizedFraction = if (cfg != null)
-                    normalizeValueWithConfig(value, metric.min, metric.max, cfg)
-                else
-                    normalizeValue(value, metric.min, metric.max)
-
-                val weighted = normalizedFraction * metric.weight
-                val normalizedPercent = normalizedFraction * 100.0
-
-                breakdown.add(
-                    MetricScore(
-                        metric = name,
-                        value = value,
-                        normalizedPercent = normalizedPercent,
-                        weight = metric.weight,
-                        score = weighted
-                    )
-                )
-
-                total += weighted
-                totalWeight += metric.weight
-            }
-        }
-
-        val score = if (totalWeight > 0) (total / totalWeight) * 10 else 0.0
-        return Pair(score, breakdown)
-    }
-
     private fun normalizeValueWithConfig(
         value: Double,
         min: Double,
@@ -360,7 +474,6 @@ class FinancialHealthAnalyzer {
         val tMin = tx(min)
         val tMax = tx(max)
         if (tMin >= tMax) return 0.5
-
 
         val tVal = tx(value)
         val denominator = (tMax - tMin).takeIf { it > 0.0 } ?: return 0.5
@@ -387,58 +500,132 @@ class FinancialHealthAnalyzer {
         val logistic = 1.0 / (1.0 + exp(-scaled))
         return logistic.coerceIn(0.0, 1.0)
     }
-
-    private fun calculateForecastScore(stockData: StockData): Double {
-        var valuationRaw = 0.0
-        stockData.psRatio?.let { ps ->
-            valuationRaw += when {
-                ps < 3 -> 2.0
-                ps < 8 -> 1.0
-                else -> 0.0
-            }
-        }
-        stockData.peRatio?.takeIf { it > 0 }?.let { pe ->
-            valuationRaw += when {
-                pe < 15 -> 2.0
-                pe < 25 -> 1.0
-                else -> 0.0
-            }
-        }
-
-        val valuationScore = (valuationRaw / 5.0) * 4.0
-
-        val revenueGrowthScore = scoreGrowthComponent(stockData.averageRevenueGrowth)
-        val incomeGrowthScore = scoreGrowthComponent(stockData.averageNetIncomeGrowth)
-        val growthScore = revenueGrowthScore + incomeGrowthScore
-
-        val synergyBonus = if (
-            (stockData.psRatio != null && stockData.psRatio < 3) &&
-            (stockData.peRatio != null && stockData.peRatio > 0 && stockData.peRatio < 15)
-        ) 2.0 else 0.0
-
-        return (valuationScore + growthScore + synergyBonus).coerceIn(0.0, 10.0)
-    }
-
-    private fun scoreGrowthComponent(growth: Double?): Double {
-        growth ?: return 1.5
-        val capped = growth.coerceIn(-0.5, 0.6)
-        val normalized = (capped + 0.5) / 1.1 // maps [-0.5, 0.6] to [0, 1]
-        return (normalized * 3.0).coerceIn(0.0, 3.0)
-    }
-
-    private fun calculateBankruptcyScore(stockData: StockData): Double {
-        val hasPositiveIncome = (stockData.netIncome ?: 0.0) > 0
-        val hasReasonableDebt = (stockData.debtToEquity ?: Double.MAX_VALUE) < 1.0
-        val hasCashFlow = (stockData.freeCashFlow ?: 0.0) > 0
-
-        val tier = when {
-            hasPositiveIncome && hasReasonableDebt && hasCashFlow -> 3
-            hasPositiveIncome && hasReasonableDebt -> 2
-            else -> 1
-        }
-        return ((tier - 1) / 2.0) * 10.0
-    }
 }
+
+private fun assessValuation(stockData: StockData): ValuationAssessment? {
+    val benchmark = BenchmarkData.getBenchmarkAverages(stockData)
+    val hasPositiveIncome = (stockData.netIncome ?: 0.0) > 0
+
+    val ratioType: String
+    val ratio: Double?
+    val benchmarkValue: Double?
+
+    if (hasPositiveIncome) {
+        ratioType = "P/E"
+        ratio = stockData.peRatio
+        benchmarkValue = benchmark.peAvg
+    } else {
+        ratioType = "P/S"
+        ratio = stockData.psRatio
+        benchmarkValue = benchmark.psAvg
+    }
+
+    if (ratio == null || ratio <= 0 || benchmarkValue == null || benchmarkValue <= 0) {
+        return ValuationAssessment(
+            ratioType = ratioType,
+            ratio = ratio,
+            benchmark = benchmarkValue,
+            deviation = null,
+            classification = ValuationClassification.UNKNOWN,
+            normalizedScore = null
+        )
+    }
+
+    val deviation = (ratio - benchmarkValue) / benchmarkValue
+    val classification = when {
+        deviation <= -0.15 -> ValuationClassification.UNDERVALUED
+        deviation >= 0.15 -> ValuationClassification.OVERVALUED
+        else -> ValuationClassification.FAIRLY_VALUED
+    }
+
+    val clamped = deviation.coerceIn(-1.0, 1.0)
+    val fraction = ((-clamped) + 1.0) / 2.0
+    val normalizedScore = sigmoidNormalizeFraction(fraction)
+
+    return ValuationAssessment(
+        ratioType = ratioType,
+        ratio = ratio,
+        benchmark = benchmarkValue,
+        deviation = deviation,
+        classification = classification,
+        normalizedScore = normalizedScore
+    )
+}
+
+private fun weightedScoreFromNormalizedComponents(
+    components: List<Pair<Double?, Double>>
+): Double? {
+    var totalWeight = 0.0
+    var weighted = 0.0
+    var hasActualValue = false
+
+    components.forEach { (value, weight) ->
+        if (weight <= 0.0) return@forEach
+        val normalized = value ?: DEFAULT_NEUTRAL_FRACTION
+        if (value != null) {
+            hasActualValue = true
+        }
+        weighted += normalized * weight
+        totalWeight += weight
+    }
+
+    if (totalWeight <= 0.0) {
+        return null
+    }
+
+    val normalizedScore = (weighted / totalWeight).coerceIn(0.0, 1.0)
+    val scaledScore = normalizedScore * 10.0
+    return if (hasActualValue) scaledScore else null
+}
+
+private fun normalizeGrowthRate(growth: Double?): Double? {
+    growth ?: return null
+    val capped = growth.coerceIn(-0.5, 0.6)
+    val fraction = (capped + 0.5) / 1.1
+    return sigmoidNormalizeFraction(fraction)
+}
+
+private fun normalizeMargin(margin: Double?): Double? {
+    margin ?: return null
+    val capped = margin.coerceIn(-0.3, 0.3)
+    val fraction = (capped + 0.3) / 0.6
+    return sigmoidNormalizeFraction(fraction)
+}
+
+private fun normalizeMarginTrend(trend: Double?): Double? {
+    trend ?: return null
+    val capped = trend.coerceIn(-0.2, 0.2)
+    val fraction = (capped + 0.2) / 0.4
+    return sigmoidNormalizeFraction(fraction)
+}
+
+private fun computeNetIncomeChange(history: List<Double?>): Double? {
+    val current = history.getOrNull(0) ?: return null
+    (the previous = history . getOrNull (1)) ?: return null
+    val denominator = (kotlin.math.abs(current) + kotlin.math.abs(previous)).takeIf { it > 0 } ?: return null
+    return (current - previous) / denominator
+}
+
+private const val DEFAULT_NEUTRAL_SCORE = 5.0
+private const val DEFAULT_NEUTRAL_FRACTION = 0.5
+private const val CORE_WEIGHT = 0.4
+private const val GROWTH_WEIGHT = 0.3
+private const val RESILIENCE_WEIGHT = 0.3
+private const val GNP_PRICE_LEVEL_INDEX = 1_000_000_000_000.0
+private const val SAFE_PROBABILITY = 0.02
+private const val DISTRESS_PROBABILITY = 0.38
+private val CORE_METRICS = setOf("revenue", "net_income", "eps", "roe", "ebitda")
+
+enum class ValuationClassification { UNDERVALUED, FAIRLY_VALUED, OVERVALUED, UNKNOWN }
+
+data class ValuationAssessment(
+    val ratioType: String,
+    val ratio: Double?,
+    val benchmark: Double?,
+    val deviation: Double?,
+    val classification: ValuationClassification,
+    val normalizedScore: Double?
+) : Serializable
 
 data class MetricData(
     val value: Double?,
