@@ -47,7 +47,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         with(binding) {
             tvCompositeScore.text = getString(R.string.health_score_format, healthScore.compositeScore)
             tvCompositeSummary.text = getString(R.string.composite_score_description)
-            tvHealthSubScoreValue.text = getString(R.string.sub_score_format, healthScore.healthSubScore)
+            tvHealthSubScoreValue.text = getString(R.string.sub_score_format, healthScore.coreHealthScore)
             tvHealthDescription.text = getString(R.string.core_health_description)
             tvHealthMetricsUsed.text = getString(
                 R.string.metrics_used_value,
@@ -60,7 +60,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                 ).joinToString(", ")
             )
 
-            tvForecastSubScoreValue.text = getString(R.string.sub_score_format, healthScore.forecastSubScore)
+            tvForecastSubScoreValue.text = getString(R.string.sub_score_format, healthScore.growthForecastScore)
             tvForecastDescription.text = getString(R.string.growth_forecast_description)
             tvForecastMetricsUsed.text = getString(
                 R.string.metrics_used_value,
@@ -73,7 +73,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                 ).joinToString(", ")
             )
 
-            tvZScoreValue.text = getString(R.string.sub_score_format, healthScore.zSubScore)
+            tvZScoreValue.text = getString(R.string.sub_score_format, healthScore.resilienceScore)
             tvResilienceDescription.text = getString(R.string.balance_sheet_resilience_description)
             tvResilienceMetricsUsed.text = getString(
                 R.string.metrics_used_value,
