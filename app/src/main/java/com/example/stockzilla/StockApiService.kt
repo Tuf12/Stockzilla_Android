@@ -51,6 +51,12 @@ data class FMPCashFlow(
     @SerializedName("netCashProvidedByOperatingActivities") val operatingCashFlow: Double?
 )
 
+data class FMPStockSearchResult(
+    @SerializedName("symbol") val symbol: String,
+    @SerializedName("name") val name: String?,
+    @SerializedName("exchangeShortName") val exchange: String?
+)
+
 interface FMPApiService {
     @GET("profile/{symbol}")
     suspend fun getProfile(
@@ -87,6 +93,13 @@ interface FMPApiService {
         @Query("limit") limit: Int = 5,
         @Query("apikey") apiKey: String
     ): List<FMPCashFlow>
+
+    @GET("search")
+    suspend fun searchSymbols(
+        @Query("query") query: String,
+        @Query("limit") limit: Int = 5,
+        @Query("apikey") apiKey: String
+    ): List<FMPStockSearchResult>
 }
 
 class StockRepository(private val apiKey: String) {
@@ -96,6 +109,37 @@ class StockRepository(private val apiKey: String) {
         .build()
 
     private val apiService = retrofit.create(FMPApiService::class.java)
+
+    suspend fun resolveSymbol(query: String, limit: Int = 5): Result<String> = withContext(Dispatchers.IO) {
+        val trimmedQuery = query.trim()
+        if (trimmedQuery.isEmpty()) {
+            return@withContext Result.failure(Exception("Please enter a stock symbol or company name."))
+        }
+
+        val normalizedSymbol = trimmedQuery.uppercase()
+
+        try {
+            val directProfile = apiService.getProfile(normalizedSymbol, apiKey)
+            if (directProfile.isNotEmpty()) {
+                return@withContext Result.success(normalizedSymbol)
+            }
+        } catch (e: Exception) {
+            return@withContext Result.failure(e)
+        }
+
+        return@withContext try {
+            val searchResults = apiService.searchSymbols(trimmedQuery, limit = limit, apiKey = apiKey)
+            val bestMatch = searchResults.firstOrNull()?.symbol?.takeIf { it.isNotBlank() }?.uppercase()
+
+            if (bestMatch != null) {
+                Result.success(bestMatch)
+            } else {
+                Result.failure(Exception("No matches found for \"$trimmedQuery\"."))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
 
     suspend fun getStockData(symbol: String): Result<StockData> = withContext(Dispatchers.IO) {
         try {

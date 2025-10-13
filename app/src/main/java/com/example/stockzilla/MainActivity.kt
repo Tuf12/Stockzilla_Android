@@ -201,6 +201,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        viewModel.resolvedSymbol.observe(this) { symbol ->
+            symbol?.let {
+                val currentText = binding.etSearch.text?.toString()
+                if (currentText != it) {
+                    binding.etSearch.setText(it)
+                    binding.etSearch.setSelection(it.length)
+                }
+            }
+        }
+
         viewModel.error.observe(this) { error ->
             error?.let {
                 if (it.contains("401") || it.contains("Unauthorized")) {
@@ -452,6 +462,11 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
     private val _isFavorited = MutableLiveData<Boolean>()
     val isFavorited: LiveData<Boolean> = _isFavorited
 
+    private val _resolvedSymbol = MutableLiveData<String?>()
+    val resolvedSymbol: LiveData<String?> = _resolvedSymbol
+
+
+
 
 
     fun updateApiKey(apiKey: String) {
@@ -461,39 +476,61 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
     suspend fun searchStock(ticker: String) {
         _loading.value = true
-        stockRepository.getStockData(ticker)
-            .onSuccess { stockData ->
-                _currentStockData.value = stockData
-                checkIfFavorited(ticker)  // Add this line
+        val resolvedResult = stockRepository.resolveSymbol(ticker)
+        resolvedResult.fold(
+            onSuccess = { resolvedSymbol ->
+                _resolvedSymbol.value = resolvedSymbol
+                stockRepository.getStockData(resolvedSymbol)
+                    .onSuccess { stockData ->
+                        _currentStockData.value = stockData
+                        checkIfFavorited(resolvedSymbol)
+                        _loading.value = false
+                    }
+                    .onFailure { exception ->
+                        _error.value = exception.message
+                        _loading.value = false
+                    }
+            },
+            onFailure = { exception ->
+                _resolvedSymbol.value = null
+                _error.value = exception.message ?: "No matches found for \"$ticker\"."
                 _loading.value = false
             }
-            .onFailure { exception ->
-                _error.value = exception.message
-                _loading.value = false
-            }
+        )
     }
 
     suspend fun analyzeStock(ticker: String) {
         _loading.value = true
-        stockRepository.getStockData(ticker)
-            .onSuccess { stockData ->
-                _currentStockData.value = stockData
-                val score = financialAnalyzer.calculateCompositeScore(stockData)
-                _healthScore.value = score
-                checkIfFavorited(ticker)
+        val resolvedResult = stockRepository.resolveSymbol(ticker)
+        resolvedResult.fold(
+            onSuccess = { resolvedSymbol ->
+                _resolvedSymbol.value = resolvedSymbol
+                stockRepository.getStockData(resolvedSymbol)
+                    .onSuccess { stockData ->
+                        _currentStockData.value = stockData
+                        val score = financialAnalyzer.calculateCompositeScore(stockData)
+                        _healthScore.value = score
+                        checkIfFavorited(resolvedSymbol)
 
-                // Auto-update favorite if it exists
-                if (favoritesRepository.isFavorite(ticker)) {
-                    favoritesRepository.updateFavoriteData(stockData, score.compositeScore)
-                    loadFavorites() // Refresh favorites list
-                }
+                        // Auto-update favorite if it exists
+                        if (favoritesRepository.isFavorite(resolvedSymbol)) {
+                            favoritesRepository.updateFavoriteData(stockData, score.compositeScore)
+                            loadFavorites() // Refresh favorites list
+                        }
 
+                        _loading.value = false
+                    }
+                    .onFailure { exception ->
+                        _error.value = exception.message
+                        _loading.value = false
+                    }
+            },
+            onFailure = { exception ->
+                _resolvedSymbol.value = null
+                _error.value = exception.message ?: "No matches found for \"$ticker\"."
                 _loading.value = false
             }
-            .onFailure { exception ->
-                _error.value = exception.message
-                _loading.value = false
-            }
+        )
     }
 
     suspend fun addToFavorites(stockData: StockData) {
@@ -529,6 +566,7 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         _currentStockData.value = null
         _healthScore.value = null
         _isFavorited.value = false  // Add this line
+        _resolvedSymbol.value = null
     }
 
     fun clearError() {
