@@ -109,4 +109,5 @@
     <string name="valuation_overvalued">Relative valuation: Over-valued vs %1$s peers%2$s.</string>
     <string name="valuation_fair">Relative valuation: In line with %1$s peers.</string>
     <string name="valuation_unknown">Relative valuation: Not enough data to compare %1$s.</string>
+    <string name="search">Search</string>
 </resources>

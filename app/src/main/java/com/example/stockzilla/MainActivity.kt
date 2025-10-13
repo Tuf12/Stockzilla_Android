@@ -16,8 +16,7 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.stockzilla.databinding.ActivityMainBinding
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import android.view.inputmethod.EditorInfo
 import kotlinx.coroutines.launch
 
 class MainActivity : AppCompatActivity() {
@@ -26,7 +25,6 @@ class MainActivity : AppCompatActivity() {
     private lateinit var binding: ActivityMainBinding
     private lateinit var favoritesAdapter: FavoritesAdapter
     private lateinit var apiKeyManager: ApiKeyManager
-    private var searchJob: Job? = null
     private var latestStockData: StockData? = null
     private var latestHealthScore: HealthScore? = null
 
@@ -107,15 +105,22 @@ class MainActivity : AppCompatActivity() {
 
         // Setup search functionality
         binding.etSearch.addTextChangedListener { text ->
-            searchJob?.cancel()
-            if (!text.isNullOrBlank() && text.length >= 2) {
-                searchJob = lifecycleScope.launch {
-                    delay(500) // Debounce
-                    searchStock(text.toString().uppercase())
-                }
-            } else {
+            if (text.isNullOrBlank()) {
+                clearSearchResult()
                 clearSearchResult()
             }
+        }
+        binding.etSearch.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_SEARCH) {
+                performSearch()
+                true
+            } else {
+                false
+            }
+        }
+
+        binding.btnSearch.setOnClickListener {
+            performSearch()
         }
 
         binding.btnAnalyze.setOnClickListener {
@@ -228,6 +233,16 @@ class MainActivity : AppCompatActivity() {
             viewModel.searchStock(ticker)
         }
     }
+
+    private fun performSearch() {
+        val ticker = binding.etSearch.text?.toString()?.trim()?.uppercase().orEmpty()
+        if (ticker.isNotBlank()) {
+            searchStock(ticker)
+        } else {
+            Toast.makeText(this, "Please enter a stock ticker", Toast.LENGTH_SHORT).show()
+        }
+    }
+
 
     fun analyzeStock(ticker: String) {
         if (!apiKeyManager.hasApiKey()) {

@@ -71,6 +71,16 @@
                 </com.google.android.material.textfield.TextInputLayout>
 
                 <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnSearch"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginHorizontal="24dp"
+                    android:layout_marginBottom="12dp"
+                    android:text="@string/search"
+                    android:textColor="@color/colorOnPrimary"
+                    app:backgroundTint="@color/colorPrimary" />
+
+                <com.google.android.material.button.MaterialButton
                     android:id="@+id/btnAnalyze"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
