@@ -274,12 +274,12 @@ class FinancialHealthAnalyzer {
         valuationAssessment: ValuationAssessment?
     ): Double? {
         val components = listOf(
-            normalizeGrowthRate(stockData.averageRevenueGrowth) to 0.15,
-            normalizeGrowthRate(stockData.averageNetIncomeGrowth) to 0.15,
-            normalizeGrowthRate(stockData.revenueGrowth) to 0.10,
+            normalizeGrowthRate(stockData.averageRevenueGrowth) to 0.20,
+            normalizeGrowthRate(stockData.averageNetIncomeGrowth) to 0.20,
+            normalizeGrowthRate(stockData.revenueGrowth) to 0.30,
             normalizeMargin(stockData.freeCashFlowMargin) to 0.15,
-            normalizeMarginTrend(stockData.ebitdaMarginGrowth) to 0.15,
-            valuationAssessment?.normalizedScore to 0.30
+            normalizeMarginTrend(stockData.ebitdaMarginGrowth) to 0.10,
+            valuationAssessment?.normalizedScore to 0.05
         )
 
         return weightedScoreFromNormalizedComponents(components)
@@ -452,7 +452,7 @@ class FinancialHealthAnalyzer {
         }
 
         if (min >= max) {
-            val epsilon = kotlin.math.abs(max) * 0.01 + 1e-6
+            val epsilon = abs(max) * 0.01 + 1e-6
             max = min + epsilon
         }
 
@@ -601,8 +601,8 @@ private fun normalizeMarginTrend(trend: Double?): Double? {
 
 private fun computeNetIncomeChange(history: List<Double?>): Double? {
     val current = history.getOrNull(0) ?: return null
-    (the previous = history . getOrNull (1)) ?: return null
-    val denominator = (kotlin.math.abs(current) + kotlin.math.abs(previous)).takeIf { it > 0 } ?: return null
+    val previous = history.getOrNull(1) ?: return null
+    val denominator = (abs(current) + abs(previous)).takeIf { it > 0 } ?: return null
     return (current - previous) / denominator
 }
 
