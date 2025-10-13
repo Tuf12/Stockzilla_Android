@@ -30,7 +30,7 @@
     <string name="health_score_details_title">Health Score Details</string>
     <string name="health_score_details_intro">See how Stockzilla grades the fundamentals you just pulled. We combine raw company metrics, normalize them against sector expectations, and weight each signal before rolling everything into the composite score.</string>
     <string name="composite_score_heading">Composite score</string>
-    <string name="composite_score_description">The composite score blends the core health, growth outlook, and balance sheet resilience sub-scores into a single 1–10 grade.</string>
+    <string name="composite_score_description">The composite score blends the core health, growth outlook, and balance sheet resilience sub–scores into a single 1–10 grade.</string>
     <string name="health_sub_score_label">Core financial health</string>
     <string name="financial_metrics_heading">Financial snapshot</string>
     <string name="overall_score_heading">Overall Stockzilla health score</string>
@@ -56,7 +56,7 @@
     <string name="metrics_used_value">%1$s</string>
     <string name="core_health_description">Measures profitability, operational efficiency, and earnings quality to judge how sturdy the core business is today.</string>
     <string name="growth_forecast_description">Blends multi-year revenue and earnings trends with margin scalability and relative valuation to highlight long-term expansion potential.</string>
-    <string name="balance_sheet_resilience_description">Translates Ohlson&#39;s O-Score into a resilience grade by stress-testing leverage, liquidity, and profitability against bankruptcy odds.</string>
+    <string name="balance_sheet_resilience_description">Translates Ohlson\'s O-Score into a resilience grade by stress-testing leverage, liquidity, and profitability against bankruptcy odds.</string>
     <string name="metric_revenue_growth">Revenue Growth</string>
     <string name="metric_average_revenue_growth">Average Revenue Growth</string>
     <string name="metric_free_cash_flow_margin">Free Cash Flow Margin</string>

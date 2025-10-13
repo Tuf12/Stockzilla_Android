@@ -64,7 +64,9 @@
                         android:inputType="textCapCharacters"
                         android:maxLength="10"
                         android:textColor="@color/textPrimary"
-                        android:textColorHint="@color/textHint" />
+                        android:textColorHint="@color/textHint"
+                        android:singleLine="true"
+                        android:imeOptions="actionSearch"/>
 
                 </com.google.android.material.textfield.TextInputLayout>
 

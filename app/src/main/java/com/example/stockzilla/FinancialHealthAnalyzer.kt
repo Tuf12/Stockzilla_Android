@@ -197,7 +197,7 @@ class FinancialHealthAnalyzer {
     }
 
     private fun computeCoreHealthScore(stockData: StockData): Pair<Double?, List<MetricScore>> {
-        val metricData = buildMetricData(stockData, CORE_METRICS)
+        val metricData = buildMetricData(stockData)
         if (metricData.isEmpty()) {
             return null to emptyList()
         }
@@ -239,8 +239,7 @@ class FinancialHealthAnalyzer {
     }
 
     private fun buildMetricData(
-        stockData: StockData,
-        metrics: Set<String>
+        stockData: StockData
     ): Map<String, MetricData> {
         val sector = stockData.sector ?: "Unknown"
         val revenueGrowthSignal = stockData.revenueGrowth ?: stockData.averageRevenueGrowth
@@ -254,7 +253,7 @@ class FinancialHealthAnalyzer {
         }
 
         val orderedMetrics = LinkedHashMap<String, MetricData>()
-        metrics.forEach { metric ->
+        CORE_METRICS.forEach { metric ->
             val value = when (metric) {
                 "revenue" -> stockData.revenue
                 "net_income" -> stockData.netIncome
@@ -382,11 +381,15 @@ class FinancialHealthAnalyzer {
                 }
 
                 cap > 100_000_000_000 -> {
-                    baseWeights["roe"] = (baseWeights["roe"] ?: 0.0) * if (isHighGrowth) 1.15 else 1.3
-                    baseWeights["debt_to_equity"] = (baseWeights["debt_to_equity"] ?: 0.0) * if (isHighGrowth) 1.1 else 1.25
+                    baseWeights["roe"] =
+                        (baseWeights["roe"] ?: 0.0) * if (isHighGrowth) 1.15 else 1.3
+                    baseWeights["debt_to_equity"] =
+                        (baseWeights["debt_to_equity"] ?: 0.0) * if (isHighGrowth) 1.1 else 1.25
                     baseWeights["ps_ratio"] = (baseWeights["ps_ratio"] ?: 0.0) * 0.85
-                    baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * if (isHighGrowth) 1.05 else 0.9
+                    baseWeights["revenue"] =
+                        (baseWeights["revenue"] ?: 0.0) * if (isHighGrowth) 1.05 else 0.9
                 }
+
                 else -> {
                     if (isHighGrowth) {
                         baseWeights["revenue"] = (baseWeights["revenue"] ?: 0.0) * 1.25
@@ -403,7 +406,11 @@ class FinancialHealthAnalyzer {
         return baseWeights
     }
 
-    private fun getSectorRange(metric: String, sector: String, marketCap: Double?): Pair<Double, Double> {
+    private fun getSectorRange(
+        metric: String,
+        sector: String,
+        marketCap: Double?
+    ): Pair<Double, Double> {
         val override = SECTOR_RANGE_OVERRIDES[sector]?.get(metric)
         val baseRange = if (override != null && override.first < override.second) {
             override
@@ -469,8 +476,9 @@ class FinancialHealthAnalyzer {
         // optional heavy-tail taming for ratios
         fun tx(x: Double): Double = when (cfg.transform) {
             "log" -> kotlin.math.ln(x.coerceAtLeast(0.0) + 1.0)
-            else  -> x
+            else -> x
         }
+
         val tMin = tx(min)
         val tMax = tx(max)
         if (tMin >= tMax) return 0.5
@@ -482,7 +490,7 @@ class FinancialHealthAnalyzer {
 
         return when (cfg.direction) {
             Direction.HIGHER_IS_BETTER -> normalized
-            Direction.LOWER_IS_BETTER  -> 1.0 - normalized
+            Direction.LOWER_IS_BETTER -> 1.0 - normalized
 
         }
     }
@@ -493,6 +501,7 @@ class FinancialHealthAnalyzer {
         val frac = (value - min) / denominator
         return sigmoidNormalizeFraction(frac)
     }
+}
 
     private fun sigmoidNormalizeFraction(frac: Double): Double {
         if (!frac.isFinite()) return 0.5
@@ -500,7 +509,7 @@ class FinancialHealthAnalyzer {
         val logistic = 1.0 / (1.0 + exp(-scaled))
         return logistic.coerceIn(0.0, 1.0)
     }
-}
+
 
 private fun assessValuation(stockData: StockData): ValuationAssessment? {
     val benchmark = BenchmarkData.getBenchmarkAverages(stockData)
