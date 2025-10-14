@@ -22,7 +22,7 @@
     <string name="stockzilla">🦖 Stockzilla</string>
     <string name="net_income">Net Income</string>
     <string name="_99_8b">$99.8B</string>
-    <string name="health_score">Health Score</string>
+    <string name="health_score">Financial health</string>
     <string name="strong_buy_excellent_financial_health">Strong Buy - Excellent financial health</string>
     <string name="add_to_favorites">Add to Favorites</string>
     <string name="full_analysis">Full Analysis</string>
@@ -30,12 +30,12 @@
     <string name="health_score_details_title">Health Score Details</string>
     <string name="health_score_details_intro">See how Stockzilla grades the fundamentals you just pulled. We combine raw company metrics, normalize them against sector expectations, and weight each signal before rolling everything into the composite score.</string>
     <string name="composite_score_heading">Composite score</string>
-    <string name="composite_score_description">The composite score blends the core health, growth outlook, and balance sheet resilience sub–scores into a single 1–10 grade.</string>
+    <string name="composite_score_description">The composite score blends the core financial health, growth outlook, and bankruptcy risk systems into a single 1–10 grade.</string>
     <string name="health_sub_score_label">Core financial health</string>
     <string name="financial_metrics_heading">Financial snapshot</string>
-    <string name="overall_score_heading">Overall Stockzilla health score</string>
+    <string name="overall_score_heading">Overall Stockzilla composite score</string>
     <string name="forecast_sub_score_label">Growth &amp; forecast</string>
-    <string name="z_sub_score_label">Balance sheet resilience</string>
+    <string name="z_sub_score_label">Bankruptcy risk checker</string>
     <string name="sub_score_format">%1$d / 10</string>
     <string name="not_available">N/A</string>
     <string name="symbol_label">Symbol</string>
@@ -43,11 +43,14 @@
     <string name="price_label">Price</string>
     <string name="metric_eps">EPS</string>
     <string name="metric_roe">ROE</string>
+    <string name="metric_pe_ratio">P/E Ratio</string>
+    <string name="metric_ps_ratio">P/S Ratio</string>
     <string name="metric_debt_to_equity">Debt to Equity</string>
     <string name="metric_free_cash_flow">Free Cash Flow</string>
     <string name="metric_pb_ratio">Price to Book</string>
     <string name="metric_ebitda">EBITDA</string>
     <string name="metric_outstanding_shares">Outstanding Shares</string>
+    <string name="metric_ebitda_margin">EBITDA Margin</string>
     <string name="metric_total_assets">Total Assets</string>
     <string name="metric_total_liabilities">Total Liabilities</string>
     <string name="sector">Sector</string>
@@ -56,7 +59,7 @@
     <string name="metrics_used_value">%1$s</string>
     <string name="core_health_description">Measures profitability, operational efficiency, and earnings quality to judge how sturdy the core business is today.</string>
     <string name="growth_forecast_description">Blends multi-year revenue and earnings trends with margin scalability and relative valuation to highlight long-term expansion potential.</string>
-    <string name="balance_sheet_resilience_description">Translates Ohlson\'s O-Score into a resilience grade by stress-testing leverage, liquidity, and profitability against bankruptcy odds.</string>
+    <string name="balance_sheet_resilience_description">Translates Ohlson\'s O-Score into a bankruptcy risk check by blending leverage, liquidity, cash flow coverage, and profitability pressure tests.</string>
     <string name="metric_revenue_growth">Revenue Growth</string>
     <string name="metric_average_revenue_growth">Average Revenue Growth</string>
     <string name="metric_free_cash_flow_margin">Free Cash Flow Margin</string>
@@ -110,4 +113,8 @@
     <string name="valuation_fair">Relative valuation: In line with %1$s peers.</string>
     <string name="valuation_unknown">Relative valuation: Not enough data to compare %1$s.</string>
     <string name="search">Search</string>
+    <string name="metric_net_margin">Net Margin</string>
+    <string name="metric_liability_to_asset_ratio">Liability to Asset Ratio</string>
+    <string name="metric_working_capital_ratio">Working Capital Ratio</string>
+    <string name="metric_retained_earnings">Retained Earnings</string>
 </resources>

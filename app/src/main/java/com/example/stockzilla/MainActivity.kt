@@ -303,18 +303,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun displayHealthScore(healthScore: HealthScore) {
         binding.apply {
-            tvHealthScore.text = getString(R.string.health_score_format, healthScore.compositeScore)
+            val compositeScoreText = getString(R.string.health_score_format, healthScore.compositeScore)
+            tvHealthScore.text = compositeScoreText
+            val compositeColor = getScoreColor(healthScore.compositeScore)
+            tvHealthScore.setTextColor(compositeColor)
+            tvCompositeLabel.setTextColor(compositeColor)
 
-            // Color code the score
-            val color = when (healthScore.compositeScore) {
-                in 7..10 -> getColor(R.color.scoreGood)
-                in 4..6 -> getColor(R.color.scoreMedium)
-                else -> getColor(R.color.scorePoor)
-            }
-            tvHealthScore.setTextColor(color)
-            tvHealthScoreSmall.setTextColor(color)
-            tvHealthScoreSmall.text =
-                getString(R.string.health_score_format, healthScore.compositeScore)
+            val coreHealthColor = getScoreColor(healthScore.healthSubScore)
+            tvHealthScoreSmall.text = getString(R.string.health_score_format, healthScore.healthSubScore)
+            tvHealthScoreSmall.setTextColor(coreHealthColor)
 
             // Show recommendation
             val recommendation = when (healthScore.compositeScore) {
@@ -324,6 +321,14 @@ class MainActivity : AppCompatActivity() {
             }
             tvRecommendation.text = recommendation
 
+        }
+    }
+
+    private fun getScoreColor(score: Int): Int {
+        return when (score) {
+            in 7..10 -> getColor(R.color.scoreGood)
+            in 4..6 -> getColor(R.color.scoreMedium)
+            else -> getColor(R.color.scorePoor)
         }
     }
 

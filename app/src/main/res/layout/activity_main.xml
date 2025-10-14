@@ -178,16 +178,26 @@
                             android:textColor="@color/textPrimary" />
 
                         <TextView
+                            android:id="@+id/tvCompositeLabel"
+                            android:layout_width="wrap_content"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="4dp"
+                            android:text="@string/composite_score_heading"
+                            android:textColor="@color/textSecondary"
+                            android:textSize="12sp"
+                            android:textStyle="bold" />
+
+                        <TextView
                             android:id="@+id/tvHealthScore"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
-                            android:text="@string/_8_10"
-                            android:textSize="18sp"
-                            android:textStyle="bold"
-                            android:textColor="@color/colorOnPrimary"
+                            android:layout_marginTop="4dp"
                             android:background="@drawable/score_background"
                             android:padding="8dp"
-                            android:layout_marginTop="4dp" />
+                            android:text="@string/_8_10"
+                            android:textColor="@color/colorOnPrimary"
+                            android:textSize="18sp"
+                            android:textStyle="bold" />
 
                     </LinearLayout>
 

@@ -22,18 +22,36 @@ data class MetricConfig(
 private val DEFAULT_METRIC_CONFIG = mapOf(
     "revenue"        to MetricConfig(0.0, 1_000_000_000.0, 0.15, Direction.HIGHER_IS_BETTER),
     "net_income"     to MetricConfig(-5_000_000.0, 50_000_000.0, 0.15, Direction.HIGHER_IS_BETTER),
-    "eps"            to MetricConfig(-1.0, 5.0, 0.10, Direction.HIGHER_IS_BETTER),
-    "pe_ratio"       to MetricConfig(5.0, 50.0, 0.10, Direction.LOWER_IS_BETTER, transform = "log"),
-    "ps_ratio"       to MetricConfig(1.0, 15.0, 0.10, Direction.LOWER_IS_BETTER, transform = "log"),
-    "roe"            to MetricConfig(0.0, 0.30, 0.15, Direction.HIGHER_IS_BETTER),
-    "debt_to_equity" to MetricConfig(0.0, 2.0, 0.10, Direction.LOWER_IS_BETTER),
-    "pb_ratio"       to MetricConfig(0.5, 15.0, 0.08, Direction.LOWER_IS_BETTER, transform = "log"),
-    "ebitda"         to MetricConfig(-100_000_000.0, 500_000_000.0, 0.12, Direction.HIGHER_IS_BETTER),
-    "outstanding_shares" to MetricConfig(5_000_000.0, 10_000_000_000.0, 0.05, Direction.LOWER_IS_BETTER, transform = "log"),
-    "total_assets"   to MetricConfig(50_000_000.0, 2_000_000_000_000.0, 0.07, Direction.HIGHER_IS_BETTER, transform = "log"),
-    "total_liabilities" to MetricConfig(10_000_000.0, 1_000_000_000_000.0, 0.07, Direction.LOWER_IS_BETTER, transform = "log")
+    "eps"            to MetricConfig(-1.0, 5.0, 0.08, Direction.HIGHER_IS_BETTER),
+    "pe_ratio"       to MetricConfig(5.0, 50.0, 0.08, Direction.LOWER_IS_BETTER, transform = "log"),
+    "ps_ratio"       to MetricConfig(1.0, 15.0, 0.08, Direction.LOWER_IS_BETTER, transform = "log"),
+    "roe"            to MetricConfig(0.0, 0.30, 0.12, Direction.HIGHER_IS_BETTER),
+    "debt_to_equity" to MetricConfig(0.0, 2.0, 0.08, Direction.LOWER_IS_BETTER),
+    "pb_ratio"       to MetricConfig(0.5, 15.0, 0.06, Direction.LOWER_IS_BETTER, transform = "log"),
+    "ebitda"         to MetricConfig(-100_000_000.0, 500_000_000.0, 0.10, Direction.HIGHER_IS_BETTER),
+    "free_cash_flow" to MetricConfig(-200_000_000.0, 400_000_000.0, 0.08, Direction.HIGHER_IS_BETTER),
+    "operating_cash_flow" to MetricConfig(-150_000_000.0, 500_000_000.0, 0.07, Direction.HIGHER_IS_BETTER),
+    "free_cash_flow_margin" to MetricConfig(-0.30, 0.30, 0.06, Direction.HIGHER_IS_BETTER),
+    "net_margin"     to MetricConfig(-0.20, 0.35, 0.07, Direction.HIGHER_IS_BETTER),
+    "ebitda_margin"  to MetricConfig(-0.10, 0.40, 0.06, Direction.HIGHER_IS_BETTER),
+    "current_ratio"  to MetricConfig(0.7, 3.0, 0.06, Direction.HIGHER_IS_BETTER),
+    "liability_to_asset_ratio" to MetricConfig(0.2, 1.2, 0.06, Direction.LOWER_IS_BETTER),
+    "working_capital_ratio" to MetricConfig(-0.20, 0.40, 0.05, Direction.HIGHER_IS_BETTER),
+    "retained_earnings" to MetricConfig(-5_000_000_000.0, 200_000_000_000.0, 0.05, Direction.HIGHER_IS_BETTER, transform = "log"),
+    "outstanding_shares" to MetricConfig(5_000_000.0, 10_000_000_000.0, 0.04, Direction.LOWER_IS_BETTER, transform = "log"),
+    "total_assets"   to MetricConfig(50_000_000.0, 2_000_000_000_000.0, 0.05, Direction.HIGHER_IS_BETTER, transform = "log"),
+    "total_liabilities" to MetricConfig(10_000_000.0, 1_000_000_000_000.0, 0.05, Direction.LOWER_IS_BETTER, transform = "log")
 )
-private val ABSOLUTE_METRICS = setOf("revenue", "net_income", "ebitda", "total_assets", "total_liabilities")
+private val ABSOLUTE_METRICS = setOf(
+    "revenue",
+    "net_income",
+    "ebitda",
+    "free_cash_flow",
+    "operating_cash_flow",
+    "retained_earnings",
+    "total_assets",
+    "total_liabilities"
+)
 
 // Optional: tune per-sector ranges (examples; adjust as you gather data)
 private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>>> = mapOf(
@@ -246,26 +264,90 @@ class FinancialHealthAnalyzer {
         val weights = getSectorSpecificWeights(sector, stockData.marketCap, revenueGrowthSignal)
 
         fun md(metric: String, value: Double?): MetricData? {
+            val sanitizedValue = value?.takeIf { it.isFinite() }
+            sanitizedValue ?: return null
             val (min, max) = getSectorRange(metric, sector, stockData.marketCap)
             if (min >= max) return null
             val w = weights[metric] ?: DEFAULT_METRIC_CONFIG[metric]?.baseWeight ?: return null
-            return MetricData(value = value, min = min, max = max, weight = w)
+            return MetricData(value = sanitizedValue, min = min, max = max, weight = w)
         }
-
+        val metricValues = computeMetricValues(stockData)
         val orderedMetrics = LinkedHashMap<String, MetricData>()
-        CORE_METRICS.forEach { metric ->
-            val value = when (metric) {
-                "revenue" -> stockData.revenue
-                "net_income" -> stockData.netIncome
-                "eps" -> stockData.eps
-                "roe" -> stockData.roe
-                "ebitda" -> stockData.ebitda
-                else -> null
-            }
+        DEFAULT_METRIC_CONFIG.keys.forEach { metric ->
+            val value = metricValues[metric]
             md(metric, value)?.let { orderedMetrics[metric] = it }
         }
 
         return orderedMetrics
+    }
+
+    private fun computeMetricValues(stockData: StockData): Map<String, Double?> {
+        val metrics = LinkedHashMap<String, Double?>()
+
+        metrics["revenue"] = stockData.revenue
+        metrics["net_income"] = stockData.netIncome
+        metrics["eps"] = stockData.eps
+        metrics["pe_ratio"] = stockData.peRatio
+        metrics["ps_ratio"] = stockData.psRatio
+        metrics["roe"] = stockData.roe
+        metrics["debt_to_equity"] = stockData.debtToEquity
+        metrics["pb_ratio"] = stockData.pbRatio
+        metrics["ebitda"] = stockData.ebitda
+        metrics["free_cash_flow"] = stockData.freeCashFlow
+        metrics["operating_cash_flow"] = stockData.operatingCashFlow
+        metrics["free_cash_flow_margin"] = stockData.freeCashFlowMargin
+
+        val revenue = stockData.revenue
+        val totalAssets = stockData.totalAssets
+        val totalLiabilities = stockData.totalLiabilities
+        val netIncome = stockData.netIncome
+        val ebitda = stockData.ebitda
+
+        metrics["net_margin"] = if (revenue != null && revenue != 0.0 && netIncome != null) {
+            netIncome / revenue
+        } else {
+            null
+        }
+
+        metrics["ebitda_margin"] = if (revenue != null && revenue != 0.0 && ebitda != null) {
+            ebitda / revenue
+        } else {
+            null
+        }
+
+        val currentAssets = stockData.currentAssets
+        val currentLiabilities = stockData.currentLiabilities
+        metrics["current_ratio"] = if (currentAssets != null && currentLiabilities != null && currentLiabilities != 0.0) {
+            currentAssets / currentLiabilities
+        } else {
+            null
+        }
+
+        metrics["liability_to_asset_ratio"] = if (totalAssets != null && totalAssets != 0.0 && totalLiabilities != null) {
+            totalLiabilities / totalAssets
+        } else {
+            null
+        }
+
+        val workingCapital = stockData.workingCapital ?: run {
+            if (currentAssets != null && currentLiabilities != null) {
+                currentAssets - currentLiabilities
+            } else {
+                null
+            }
+        }
+        metrics["working_capital_ratio"] = if (workingCapital != null && totalAssets != null && totalAssets != 0.0) {
+            workingCapital / totalAssets
+        } else {
+            null
+        }
+
+        metrics["retained_earnings"] = stockData.retainedEarnings
+        metrics["outstanding_shares"] = stockData.outstandingShares
+        metrics["total_assets"] = totalAssets
+        metrics["total_liabilities"] = totalLiabilities
+
+        return metrics
     }
 
     private fun calculateGrowthScore(
@@ -345,12 +427,10 @@ class FinancialHealthAnalyzer {
         }
 
         val bankruptcyProbability = 1.0 / (1.0 + exp(-oScore))
-        val resilience = when {
-            bankruptcyProbability <= SAFE_PROBABILITY -> 10.0
-            bankruptcyProbability >= DISTRESS_PROBABILITY -> 0.0
-            else -> ((DISTRESS_PROBABILITY - bankruptcyProbability) /
-                    (DISTRESS_PROBABILITY - SAFE_PROBABILITY)) * 10.0
-        }
+        val fraction = (DISTRESS_PROBABILITY - bankruptcyProbability) /
+                (DISTRESS_PROBABILITY - SAFE_PROBABILITY)
+        val normalized = (fraction / 2.0) + DEFAULT_NEUTRAL_FRACTION
+        val resilience = sigmoidNormalizeFraction(normalized) * 10.0
 
         return resilience.coerceIn(0.0, 10.0)
     }
@@ -623,7 +703,7 @@ private const val RESILIENCE_WEIGHT = 0.3
 private const val GNP_PRICE_LEVEL_INDEX = 1_000_000_000_000.0
 private const val SAFE_PROBABILITY = 0.02
 private const val DISTRESS_PROBABILITY = 0.38
-private val CORE_METRICS = setOf("revenue", "net_income", "eps", "roe", "ebitda")
+
 
 enum class ValuationClassification { UNDERVALUED, FAIRLY_VALUED, OVERVALUED, UNKNOWN }
 

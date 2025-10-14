@@ -56,8 +56,24 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                     getString(R.string.revenue),
                     getString(R.string.net_income),
                     getString(R.string.metric_eps),
+                    getString(R.string.metric_pe_ratio),
+                    getString(R.string.metric_ps_ratio),
                     getString(R.string.metric_roe),
-                    getString(R.string.metric_ebitda)
+                    getString(R.string.metric_debt_to_equity),
+                    getString(R.string.metric_pb_ratio),
+                    getString(R.string.metric_ebitda),
+                    getString(R.string.metric_ebitda_margin),
+                    getString(R.string.metric_free_cash_flow),
+                    getString(R.string.metric_free_cash_flow_margin),
+                    getString(R.string.metric_operating_cash_flow),
+                    getString(R.string.metric_net_margin),
+                    getString(R.string.metric_liability_to_asset_ratio),
+                    getString(R.string.metric_working_capital_ratio),
+                    getString(R.string.metric_retained_earnings),
+                    getString(R.string.metric_total_assets),
+                    getString(R.string.metric_total_liabilities),
+                    getString(R.string.metric_outstanding_shares)
+
                 ).joinToString(", ")
             )
 
@@ -91,7 +107,9 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                     getString(R.string.metric_working_capital),
                     getString(R.string.metric_current_ratio),
                     getString(R.string.metric_net_income_trend),
-                    getString(R.string.metric_operating_cash_flow)
+                    getString(R.string.metric_operating_cash_flow),
+                    getString(R.string.metric_free_cash_flow),
+                    getString(R.string.metric_liability_to_asset_ratio)
                 ).joinToString(", ")
             )
 
