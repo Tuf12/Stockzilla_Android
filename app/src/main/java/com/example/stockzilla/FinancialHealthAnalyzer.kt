@@ -158,10 +158,10 @@ data class StockData(
     val revenueGrowth: Double? = null,
     val averageRevenueGrowth: Double? = null,
     val averageNetIncomeGrowth: Double? = null,
-    val currentAssets: Double? = null,
-    val currentLiabilities: Double? = null,
+    val totalCurrentAssets: Double? = null,
+    val totalCurrentLiabilities: Double? = null,
     val retainedEarnings: Double? = null,
-    val operatingCashFlow: Double? = null,
+    val netCashProvidedByOperatingActivities: Double? = null,
     val freeCashFlowMargin: Double? = null,
     val ebitdaMarginGrowth: Double? = null,
     val workingCapital: Double? = null,
@@ -294,7 +294,7 @@ class FinancialHealthAnalyzer {
         metrics["pb_ratio"] = stockData.pbRatio
         metrics["ebitda"] = stockData.ebitda
         metrics["free_cash_flow"] = stockData.freeCashFlow
-        metrics["operating_cash_flow"] = stockData.operatingCashFlow
+        metrics["operating_cash_flow"] = stockData.netCashProvidedByOperatingActivities
         metrics["free_cash_flow_margin"] = stockData.freeCashFlowMargin
 
         val revenue = stockData.revenue
@@ -315,8 +315,8 @@ class FinancialHealthAnalyzer {
             null
         }
 
-        val currentAssets = stockData.currentAssets
-        val currentLiabilities = stockData.currentLiabilities
+        val currentAssets = stockData.totalCurrentAssets
+        val currentLiabilities = stockData.totalCurrentLiabilities
         metrics["current_ratio"] = if (currentAssets != null && currentLiabilities != null && currentLiabilities != 0.0) {
             currentAssets / currentLiabilities
         } else {
@@ -383,24 +383,22 @@ class FinancialHealthAnalyzer {
         inputs.workingCapitalRatio?.let { ratio ->
             oScore += -1.43 * ratio
 
-            inputs.currentAssets?.let { currentAssets ->
-                val currentLiabilities = inputs.currentLiabilities
+            inputs.totalCurrentAssets?.let { currentAssets ->
+                val currentLiabilities = inputs.totalCurrentLiabilities
                 if (currentAssets > 0 && currentLiabilities != null) {
                     oScore += 0.076 * (currentLiabilities / currentAssets)
                 }
+            }
         }
 
-            if (inputs.totalLiabilities > inputs.totalAssets) {
+        if (inputs.totalLiabilities > inputs.totalAssets) {
             oScore += -1.72
         }
 
-            inputs.netIncomeRatio?.let { ratio ->
-                oScore += -2.37 * ratio
-
-            }
-
-            oScore += -1.83 * inputs.fundsFromOpsRatio
+        inputs.netIncomeRatio?.let { ratio ->
+            oScore += -2.37 * ratio
         }
+        oScore += -1.83 * inputs.fundsFromOpsRatio
 
         if (inputs.hasTwoYearLosses) {
             oScore += 0.285
@@ -683,8 +681,9 @@ private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
     val totalAssets = stockData.totalAssets?.takeIf { it > 0 } ?: return null
     val totalLiabilities = stockData.totalLiabilities?.takeIf { it >= 0 } ?: return null
 
-    val currentAssets = stockData.currentAssets
-    val currentLiabilities = stockData.currentLiabilities
+    val currentAssets = stockData.totalCurrentAssets
+    val currentLiabilities = stockData.totalCurrentLiabilities
+
 
     val workingCapital = stockData.workingCapital ?: run {
         if (currentAssets != null && currentLiabilities != null) {
@@ -701,7 +700,8 @@ private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
     val netIncome = stockData.netIncome
         ?: stockData.netIncomeHistory.firstOrNull { it != null }
 
-    val fundsFromOps = stockData.operatingCashFlow
+    val fundsFromOps = stockData.netCashProvidedByOperatingActivities
+
         ?: stockData.freeCashFlow
         ?: stockData.ebitda
 
@@ -725,8 +725,8 @@ private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
         totalAssets = totalAssets,
         totalLiabilities = totalLiabilities,
         workingCapitalRatio = workingCapitalRatio,
-        currentAssets = currentAssets,
-        currentLiabilities = currentLiabilities,
+        totalCurrentAssets = currentAssets,
+        totalCurrentLiabilities = currentLiabilities,
         retainedEarnings = stockData.retainedEarnings,
         netIncomeRatio = netIncomeRatio,
         netIncomeHistory = history,
@@ -745,8 +745,8 @@ private data class ResilienceInputs(
     val totalAssets: Double,
     val totalLiabilities: Double,
     val workingCapitalRatio: Double?,
-    val currentAssets: Double?,
-    val currentLiabilities: Double?,
+    val totalCurrentAssets: Double?,
+    val totalCurrentLiabilities: Double?,
     val retainedEarnings: Double?,
     val netIncomeRatio: Double?,
     val netIncomeHistory: List<Double?>,

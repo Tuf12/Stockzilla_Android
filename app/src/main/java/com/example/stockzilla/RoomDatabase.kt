@@ -11,6 +11,8 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Entity(tableName = "favorites")
 data class FavoriteEntity(
@@ -31,6 +33,11 @@ data class FavoriteEntity(
     val outstandingShares: Double?,
     val totalAssets: Double?,
     val totalLiabilities: Double?,
+    val totalCurrentAssets: Double?,
+    val totalCurrentLiabilities: Double?,
+    val retainedEarnings: Double?,
+    val workingCapital: Double?,
+    val netCashProvidedByOperatingActivities: Double?,
     val sector: String?,
     val industry: String?,
     val healthScore: Int?,
@@ -64,7 +71,7 @@ interface FavoritesDao {
 
 @Database(
     entities = [FavoriteEntity::class, StockCacheEntity::class],
-    version = 3, // Increment version due to schema change
+    version = 4, // Increment version due to schema change
     exportSchema = false
 )
 abstract class StockzillaDatabase : RoomDatabase() {
@@ -74,6 +81,16 @@ abstract class StockzillaDatabase : RoomDatabase() {
         @Volatile
         private var INSTANCE: StockzillaDatabase? = null
 
+        private val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(database: SupportSQLiteDatabase) {
+                database.execSQL("ALTER TABLE favorites ADD COLUMN totalCurrentAssets REAL")
+                database.execSQL("ALTER TABLE favorites ADD COLUMN totalCurrentLiabilities REAL")
+                database.execSQL("ALTER TABLE favorites ADD COLUMN retainedEarnings REAL")
+                database.execSQL("ALTER TABLE favorites ADD COLUMN workingCapital REAL")
+                database.execSQL("ALTER TABLE favorites ADD COLUMN netCashProvidedByOperatingActivities REAL")
+            }
+        }
+
         fun getDatabase(context: Context): StockzillaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -81,6 +98,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
+                    .addMigrations(MIGRATION_3_4)
                     // Allow destructive migrations while schema is stabilizing
                     .fallbackToDestructiveMigration(false)
                     .build()
@@ -114,6 +132,11 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
                 outstandingShares = entity.outstandingShares,
                 totalAssets = entity.totalAssets,
                 totalLiabilities = entity.totalLiabilities,
+                totalCurrentAssets = entity.totalCurrentAssets,
+                totalCurrentLiabilities = entity.totalCurrentLiabilities,
+                retainedEarnings = entity.retainedEarnings,
+                netCashProvidedByOperatingActivities = entity.netCashProvidedByOperatingActivities,
+                workingCapital = entity.workingCapital,
                 sector = entity.sector,
                 industry = entity.industry
             )
@@ -139,6 +162,11 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
             outstandingShares = stockData.outstandingShares,
             totalAssets = stockData.totalAssets,
             totalLiabilities = stockData.totalLiabilities,
+            totalCurrentAssets = stockData.totalCurrentAssets,
+            totalCurrentLiabilities = stockData.totalCurrentLiabilities,
+            retainedEarnings = stockData.retainedEarnings,
+            workingCapital = stockData.workingCapital,
+            netCashProvidedByOperatingActivities = stockData.netCashProvidedByOperatingActivities,
             sector = stockData.sector,
             industry = stockData.industry,
             healthScore = healthScore,
@@ -170,6 +198,11 @@ class FavoritesRepository(private val favoritesDao: FavoritesDao) {
                 outstandingShares = stockData.outstandingShares,
                 totalAssets = stockData.totalAssets,
                 totalLiabilities = stockData.totalLiabilities,
+                totalCurrentAssets = stockData.totalCurrentAssets,
+                totalCurrentLiabilities = stockData.totalCurrentLiabilities,
+                retainedEarnings = stockData.retainedEarnings,
+                workingCapital = stockData.workingCapital,
+                netCashProvidedByOperatingActivities = stockData.netCashProvidedByOperatingActivities,
                 sector = stockData.sector,
                 industry = stockData.industry,
                 healthScore = healthScore,

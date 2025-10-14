@@ -45,12 +45,14 @@ data class FMPBalanceSheet(
     @SerializedName("totalCurrentAssets") val totalCurrentAssets: Double?,
     @SerializedName("totalCurrentLiabilities") val totalCurrentLiabilities: Double?,
     @SerializedName("retainedEarnings") val retainedEarnings: Double?,
-    @SerializedName("workingCapital") val workingCapital: Double?
+    @SerializedName("workingCapital") val workingCapital: Double?,
+    @SerializedName("cashAndCashEquivalents") val cashAndCashEquivalents: Double? = null,
+    @SerializedName("shortTermDebt") val shortTermDebt: Double? = null
 )
 
 data class FMPCashFlow(
     @SerializedName("freeCashFlow") val freeCashFlow: Double?,
-    @SerializedName("netCashProvidedByOperatingActivities") val operatingCashFlow: Double?
+    @SerializedName("netCashProvidedByOperatingActivities") val netCashProvidedByOperatingActivities: Double?
 )
 
 data class FMPStockSearchResult(
@@ -222,7 +224,7 @@ class StockRepository(private val apiKey: String) {
                 null
             }
 
-            val operatingCashFlow = latestCashFlow?.operatingCashFlow
+            val operatingCashFlow = latestCashFlow?.netCashProvidedByOperatingActivities
             val workingCapital = latestBalance?.workingCapital ?: run {
                 val currentAssets = latestBalance?.totalCurrentAssets
                 val currentLiabilities = latestBalance?.totalCurrentLiabilities
@@ -255,18 +257,18 @@ class StockRepository(private val apiKey: String) {
                 outstandingShares = outstandingShares,
                 totalAssets = latestBalance?.totalAssets,
                 totalLiabilities = latestBalance?.totalLiabilities,
-                currentAssets = latestBalance?.totalCurrentAssets,
-                currentLiabilities = latestBalance?.totalCurrentLiabilities,
+                totalCurrentAssets = latestBalance?.totalCurrentAssets,
+                totalCurrentLiabilities = latestBalance?.totalCurrentLiabilities,
                 retainedEarnings = latestBalance?.retainedEarnings,
+                netCashProvidedByOperatingActivities = operatingCashFlow,
+                workingCapital = workingCapital,
                 sector = profile?.sector,
                 industry = profile?.industry,
                 revenueGrowth = latestRevenueGrowth,
                 averageRevenueGrowth = averageRevenueGrowth,
                 averageNetIncomeGrowth = averageNetIncomeGrowth,
-                operatingCashFlow = operatingCashFlow,
                 freeCashFlowMargin = freeCashFlowMargin,
                 ebitdaMarginGrowth = ebitdaMarginGrowth,
-                workingCapital = workingCapital,
                 revenueHistory = revenueHistory,
                 netIncomeHistory = netIncomeHistory,
                 ebitdaHistory = ebitdaHistory

@@ -53,11 +53,16 @@ class StockDetailsDialog : DialogFragment() {
                 appendLine("• ROE: ${stock.roe?.let { "%.1f%%".format(it * 100) } ?: "N/A"}")
                 appendLine("• Debt/Equity: ${stock.debtToEquity?.let { "%.2f".format(it) } ?: "N/A"}")
                 appendLine("• Free Cash Flow: ${stock.freeCashFlow?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Operating Cash Flow: ${stock.netCashProvidedByOperatingActivities?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Price/Book: ${stock.pbRatio?.let { "%.2f".format(it) } ?: "N/A"}")
                 appendLine("• EBITDA: ${stock.ebitda?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Outstanding Shares: ${stock.outstandingShares?.let { formatShareCount(it) } ?: "N/A"}")
                 appendLine("• Total Assets: ${stock.totalAssets?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Total Liabilities: ${stock.totalLiabilities?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Current Assets: ${stock.totalCurrentAssets?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Current Liabilities: ${stock.totalCurrentLiabilities?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Working Capital: ${stock.workingCapital?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• Retained Earnings: ${stock.retainedEarnings?.let { formatLargeNumber(it) } ?: "N/A"}")
             } ?: append("No stock data available")
         }
 
