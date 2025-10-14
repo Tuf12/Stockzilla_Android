@@ -367,12 +367,10 @@ class FinancialHealthAnalyzer {
     }
 
     private fun calculateResilienceScore(stockData: StockData): Double? {
-        val totalAssets = stockData.totalAssets?.takeIf { it > 0 } ?: return null
-        val totalLiabilities = stockData.totalLiabilities?.takeIf { it >= 0 } ?: return null
-
+        val inputs = buildResilienceInputs(stockData) ?: return null
         var oScore = -1.32
 
-        val assetScale = (totalAssets / GNP_PRICE_LEVEL_INDEX).takeIf { it > 0 }
+        val assetScale = (inputs.totalAssets / GNP_PRICE_LEVEL_INDEX).takeIf { it > 0 }
         assetScale?.let { scale ->
             val logged = kotlin.math.ln(scale)
             if (logged.isFinite()) {
@@ -380,57 +378,43 @@ class FinancialHealthAnalyzer {
             }
         }
 
-        oScore += 6.03 * (totalLiabilities / totalAssets)
+        oScore += 6.03 * (inputs.totalLiabilities / inputs.totalAssets)
 
-        val workingCapital = stockData.workingCapital ?: run {
-            val currentAssets = stockData.currentAssets
-            val currentLiabilities = stockData.currentLiabilities
-            if (currentAssets != null && currentLiabilities != null) {
-                currentAssets - currentLiabilities
-            } else {
-                null
-            }
+        inputs.workingCapitalRatio?.let { ratio ->
+            oScore += -1.43 * ratio
+
+            inputs.currentAssets?.let { currentAssets ->
+                val currentLiabilities = inputs.currentLiabilities
+                if (currentAssets > 0 && currentLiabilities != null) {
+                    oScore += 0.076 * (currentLiabilities / currentAssets)
+                }
         }
 
-        workingCapital?.let {
-            oScore += -1.43 * (it / totalAssets)
-        }
-
-        val currentAssets = stockData.currentAssets
-        val currentLiabilities = stockData.currentLiabilities
-        if (currentAssets != null && currentAssets > 0 && currentLiabilities != null) {
-            oScore += 0.076 * (currentLiabilities / currentAssets)
-        }
-
-        if (totalLiabilities > totalAssets) {
+            if (inputs.totalLiabilities > inputs.totalAssets) {
             oScore += -1.72
         }
 
-        stockData.netIncome?.let { netIncome ->
-            oScore += -2.37 * (netIncome / totalAssets)
+            inputs.netIncomeRatio?.let { ratio ->
+                oScore += -2.37 * ratio
+
+            }
+
+            oScore += -1.83 * inputs.fundsFromOpsRatio
         }
 
-        val fundsFromOps = stockData.operatingCashFlow ?: stockData.freeCashFlow ?: stockData.ebitda
-        if (fundsFromOps != null && totalLiabilities > 0) {
-            oScore += -1.83 * (fundsFromOps / totalLiabilities)
-        }
-
-        val hasTwoYearLoss = stockData.netIncomeHistory.take(2).let { history ->
-            history.size == 2 && history.all { it != null && it < 0 }
-        }
-        if (hasTwoYearLoss) {
+        if (inputs.hasTwoYearLosses) {
             oScore += 0.285
         }
 
-        computeNetIncomeChange(stockData.netIncomeHistory)?.let { change ->
-            oScore += -0.521 * change
-        }
+        val netIncomeChange = computeNetIncomeChange(inputs.netIncomeHistory) ?: 0.0
+        oScore += -0.521 * netIncomeChange
+
 
         val bankruptcyProbability = 1.0 / (1.0 + exp(-oScore))
-        val fraction = (DISTRESS_PROBABILITY - bankruptcyProbability) /
+        val rawFraction = (DISTRESS_PROBABILITY - bankruptcyProbability) /
                 (DISTRESS_PROBABILITY - SAFE_PROBABILITY)
-        val normalized = (fraction / 2.0) + DEFAULT_NEUTRAL_FRACTION
-        val resilience = sigmoidNormalizeFraction(normalized) * 10.0
+        val clampedFraction = rawFraction.coerceIn(0.0, 1.0)
+        val resilience = sigmoidNormalizeFraction(clampedFraction) * 10.0
 
         return resilience.coerceIn(0.0, 10.0)
     }
@@ -694,6 +678,81 @@ private fun computeNetIncomeChange(history: List<Double?>): Double? {
     val denominator = (abs(current) + abs(previous)).takeIf { it > 0 } ?: return null
     return (current - previous) / denominator
 }
+
+private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
+    val totalAssets = stockData.totalAssets?.takeIf { it > 0 } ?: return null
+    val totalLiabilities = stockData.totalLiabilities?.takeIf { it >= 0 } ?: return null
+
+    val currentAssets = stockData.currentAssets
+    val currentLiabilities = stockData.currentLiabilities
+
+    val workingCapital = stockData.workingCapital ?: run {
+        if (currentAssets != null && currentLiabilities != null) {
+            currentAssets - currentLiabilities
+        } else {
+            null
+        }
+    }
+
+    val workingCapitalRatio = workingCapital?.let {
+        (it / totalAssets).takeIf { ratio -> ratio.isFinite() }
+    }
+
+    val netIncome = stockData.netIncome
+        ?: stockData.netIncomeHistory.firstOrNull { it != null }
+
+    val fundsFromOps = stockData.operatingCashFlow
+        ?: stockData.freeCashFlow
+        ?: stockData.ebitda
+
+    val fundsFromOpsRatio = when {
+        fundsFromOps == null -> 0.0
+        totalLiabilities > 0.0 -> (fundsFromOps / totalLiabilities).takeIf { it.isFinite() } ?: 0.0
+        else -> 0.0
+    }
+
+    val netIncomeRatio = netIncome?.let {
+        (it / totalAssets).takeIf { ratio -> ratio.isFinite() }
+    }
+
+    val history = if (stockData.netIncomeHistory.isNotEmpty()) {
+        stockData.netIncomeHistory
+    } else {
+        listOf(netIncome)
+    }
+
+    return ResilienceInputs(
+        totalAssets = totalAssets,
+        totalLiabilities = totalLiabilities,
+        workingCapitalRatio = workingCapitalRatio,
+        currentAssets = currentAssets,
+        currentLiabilities = currentLiabilities,
+        retainedEarnings = stockData.retainedEarnings,
+        netIncomeRatio = netIncomeRatio,
+        netIncomeHistory = history,
+        fundsFromOpsRatio = fundsFromOpsRatio,
+        hasTwoYearLosses = hasConsecutiveNetLosses(history)
+    )
+}
+
+private fun hasConsecutiveNetLosses(history: List<Double?>): Boolean {
+    val relevant = history.take(2)
+    if (relevant.size < 2) return false
+    return relevant.all { value -> value != null && value < 0 }
+}
+
+private data class ResilienceInputs(
+    val totalAssets: Double,
+    val totalLiabilities: Double,
+    val workingCapitalRatio: Double?,
+    val currentAssets: Double?,
+    val currentLiabilities: Double?,
+    val retainedEarnings: Double?,
+    val netIncomeRatio: Double?,
+    val netIncomeHistory: List<Double?>,
+    val fundsFromOpsRatio: Double,
+    val hasTwoYearLosses: Boolean
+)
 
 private const val DEFAULT_NEUTRAL_SCORE = 5.0
 private const val DEFAULT_NEUTRAL_FRACTION = 0.5

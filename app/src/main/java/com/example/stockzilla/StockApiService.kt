@@ -9,6 +9,8 @@ import retrofit2.http.Query
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.google.gson.annotations.SerializedName
+import retrofit2.HttpException
+import java.io.IOException
 
 data class FMPProfile(
     @SerializedName("symbol") val symbol: String,
@@ -124,7 +126,21 @@ class StockRepository(private val apiKey: String) {
                 return@withContext Result.success(normalizedSymbol)
             }
         } catch (e: Exception) {
-            return@withContext Result.failure(e)
+            when (e) {
+                is HttpException -> {
+                    if (e.code() != 404) {
+                        return@withContext Result.failure(e)
+                    }
+                }
+
+                is IOException -> {
+                    return@withContext Result.failure(Exception("Network error while looking up $normalizedSymbol. Please try again."))
+                }
+
+                else -> {
+                    return@withContext Result.failure(e)
+                }
+            }
         }
 
         return@withContext try {
