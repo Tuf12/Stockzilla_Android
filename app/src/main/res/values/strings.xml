@@ -22,6 +22,7 @@
     <string name="stockzilla">🦖 Stockzilla</string>
     <string name="net_income">Net Income</string>
     <string name="_99_8b">$99.8B</string>
+    <string name="resilience_score_format">%1$d / 3</string>
     <string name="health_score">Financial health</string>
     <string name="strong_buy_excellent_financial_health">Strong Buy - Excellent financial health</string>
     <string name="add_to_favorites">Add to Favorites</string>
@@ -59,7 +60,7 @@
     <string name="metrics_used_value">%1$s</string>
     <string name="core_health_description">Measures profitability, operational efficiency, and earnings quality to judge how sturdy the core business is today.</string>
     <string name="growth_forecast_description">Blends multi-year revenue and earnings trends with margin scalability and relative valuation to highlight long-term expansion potential.</string>
-    <string name="balance_sheet_resilience_description">Translates Ohlson\'s O-Score into a bankruptcy risk check by blending leverage, liquidity, cash flow coverage, and profitability pressure tests.</string>
+    <string name="balance_sheet_resilience_description">Applies the Altman Z-score playbook to bankruptcy risk by blending asset productivity, solvency, liquidity, profitability, and equity cushion ratios.</string>
     <string name="metric_revenue_growth">Revenue Growth</string>
     <string name="metric_average_revenue_growth">Average Revenue Growth</string>
     <string name="metric_free_cash_flow_margin">Free Cash Flow Margin</string>
@@ -87,7 +88,7 @@
     <string name="preview_composite_score">8/10</string>
     <string name="preview_core_health_score">7 / 10</string>
     <string name="preview_forecast_score">6 / 10</string>
-    <string name="preview_balance_sheet_score">5 / 10</string>
+    <string name="preview_balance_sheet_score">2 / 3</string>
     <string name="preview_stock_symbol">AAPL</string>
     <string name="preview_company_name">Apple Inc.</string>
     <string name="preview_share_price">$180.34</string>
@@ -117,4 +118,10 @@
     <string name="metric_liability_to_asset_ratio">Liability to Asset Ratio</string>
     <string name="metric_working_capital_ratio">Working Capital Ratio</string>
     <string name="metric_retained_earnings">Retained Earnings</string>
+    <string name="metric_working_capital_to_assets">Working Capital / Total Assets</string>
+    <string name="metric_retained_earnings_to_assets">Retained Earnings / Total Assets</string>
+    <string name="metric_ebitda_to_assets">EBITDA / Total Assets</string>
+    <string name="metric_market_cap_to_liabilities">Market Cap / Total Liabilities</string>
+    <string name="metric_revenue_to_assets">Revenue / Total Assets</string>
+    <string name="metric_two_year_net_income_trend">Two-Year Net Income Trend</string>
 </resources>

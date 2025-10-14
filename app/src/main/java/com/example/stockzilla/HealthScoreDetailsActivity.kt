@@ -97,19 +97,19 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                 ).joinToString(", ")
             )
 
-            tvZScoreValue.text = getString(R.string.sub_score_format, healthScore.zSubScore)
+
+            tvZScoreValue.text = getString(R.string.resilience_score_format, healthScore.zSubScore)
             tvResilienceDescription.text = getString(R.string.balance_sheet_resilience_description)
             tvResilienceMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
-                    getString(R.string.metric_total_assets),
-                    getString(R.string.metric_total_liabilities),
-                    getString(R.string.metric_working_capital),
-                    getString(R.string.metric_current_ratio),
-                    getString(R.string.metric_net_income_trend),
-                    getString(R.string.metric_operating_cash_flow),
-                    getString(R.string.metric_free_cash_flow),
-                    getString(R.string.metric_liability_to_asset_ratio)
+
+                    getString(R.string.metric_working_capital_to_assets),
+                    getString(R.string.metric_retained_earnings_to_assets),
+                    getString(R.string.metric_ebitda_to_assets),
+                    getString(R.string.metric_market_cap_to_liabilities),
+                    getString(R.string.metric_revenue_to_assets),
+                    getString(R.string.metric_two_year_net_income_trend)
                 ).joinToString(", ")
             )
 
