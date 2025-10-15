@@ -13,6 +13,8 @@
     <string name="_394_3b">$394.3B</string>
     <string name="_8_10">8/10</string>
     <string name="_150_25">$150.25</string>
+    <string name="fair_value_price">Fair Value Price (Industry Avg %1$s): %2$s</string>
+    <string name="fair_value_unavailable">Fair value estimate unavailable</string>
     <string name="technology">Technology</string>
     <string name="apple_inc">Apple Inc.</string>
     <string name="aapl">AAPL</string>
@@ -112,6 +114,17 @@
     <string name="valuation_undervalued">Relative valuation: Under-valued vs %1$s peers%2$s.</string>
     <string name="valuation_overvalued">Relative valuation: Over-valued vs %1$s peers%2$s.</string>
     <string name="valuation_fair">Relative valuation: In line with %1$s peers.</string>
+    <string name="search_industry">Search Industry</string>
+    <string name="industry_peers_title">Industry peers</string>
+    <string name="industry_peers_subtitle">Companies operating in the %1$s industry.</string>
+    <string name="industry_current_stock">You&apos;re analyzing: %1$s</string>
+    <string name="industry_list_empty">No peers were found for this industry yet.</string>
+    <string name="industry_list_error">Unable to load industry peers right now. Please try again later.</string>
+    <string name="industry_missing_message">Analyze a stock first to explore its industry peers.</string>
+    <string name="industry_not_available_message">We couldn&apos;t determine the industry for this stock.</string>
+    <string name="price_unavailable">Price unavailable</string>
+    <string name="price_format">$%1$.2f</string>
+    <string name="industry_current_badge">Currently analyzing</string>
     <string name="valuation_unknown">Relative valuation: Not enough data to compare %1$s.</string>
     <string name="search">Search</string>
     <string name="metric_net_margin">Net Margin</string>

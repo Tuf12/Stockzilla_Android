@@ -119,8 +119,10 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
-        binding.btnSearch.setOnClickListener {
-            performSearch()
+        binding.btnSearchIndustry.apply {
+            isEnabled = false
+            alpha = 0.5f
+            setOnClickListener { openIndustryPeers() }
         }
 
         binding.btnAnalyze.setOnClickListener {
@@ -170,6 +172,7 @@ class MainActivity : AppCompatActivity() {
                 latestHealthScore = null
             }
             updateHealthDetailsAvailability()
+            updateIndustryButtonAvailability(stockData)
             stockData?.let { displayStockData(it) }
         }
 
@@ -274,7 +277,18 @@ class MainActivity : AppCompatActivity() {
             // Basic info
             tvCompanyName.text = stockData.companyName ?: "Unknown Company"
             tvTicker.text = stockData.symbol
-            tvPrice.text = stockData.price?.let { "$%.2f".format(it) } ?: "N/A"
+            val currentPriceText = stockData.price?.let { "$%.2f".format(it) } ?: getString(R.string.not_available)
+            tvPrice.text = currentPriceText
+            val fairValueResult = BenchmarkData.calculateFairValue(stockData)
+            tvFairValuePrice.text = fairValueResult?.let {
+                val fairValuePriceText = "$%.2f".format(it.impliedPrice)
+                getString(
+                    R.string.fair_value_price,
+                    it.multipleLabel,
+                    fairValuePriceText
+                )
+            } ?: getString(R.string.fair_value_unavailable)
+            tvFairValuePrice.setOnClickListener { openHealthScoreDetails() }
             tvSector.text = stockData.sector ?: "Unknown"
 
             // Get smart display metrics based on net income
@@ -385,6 +399,7 @@ class MainActivity : AppCompatActivity() {
         latestStockData = null
         latestHealthScore = null
         updateHealthDetailsAvailability()
+        updateIndustryButtonAvailability(null)
     }
 
     private fun loadFavorites() {
@@ -408,6 +423,36 @@ class MainActivity : AppCompatActivity() {
         val isReady = stockData != null && healthScore != null
         binding.btnViewHealthDetails.isEnabled = isReady
         binding.btnViewHealthDetails.alpha = if (isReady) 1f else 0.5f
+    }
+
+    private fun updateIndustryButtonAvailability(stockData: StockData?) {
+        val hasIndustry = !stockData?.industry.isNullOrBlank()
+        binding.btnSearchIndustry.isEnabled = hasIndustry
+        binding.btnSearchIndustry.alpha = if (hasIndustry) 1f else 0.5f
+    }
+
+    private fun openIndustryPeers() {
+        val stockData = latestStockData ?: viewModel.currentStockData.value
+        if (stockData == null) {
+            Toast.makeText(this, getString(R.string.industry_missing_message), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val industry = stockData.industry
+        if (industry.isNullOrBlank()) {
+            Toast.makeText(this, getString(R.string.industry_not_available_message), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = Intent(this, IndustryStocksActivity::class.java).apply {
+            putExtra(IndustryStocksActivity.EXTRA_INDUSTRY, industry)
+            putExtra(IndustryStocksActivity.EXTRA_SYMBOL, stockData.symbol)
+            putExtra(
+                IndustryStocksActivity.EXTRA_COMPANY_NAME,
+                stockData.companyName ?: stockData.symbol
+            )
+        }
+        startActivity(intent)
     }
 
     private fun openHealthScoreDetails() {

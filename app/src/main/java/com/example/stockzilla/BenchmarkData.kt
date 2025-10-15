@@ -91,6 +91,53 @@ object BenchmarkData {
     fun getBenchmarkAverages(stockData: StockData): Benchmark {
         return getBenchmark(stockData.industry, stockData.sector)
     }
+
+    fun calculateFairValue(stockData: StockData): FairValueResult? {
+        val sharesOutstanding = stockData.outstandingShares ?: return null
+        if (sharesOutstanding <= 0) return null
+
+        val netIncome = stockData.netIncome
+        val revenue = stockData.revenue
+        val usePe = (netIncome ?: 0.0) > 0
+
+        val industryBenchmark = getBenchmark(stockData.industry, stockData.sector)
+        val benchmark = if (usePe) {
+            if (industryBenchmark.peAvg != null) {
+                industryBenchmark
+            } else {
+                getBenchmark(null, stockData.sector)
+            }
+        } else {
+            if (industryBenchmark.psAvg != null) {
+                industryBenchmark
+            } else {
+                getBenchmark(null, stockData.sector)
+            }
+        }
+
+        return if (usePe) {
+            val peAvg = benchmark.peAvg ?: return null
+            val netIncomeValue = netIncome ?: return null
+            val impliedPrice = (netIncomeValue * peAvg) / sharesOutstanding
+            if (!impliedPrice.isFinite()) return null
+            FairValueResult(
+                impliedPrice = impliedPrice,
+                multipleLabel = "P/E Ratio",
+                multipleValue = peAvg
+            )
+        } else {
+            val psAvg = benchmark.psAvg ?: return null
+            val revenueValue = revenue ?: return null
+            if (revenueValue <= 0) return null
+            val impliedPrice = (revenueValue * psAvg) / sharesOutstanding
+            if (!impliedPrice.isFinite()) return null
+            FairValueResult(
+                impliedPrice = impliedPrice,
+                multipleLabel = "P/S Ratio",
+                multipleValue = psAvg
+            )
+        }
+    }
     /**
      * Get the appropriate ratio and benchmark based on net income
      */
@@ -128,4 +175,10 @@ data class DisplayMetrics(
     val primaryLabel: String,
     val benchmarkRatio: Double?,
     val benchmarkLabel: String
+)
+
+data class FairValueResult(
+    val impliedPrice: Double,
+    val multipleLabel: String,
+    val multipleValue: Double
 )

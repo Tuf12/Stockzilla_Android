@@ -61,6 +61,25 @@ data class FMPStockSearchResult(
     @SerializedName("exchangeShortName") val exchange: String?
 )
 
+
+data class FMPIndustryStock(
+    @SerializedName("symbol") val symbol: String,
+    @SerializedName("companyName") val companyName: String?,
+    @SerializedName("sector") val sector: String?,
+    @SerializedName("industry") val industry: String?,
+    @SerializedName("price") val price: Double?,
+    @SerializedName("marketCap") val marketCap: Double?
+)
+
+data class IndustryPeer(
+    val symbol: String,
+    val companyName: String?,
+    val sector: String?,
+    val industry: String?,
+    val price: Double?,
+    val marketCap: Double?
+)
+
 interface FMPApiService {
     @GET("profile/{symbol}")
     suspend fun getProfile(
@@ -104,6 +123,13 @@ interface FMPApiService {
         @Query("limit") limit: Int = 5,
         @Query("apikey") apiKey: String
     ): List<FMPStockSearchResult>
+
+    @GET("stock-screener")
+    suspend fun getStocksByIndustry(
+        @Query("industry") industry: String,
+        @Query("limit") limit: Int = 50,
+        @Query("apikey") apiKey: String
+    ): List<FMPIndustryStock>
 }
 
 class StockRepository(private val apiKey: String) {
@@ -158,6 +184,31 @@ class StockRepository(private val apiKey: String) {
             Result.failure(e)
         }
     }
+
+    suspend fun getIndustryPeers(industry: String, limit: Int = 50): Result<List<IndustryPeer>> =
+        withContext(Dispatchers.IO) {
+            if (industry.isBlank()) {
+                return@withContext Result.failure(Exception("Industry must not be blank."))
+            }
+
+            return@withContext try {
+                val peers = apiService.getStocksByIndustry(industry, limit = limit, apiKey = apiKey)
+                    .distinctBy { it.symbol }
+                    .map {
+                        IndustryPeer(
+                            symbol = it.symbol,
+                            companyName = it.companyName,
+                            sector = it.sector,
+                            industry = it.industry,
+                            price = it.price,
+                            marketCap = it.marketCap
+                        )
+                    }
+                Result.success(peers)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
 
     suspend fun getStockData(symbol: String): Result<StockData> = withContext(Dispatchers.IO) {
         try {
