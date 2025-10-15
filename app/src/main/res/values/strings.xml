@@ -117,11 +117,11 @@
     <string name="search_industry">Search Industry</string>
     <string name="industry_peers_title">Industry peers</string>
     <string name="industry_peers_subtitle">Companies operating in the %1$s industry.</string>
-    <string name="industry_current_stock">You&apos;re analyzing: %1$s</string>
+    <string name="industry_current_stock">You\'re analyzing: %1$s</string>
     <string name="industry_list_empty">No peers were found for this industry yet.</string>
     <string name="industry_list_error">Unable to load industry peers right now. Please try again later.</string>
     <string name="industry_missing_message">Analyze a stock first to explore its industry peers.</string>
-    <string name="industry_not_available_message">We couldn&apos;t determine the industry for this stock.</string>
+    <string name="industry_not_available_message">We couldn\'t determine the industry for this stock.</string>
     <string name="price_unavailable">Price unavailable</string>
     <string name="price_format">$%1$.2f</string>
     <string name="industry_current_badge">Currently analyzing</string>
