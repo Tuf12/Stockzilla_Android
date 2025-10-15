@@ -126,6 +126,7 @@
     <string name="price_format">$%1$.2f</string>
     <string name="industry_current_badge">Currently analyzing</string>
     <string name="valuation_unknown">Relative valuation: Not enough data to compare %1$s.</string>
+    <string name="industry_symbol_not_available">Peer ticker is unavailable right now.</string>
     <string name="search">Search</string>
     <string name="metric_net_margin">Net Margin</string>
     <string name="metric_liability_to_asset_ratio">Liability to Asset Ratio</string>
@@ -137,4 +138,56 @@
     <string name="metric_market_cap_to_liabilities">Market Cap / Total Liabilities</string>
     <string name="metric_revenue_to_assets">Revenue / Total Assets</string>
     <string name="metric_two_year_net_income_trend">Two-Year Net Income Trend</string>
+
+    <string name="health_score_detail_value">Value: %1$s</string>
+    <string name="health_score_detail_weight">Weight: %1$s</string>
+    <string name="health_score_detail_normalized">Normalized contribution: %1$s</string>
+    <string name="health_score_no_details_available">We couldn\'t surface the supporting metrics for this section.</string>
+    <string name="health_score_missing_section_details">No additional details available for %1$s yet.</string>
+    <string name="health_score_neutral_assumption">Neutral placeholder used because this data point wasn\'t reported.</string>
+    <string name="health_score_core_summary">Core health score: %1$d / 10. Higher scores reflect durable profitability, cash generation, and balance sheet quality.</string>
+    <string name="health_score_growth_summary">Growth &amp; forecast score: %1$d / 10. Higher scores indicate stronger multi-year expansion signals and healthier valuation positioning.</string>
+    <string name="health_score_resilience_summary">Bankruptcy risk checker level: %1$d / 3. Higher levels signal sturdier Altman Z-style resilience.</string>
+    <string name="health_score_no_metric_breakdown">We couldn\'t calculate a detailed metric breakdown for this company.</string>
+    <string name="health_score_growth_missing">We need more history to unpack the growth &amp; forecast inputs.</string>
+    <string name="health_score_resilience_missing">We need complete asset, liability, and market value data to expand the bankruptcy risk details.</string>
+
+    <string name="health_score_rationale_revenue">Revenue size highlights the scale of the company and the dollars available to cover fixed costs.</string>
+    <string name="health_score_rationale_net_income">Net income tracks bottom-line profitability and the firms ability to convert revenue into earnings.</string>
+    <string name="health_score_rationale_eps">EPS reveals how much profit is available to each share, helping compare earnings power per investor.</string>
+    <string name="health_score_rationale_pe_ratio">The P/E ratio benchmarks how richly the market prices each dollar of earnings against peers.</string>
+    <string name="health_score_rationale_ps_ratio">The P/S ratio shows whether investors are overpaying or underpaying for each dollar of revenue.</string>
+    <string name="health_score_rationale_roe">ROE captures how efficiently management turns shareholder equity into profit.</string>
+    <string name="health_score_rationale_debt_to_equity">The debt-to-equity ratio gauges leverage and how reliant the company is on borrowed capital.</string>
+    <string name="health_score_rationale_pb_ratio">Price-to-book compares market value to net assets, signalling whether equity is priced at a premium or discount.</string>
+    <string name="health_score_rationale_ebitda">EBITDA demonstrates operating earnings before financing choices and taxes.</string>
+    <string name="health_score_rationale_free_cash_flow">Free cash flow tracks discretionary cash available after sustaining operations and investments.</string>
+    <string name="health_score_rationale_operating_cash_flow">Operating cash flow reveals the health of core operations independent of financing and investing flows.</string>
+    <string name="health_score_rationale_free_cash_flow_margin">Free cash flow margin highlights how efficiently revenue turns into excess cash.</string>
+    <string name="health_score_rationale_net_margin">Net margin shows the share of each dollar of sales that drops to the bottom line.</string>
+    <string name="health_score_rationale_ebitda_margin">EBITDA margin measures operating efficiency before interest, taxes, depreciation, and amortization.</string>
+    <string name="health_score_rationale_current_ratio">The current ratio tests near-term liquidity by comparing short-term assets to liabilities.</string>
+    <string name="health_score_rationale_liability_to_asset_ratio">Liability-to-asset ratio signals solvency by showing how much of the asset base is financed with debt.</string>
+    <string name="health_score_rationale_working_capital_ratio">Working capital ratio spotlights the cushion of short-term resources relative to the asset base.</string>
+    <string name="health_score_rationale_retained_earnings">Retained earnings reflect the cumulative profits reinvested back into the business.</string>
+    <string name="health_score_rationale_outstanding_shares">Outstanding shares influence per-share metrics and investor dilution risk.</string>
+    <string name="health_score_rationale_total_assets">Total assets capture the productive base supporting revenue and cash flow.</string>
+    <string name="health_score_rationale_total_liabilities">Total liabilities show the obligations that claims cash flow before equity holders.</string>
+
+    <string name="health_score_rationale_avg_revenue_growth">Average revenue growth smooths out volatility to show the long-term top-line trend.</string>
+    <string name="health_score_rationale_avg_net_income_growth">Average net income growth tracks whether profitability expands alongside revenue.</string>
+    <string name="health_score_rationale_recent_revenue_growth">Latest revenue growth reveals current momentum in sales.</string>
+    <string name="health_score_rationale_free_cash_flow_margin_growth">Sustained free cash flow margins suggest growth is backed by real cash.</string>
+    <string name="health_score_rationale_ebitda_margin_trend">EBITDA margin trend highlights whether operating leverage is improving.</string>
+    <string name="health_score_rationale_relative_valuation">Relative valuation compares the stocks pricing to peer benchmarks for a reality check.</string>
+
+    <string name="health_score_growth_valuation_value">%1$s vs peer benchmark %2$s</string>
+
+    <string name="health_score_rationale_working_capital_to_assets">Working capital to assets measures liquidity strength after inventory and receivables.</string>
+    <string name="health_score_rationale_retained_earnings_to_assets">Retained earnings to assets shows how much of the asset base was financed by cumulative profits.</string>
+    <string name="health_score_rationale_ebitda_to_assets">EBITDA to assets captures how productively the asset base generates operating earnings.</string>
+    <string name="health_score_rationale_market_cap_to_liabilities">Market cap to liabilities approximates equity market value versus obligations, a buffer against distress.</string>
+    <string name="health_score_rationale_revenue_to_assets">Revenue to assets reveals asset turnover and business efficiency.</string>
+    <string name="health_score_rationale_two_year_loss_penalty">Two consecutive years of net losses weaken the Altman-style safety buffer.</string>
+    <string name="health_score_two_year_loss_detail_value">Losses in both of the last two reporting periods.</string>
 </resources>

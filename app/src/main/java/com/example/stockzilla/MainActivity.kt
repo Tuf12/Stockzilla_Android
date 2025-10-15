@@ -18,8 +18,13 @@ import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.stockzilla.databinding.ActivityMainBinding
 import android.view.inputmethod.EditorInfo
 import kotlinx.coroutines.launch
+import java.util.Locale
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        const val EXTRA_ANALYZE_SYMBOL = "extra_analyze_symbol"
+    }
 
     private val viewModel: StockViewModel by viewModels()
     private lateinit var binding: ActivityMainBinding
@@ -44,6 +49,15 @@ class MainActivity : AppCompatActivity() {
 
         // Check if we need to setup API key
         checkApiKeySetup()
+
+
+        handleAnalyzeIntent(intent)
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAnalyzeIntent(intent)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -90,6 +104,16 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
+    private fun handleAnalyzeIntent(intent: Intent?) {
+        val symbol = intent?.getStringExtra(EXTRA_ANALYZE_SYMBOL)?.takeIf { it.isNotBlank() } ?: return
+
+        val formattedSymbol = symbol.trim().uppercase(Locale.US)
+        binding.etSearch.setText(formattedSymbol)
+        binding.etSearch.setSelection(formattedSymbol.length)
+        analyzeStock(formattedSymbol)
+        intent.removeExtra(EXTRA_ANALYZE_SYMBOL)
+    }
+
     private fun setupUI() {
         // Setup favorites RecyclerView
         favoritesAdapter = FavoritesAdapter(
@@ -126,7 +150,7 @@ class MainActivity : AppCompatActivity() {
         }
 
         binding.btnAnalyze.setOnClickListener {
-            val ticker = binding.etSearch.text.toString().uppercase()
+            val ticker = binding.etSearch.text.toString().uppercase(Locale.US)
             if (ticker.isNotBlank()) {
                 if (apiKeyManager.hasApiKey()) {
                     analyzeStock(ticker)

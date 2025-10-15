@@ -9,7 +9,8 @@ import androidx.recyclerview.widget.RecyclerView
 import com.example.stockzilla.databinding.ItemIndustryStockBinding
 
 class IndustryStocksAdapter(
-    private val currentSymbol: String?
+    private val currentSymbol: String?,
+    private val onStockClick: (IndustryPeer) -> Unit
 ) : ListAdapter<IndustryPeer, IndustryStocksAdapter.ViewHolder>(DiffCallback) {
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
@@ -39,6 +40,7 @@ class IndustryStocksAdapter(
             val isCurrent = currentSymbol?.equals(item.symbol, ignoreCase = true) == true
             binding.tvCurrentBadge.isVisible = isCurrent
             binding.root.strokeWidth = if (isCurrent) 4 else 0
+            binding.root.setOnClickListener { onStockClick(item) }
         }
     }
 

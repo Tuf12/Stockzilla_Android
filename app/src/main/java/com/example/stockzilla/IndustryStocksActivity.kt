@@ -8,6 +8,8 @@ import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.example.stockzilla.databinding.ActivityIndustryStocksBinding
 import kotlinx.coroutines.launch
+import android.content.Intent
+import java.util.Locale
 
 class IndustryStocksActivity : AppCompatActivity() {
 
@@ -54,7 +56,9 @@ class IndustryStocksActivity : AppCompatActivity() {
             binding.tvCurrentStock.text = getString(R.string.industry_current_stock, label)
         }
 
-        adapter = IndustryStocksAdapter(currentSymbol)
+        adapter = IndustryStocksAdapter(currentSymbol) { peer ->
+            openStockAnalysis(peer.symbol)
+        }
         binding.recyclerViewPeers.layoutManager = LinearLayoutManager(this)
         binding.recyclerViewPeers.adapter = adapter
 
@@ -72,6 +76,18 @@ class IndustryStocksActivity : AppCompatActivity() {
         }
 
         loadIndustryPeers(industry, apiKey)
+    }
+
+    private fun openStockAnalysis(symbol: String?) {
+        if (symbol.isNullOrBlank()) {
+            Toast.makeText(this, getString(R.string.industry_symbol_not_available), Toast.LENGTH_SHORT).show()
+            return
+        }
+
+        val intent = Intent(this, MainActivity::class.java).apply {
+            putExtra(MainActivity.EXTRA_ANALYZE_SYMBOL, symbol.uppercase(Locale.US))
+        }
+        startActivity(intent)
     }
 
     private fun loadIndustryPeers(industry: String, apiKey: String) {

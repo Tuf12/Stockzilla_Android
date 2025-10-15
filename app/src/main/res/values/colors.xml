@@ -56,4 +56,7 @@
     <color name="textPrimaryDark">#FFFFFF</color>
     <color name="textSecondaryDark">#B0B0B0</color>
 
+    <!-- Support colors -->
+    <color name="colorOnSurfaceVariant">#E0E0E0</color>
+
 </resources>

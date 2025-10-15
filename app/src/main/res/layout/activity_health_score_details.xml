@@ -632,12 +632,17 @@
                 android:padding="20dp">
 
                 <TextView
+                    android:id="@+id/tvHealthHeading"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:foreground="?attr/selectableItemBackgroundBorderless"
                     android:text="@string/health_sub_score_label"
-                    android:textColor="@color/textPrimary"
+                    android:textColor="@color/colorPrimaryVariant"
                     android:textSize="18sp"
-                    android:textStyle="bold" />
+                    android:textStyle="bold"
+                    tools:ignore="TooManyViews,TouchTargetSizeCheck" />
 
                 <TextView
                     android:id="@+id/tvHealthSubScoreValue"
@@ -687,8 +692,12 @@
             app:cardElevation="4dp">
 
             <LinearLayout
+                android:id="@+id/tvValuationHeading"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
                 android:orientation="vertical"
                 android:padding="20dp">
 
@@ -696,7 +705,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/forecast_sub_score_label"
-                    android:textColor="@color/textPrimary"
+                    android:textColor="@color/colorPrimaryVariant"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
@@ -748,8 +757,12 @@
             app:cardElevation="4dp">
 
             <LinearLayout
+                android:id="@+id/tvResilienceHeading"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
+                android:clickable="true"
+                android:focusable="true"
+                android:foreground="?attr/selectableItemBackgroundBorderless"
                 android:orientation="vertical"
                 android:padding="20dp">
 
@@ -757,7 +770,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:text="@string/z_sub_score_label"
-                    android:textColor="@color/textPrimary"
+                    android:textColor="@color/colorPrimaryVariant"
                     android:textSize="18sp"
                     android:textStyle="bold" />
 
