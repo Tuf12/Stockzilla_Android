@@ -19,7 +19,9 @@ import com.example.stockzilla.databinding.ActivityMainBinding
 import android.view.inputmethod.EditorInfo
 import kotlinx.coroutines.launch
 import java.util.Locale
-
+import java.text.DateFormat
+import java.time.Instant
+import java.util.Date
 
 class MainActivity : AppCompatActivity() {
 
@@ -33,6 +35,10 @@ class MainActivity : AppCompatActivity() {
     private lateinit var apiKeyManager: ApiKeyManager
     private var latestStockData: StockData? = null
     private var latestHealthScore: HealthScore? = null
+    private var isLoadingStock: Boolean = false
+
+    private val lastRefreshedFormatter: DateFormat =
+        DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -181,11 +187,22 @@ class MainActivity : AppCompatActivity() {
                 addToFavorites(stockData, healthScore)  // Update this call
             }
         }
+        binding.btnUpdateData.apply {
+            isEnabled = false
+            alpha = 0.5f
+            setOnClickListener {
+                lifecycleScope.launch {
+                    viewModel.refreshCurrentStock()
+                }
+            }
+        }
         binding.btnViewHealthDetails.apply {
             isEnabled = false
             alpha = 0.5f
             setOnClickListener { openHealthScoreDetails() }
         }
+
+        updateRefreshButtonState()
     }
 
 
@@ -198,6 +215,7 @@ class MainActivity : AppCompatActivity() {
             }
             updateHealthDetailsAvailability()
             updateIndustryButtonAvailability(stockData)
+            updateRefreshButtonState()
             stockData?.let { displayStockData(it) }
         }
 
@@ -222,11 +240,17 @@ class MainActivity : AppCompatActivity() {
         }
 
         viewModel.loading.observe(this) { isLoading ->
+            isLoadingStock = isLoading
+            updateRefreshButtonState()
             binding.progressBar.visibility = if (isLoading) {
                 android.view.View.VISIBLE
             } else {
                 android.view.View.GONE
             }
+        }
+
+        viewModel.lastRefreshed.observe(this) { timestamp ->
+            updateLastRefreshed(timestamp)
         }
 
         viewModel.resolvedSymbol.observe(this) { symbol ->
@@ -250,6 +274,23 @@ class MainActivity : AppCompatActivity() {
                 }
                 viewModel.clearError()
             }
+        }
+    }
+
+    private fun updateRefreshButtonState() {
+        val hasStock = latestStockData != null
+        val enabled = hasStock && !isLoadingStock
+        binding.btnUpdateData.isEnabled = enabled
+        binding.btnUpdateData.alpha = if (enabled) 1f else 0.5f
+    }
+
+    private fun updateLastRefreshed(timestamp: Long?) {
+        if (timestamp == null) {
+            binding.tvLastRefreshed.visibility = android.view.View.GONE
+        } else {
+            binding.tvLastRefreshed.visibility = android.view.View.VISIBLE
+            val formatted = lastRefreshedFormatter.format(Date(timestamp))
+            binding.tvLastRefreshed.text = getString(R.string.last_refreshed_format, formatted)
         }
     }
 
@@ -425,6 +466,7 @@ class MainActivity : AppCompatActivity() {
         latestHealthScore = null
         updateHealthDetailsAvailability()
         updateIndustryButtonAvailability(null)
+        updateRefreshButtonState()
     }
 
     private fun loadFavorites() {
@@ -525,6 +567,9 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
     private val _healthScore = MutableLiveData<HealthScore?>()
     val healthScore: LiveData<HealthScore?> = _healthScore
 
+    private val _lastRefreshed = MutableLiveData<Long?>()
+    val lastRefreshed: LiveData<Long?> = _lastRefreshed
+
     private val _favorites = MutableLiveData<List<StockData>>()
     val favorites: LiveData<List<StockData>> = _favorites
 
@@ -623,6 +668,46 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         )
     }
 
+    suspend fun refreshCurrentStock(forceRefresh: Boolean = true) {
+        val symbol = _currentStockData.value?.symbol ?: return
+
+        _loading.value = true
+        _resolvedSymbol.value = symbol
+
+        val result: Result<Pair<StockData, Boolean>> = if (forceRefresh) {
+            stockRepository.getStockData(symbol)
+                .onSuccess { stockData ->
+                    val now = Instant.now()
+                    stockCacheRepository.saveStockData(symbol, stockData, now)
+                    _lastRefreshed.value = now.toEpochMilli()
+                }
+                .map { it to false }
+        } else {
+            loadStockData(symbol, false)
+        }
+
+        result.fold(
+            onSuccess = { (stockData, _) ->
+                _currentStockData.value = stockData
+                val score = financialAnalyzer.calculateCompositeScore(stockData)
+                _healthScore.value = score
+
+                val isFavorite = favoritesRepository.isFavorite(symbol)
+                _isFavorited.value = isFavorite
+                if (isFavorite) {
+                    favoritesRepository.updateFavoriteData(stockData, score.compositeScore)
+                    loadFavorites()
+                }
+
+                _loading.value = false
+            },
+            onFailure = { exception ->
+                _error.value = exception.message ?: "Unable to refresh data right now."
+                _loading.value = false
+            }
+        )
+    }
+
     suspend fun addToFavorites(stockData: StockData) {
         favoritesRepository.addFavorite(stockData)
         loadFavorites()
@@ -657,6 +742,7 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         _healthScore.value = null
         _isFavorited.value = false  // Add this line
         _resolvedSymbol.value = null
+        _lastRefreshed.value = null
     }
 
     fun clearError() {
@@ -667,7 +753,8 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         if (!forceRefresh) {
             val cached = stockCacheRepository.getCachedStock(symbol)
             if (cached != null) {
-                return Result.success(cached to true)
+                _lastRefreshed.value = cached.cachedAt
+                return Result.success(cached.stockData to true)
             }
         } else {
             stockCacheRepository.pruneExpired()
@@ -675,7 +762,9 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
         val freshResult = stockRepository.getStockData(symbol)
         freshResult.onSuccess { stockData ->
-            stockCacheRepository.saveStockData(symbol, stockData)
+            val now = Instant.now()
+            stockCacheRepository.saveStockData(symbol, stockData, now)
+            _lastRefreshed.value = now.toEpochMilli()
         }
         return freshResult.map { it to false }
     }
@@ -684,7 +773,9 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         val refreshedPrice = stockRepository.getLatestQuotePrice(symbol).getOrNull()
         if (refreshedPrice != null && refreshedPrice != stockData.price) {
             val updated = stockData.copy(price = refreshedPrice)
-            stockCacheRepository.saveStockData(symbol, updated)
+            val now = Instant.now()
+            stockCacheRepository.saveStockData(symbol, updated, now)
+            _lastRefreshed.value = now.toEpochMilli()
             return updated
         }
         return null

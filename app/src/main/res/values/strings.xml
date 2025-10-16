@@ -29,6 +29,7 @@
     <string name="strong_buy_excellent_financial_health">Strong Buy - Excellent financial health</string>
     <string name="add_to_favorites">Add to Favorites</string>
     <string name="full_analysis">Full Analysis</string>
+    <string name="refresh_data">Refresh data</string>
     <string name="view_health_score_details">View Health Score Details</string>
     <string name="health_score_details_title">Health Score Details</string>
     <string name="health_score_details_intro">See how Stockzilla grades the fundamentals you just pulled. We combine raw company metrics, normalize them against sector expectations, and weight each signal before rolling everything into the composite score.</string>
@@ -122,6 +123,8 @@
     <string name="industry_list_error">Unable to load industry peers right now. Please try again later.</string>
     <string name="industry_missing_message">Analyze a stock first to explore its industry peers.</string>
     <string name="industry_not_available_message">We couldn\'t determine the industry for this stock.</string>
+    <string name="last_refreshed_format">Last refreshed: %1$s</string>
+    <string name="last_refreshed_unknown">Last refreshed: —</string>
     <string name="price_unavailable">Price unavailable</string>
     <string name="price_format">$%1$.2f</string>
     <string name="industry_current_badge">Currently analyzing</string>

@@ -430,6 +430,19 @@
                         style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
                     <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnUpdateData"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="4dp"
+                        android:layout_marginEnd="4dp"
+                        android:layout_weight="1"
+                        android:text="@string/refresh_data"
+                        android:textColor="@color/colorOnPrimary"
+                        app:backgroundTint="@color/colorPrimary"
+                        app:icon="@drawable/ic_refresh"
+                        app:iconTint="@color/colorOnPrimary" />
+
+                    <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnViewFullAnalysis"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"

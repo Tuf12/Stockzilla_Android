@@ -8,13 +8,18 @@ import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 
+data class CachedStock(
+    val stockData: StockData,
+    val cachedAt: Long
+)
+
 class StockCacheRepository(
     private val stockCacheDao: StockCacheDao,
     private val gson: Gson = Gson(),
     private val clockZone: ZoneId = ZoneId.of("America/New_York")
 ) {
 
-    suspend fun getCachedStock(symbol: String, now: Instant = Instant.now()): StockData? =
+    suspend fun getCachedStock(symbol: String, now: Instant = Instant.now()): CachedStock? =
         withContext(Dispatchers.IO) {
             val nowMillis = now.toEpochMilli()
             stockCacheDao.deleteExpired(nowMillis)
@@ -22,7 +27,10 @@ class StockCacheRepository(
             if (cached.expiresAt <= nowMillis) {
                 null
             } else {
-                gson.fromJson(cached.stockDataJson, StockData::class.java)
+                CachedStock(
+                    stockData = gson.fromJson(cached.stockDataJson, StockData::class.java),
+                    cachedAt = cached.cachedAt
+                )
             }
         }
 
@@ -33,7 +41,7 @@ class StockCacheRepository(
             val entity = StockCacheEntity(
                 symbol = symbol,
                 stockDataJson = gson.toJson(stockData),
-                cachedAt = nextTradingDayMillis,
+                cachedAt = now.toEpochMilli(),
                 expiresAt = nextTradingDayMillis
             )
             stockCacheDao.upsertCache(entity)
