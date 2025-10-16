@@ -210,6 +210,15 @@ class StockRepository(private val apiKey: String) {
             }
         }
 
+    suspend fun getLatestQuotePrice(symbol: String): Result<Double?> = withContext(Dispatchers.IO) {
+        return@withContext try {
+            val quote = apiService.getQuote(symbol, apiKey).firstOrNull()
+            Result.success(quote?.price)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun getStockData(symbol: String): Result<StockData> = withContext(Dispatchers.IO) {
         try {
             // Fetch all data concurrently

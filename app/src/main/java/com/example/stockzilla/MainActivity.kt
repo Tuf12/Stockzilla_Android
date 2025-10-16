@@ -20,6 +20,7 @@ import android.view.inputmethod.EditorInfo
 import kotlinx.coroutines.launch
 import java.util.Locale
 
+
 class MainActivity : AppCompatActivity() {
 
     companion object {
@@ -515,6 +516,7 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
     // Initialize database and repository properly
     private val database = StockzillaDatabase.getDatabase(application)
     private val favoritesRepository = FavoritesRepository(database.favoritesDao())
+    private val stockCacheRepository = StockCacheRepository(database.stockCacheDao())
     private val financialAnalyzer = FinancialHealthAnalyzer()
 
     private val _currentStockData = MutableLiveData<StockData?>()
@@ -548,16 +550,22 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         stockRepository = StockRepository(apiKey)
     }
 
-    suspend fun searchStock(ticker: String) {
+    suspend fun searchStock(ticker: String, forceRefresh: Boolean = false) {
         _loading.value = true
         val resolvedResult = stockRepository.resolveSymbol(ticker)
         resolvedResult.fold(
             onSuccess = { resolvedSymbol ->
                 _resolvedSymbol.value = resolvedSymbol
-                stockRepository.getStockData(resolvedSymbol)
-                    .onSuccess { stockData ->
+                loadStockData(resolvedSymbol, forceRefresh)
+                    .onSuccess { (stockData, fromCache) ->
                         _currentStockData.value = stockData
                         checkIfFavorited(resolvedSymbol)
+                        if (fromCache) {
+                            refreshCachedPrice(resolvedSymbol, stockData)?.let { updated ->
+                                _currentStockData.value = updated
+                            }
+                        }
+
                         _loading.value = false
                     }
                     .onFailure { exception ->
@@ -573,22 +581,30 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         )
     }
 
-    suspend fun analyzeStock(ticker: String) {
+    suspend fun analyzeStock(ticker: String, forceRefresh: Boolean = false) {
         _loading.value = true
         val resolvedResult = stockRepository.resolveSymbol(ticker)
         resolvedResult.fold(
             onSuccess = { resolvedSymbol ->
                 _resolvedSymbol.value = resolvedSymbol
-                stockRepository.getStockData(resolvedSymbol)
-                    .onSuccess { stockData ->
+                loadStockData(resolvedSymbol, forceRefresh)
+                    .onSuccess { (stockData, fromCache) ->
+                        var finalData = stockData
                         _currentStockData.value = stockData
-                        val score = financialAnalyzer.calculateCompositeScore(stockData)
+                        if (fromCache) {
+                            refreshCachedPrice(resolvedSymbol, stockData)?.let { updated ->
+                                finalData = updated
+                                _currentStockData.value = updated
+                            }
+                        }
+
+                        val score = financialAnalyzer.calculateCompositeScore(finalData)
                         _healthScore.value = score
                         checkIfFavorited(resolvedSymbol)
 
                         // Auto-update favorite if it exists
                         if (favoritesRepository.isFavorite(resolvedSymbol)) {
-                            favoritesRepository.updateFavoriteData(stockData, score.compositeScore)
+                            favoritesRepository.updateFavoriteData(finalData, score.compositeScore)
                             loadFavorites() // Refresh favorites list
                         }
 
@@ -647,5 +663,32 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         _error.value = null
     }
 
+    private suspend fun loadStockData(symbol: String, forceRefresh: Boolean): Result<Pair<StockData, Boolean>> {
+        if (!forceRefresh) {
+            val cached = stockCacheRepository.getCachedStock(symbol)
+            if (cached != null) {
+                return Result.success(cached to true)
+            }
+        } else {
+            stockCacheRepository.pruneExpired()
+        }
 
+        val freshResult = stockRepository.getStockData(symbol)
+        freshResult.onSuccess { stockData ->
+            stockCacheRepository.saveStockData(symbol, stockData)
+        }
+        return freshResult.map { it to false }
+    }
+
+    private suspend fun refreshCachedPrice(symbol: String, stockData: StockData): StockData? {
+        val refreshedPrice = stockRepository.getLatestQuotePrice(symbol).getOrNull()
+        if (refreshedPrice != null && refreshedPrice != stockData.price) {
+            val updated = stockData.copy(price = refreshedPrice)
+            stockCacheRepository.saveStockData(symbol, updated)
+            return updated
+        }
+        return null
+    }
 }
+
+

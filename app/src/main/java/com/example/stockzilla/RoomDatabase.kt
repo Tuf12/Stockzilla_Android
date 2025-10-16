@@ -69,6 +69,18 @@ interface FavoritesDao {
     suspend fun getFavoriteBySymbol(symbol: String): FavoriteEntity?
 }
 
+@Dao
+interface StockCacheDao {
+    @Query("SELECT * FROM stock_cache WHERE symbol = :symbol")
+    suspend fun getCache(symbol: String): StockCacheEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCache(cache: StockCacheEntity)
+
+    @Query("DELETE FROM stock_cache WHERE expiresAt <= :now")
+    suspend fun deleteExpired(now: Long)
+}
+
 @Database(
     entities = [FavoriteEntity::class, StockCacheEntity::class],
     version = 4, // Increment version due to schema change
@@ -76,6 +88,7 @@ interface FavoritesDao {
 )
 abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun favoritesDao(): FavoritesDao
+    abstract fun stockCacheDao(): StockCacheDao
 
     companion object {
         @Volatile
