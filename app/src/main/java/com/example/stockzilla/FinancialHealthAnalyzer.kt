@@ -772,21 +772,33 @@ private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
     }
 
     val ebitProxy = stockData.ebitda
-
     val ebitRatio = ebitProxy?.let {
         (it / totalAssets).takeIf { ratio -> ratio.isFinite() }
     }
 
+    // Normalize marketCapToLiabilities to prevent dominance
     val marketValueRatio = stockData.marketCap?.let {
-        (it / totalLiabilities).takeIf { ratio -> ratio.isFinite() }
+        val rawRatio = (it / totalLiabilities).takeIf { ratio -> ratio.isFinite() }
+        rawRatio?.let { ratio ->
+            // Apply logarithmic transformation and clamp to a range (e.g., 0 to 10)
+            val minValue = 0.1  // Avoid log(0) or negative values
+            val maxValue = 10.0 // Cap to prevent extreme values
+            val transformed = if (ratio > minValue) {
+                kotlin.math.ln(ratio).coerceIn(kotlin.math.ln(minValue), kotlin.math.ln(maxValue))
+            } else {
+                kotlin.math.ln(minValue) // Use minimum if ratio is too small
+            }
+            // Scale to a 0–10 range for consistency with other normalized metrics
+            val scaled = ((transformed - kotlin.math.ln(minValue)) / (kotlin.math.ln(maxValue) - kotlin.math.ln(minValue)) * 10.0).coerceIn(0.0, 10.0)
+            scaled.takeIf { it.isFinite() }
+        }
     }
 
     val revenueRatio = stockData.revenue?.let {
         (it / totalAssets).takeIf { ratio -> ratio.isFinite() }
     }
-    val netIncome = stockData.netIncome
-        ?: stockData.netIncomeHistory.firstOrNull { it != null }
 
+    val netIncome = stockData.netIncome ?: stockData.netIncomeHistory.firstOrNull { it != null }
     val history = if (stockData.netIncomeHistory.isNotEmpty()) {
         stockData.netIncomeHistory
     } else {
@@ -797,12 +809,11 @@ private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
         workingCapitalToAssets = workingCapitalRatio,
         retainedEarningsToAssets = retainedEarningsRatio,
         ebitToAssets = ebitRatio,
-        marketValueToLiabilities = marketValueRatio,
+        marketValueToLiabilities = marketValueRatio, // Use normalized value
         revenueToAssets = revenueRatio,
         hasTwoYearLosses = hasConsecutiveNetLosses(history)
     )
 }
-
 private fun hasConsecutiveNetLosses(history: List<Double?>): Boolean {
     val relevant = history.take(2)
     if (relevant.size < 2) return false
