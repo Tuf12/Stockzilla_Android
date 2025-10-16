@@ -37,6 +37,7 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        isCoreLibraryDesugaringEnabled = true
     }
 
     kotlin {
@@ -74,6 +75,9 @@ dependencies {
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    // Core library desugaring for java.time APIs on older devices
+    coreLibraryDesugaring(libs.desugar.jdk.libs)
 
     // Testing
     testImplementation(libs.junit)
