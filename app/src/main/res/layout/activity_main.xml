@@ -411,12 +411,12 @@
                     android:id="@+id/layoutActions"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:orientation="horizontal"
+                    android:orientation="vertical"
                     android:visibility="gone">
 
                     <com.google.android.material.button.MaterialButton
                         android:id="@+id/btnAddToFavorites"
-                        android:layout_width="0dp"
+                        android:layout_width="match_parent"
                         android:layout_height="wrap_content"
                         android:layout_weight="1"
                         android:layout_marginEnd="8dp"
@@ -442,18 +442,6 @@
                         app:icon="@drawable/ic_refresh"
                         app:iconTint="@color/colorOnPrimary" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnViewFullAnalysis"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="8dp"
-                        android:text="@string/full_analysis"
-                        android:textColor="@color/colorOnPrimary"
-                        app:backgroundTint="@color/colorPrimary"
-                        app:icon="@drawable/ic_open_in_new"
-                        app:iconTint="@color/colorOnPrimary" />
-
                     <TextView
                         android:id="@+id/tvLastRefreshed"
                         android:layout_width="match_parent"
@@ -464,6 +452,20 @@
                         android:textColor="@color/textSecondary"
                         android:textSize="12sp"
                         android:visibility="gone" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnViewFullAnalysis"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="8dp"
+                        android:text="@string/full_analysis"
+                        android:textColor="@color/colorOnPrimary"
+                        app:backgroundTint="@color/colorPrimary"
+                        app:icon="@drawable/ic_open_in_new"
+                        app:iconTint="@color/colorOnPrimary" />
+
+
 
                 </LinearLayout>
 
