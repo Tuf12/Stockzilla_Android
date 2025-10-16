@@ -125,8 +125,101 @@ private val SECTOR_RANGE_OVERRIDES: Map<String, Map<String, Pair<Double, Double>
         "outstanding_shares" to (10_000_000.0 to 7_000_000_000.0),
         "total_assets" to (120_000_000.0 to 3_000_000_000_000.0),
         "total_liabilities" to (60_000_000.0 to 1_600_000_000_000.0)
+    ),
+    "Energy" to mapOf(
+        "revenue" to (0.0 to 5_000_000_000.0),
+        "net_income" to (-200_000_000.0 to 600_000_000.0),
+        "eps" to (-3.0 to 8.0),
+        "pe_ratio" to (4.0 to 35.0),
+        "ps_ratio" to (0.5 to 8.0),
+        "roe" to (-0.15 to 0.35),
+        "debt_to_equity" to (0.0 to 2.5),
+        "pb_ratio" to (0.4 to 8.0),
+        "ebitda" to (-400_000_000.0 to 1_500_000_000.0),
+        "outstanding_shares" to (5_000_000.0 to 4_000_000_000.0),
+        "total_assets" to (80_000_000.0 to 300_000_000_000.0),
+        "total_liabilities" to (40_000_000.0 to 150_000_000_000.0)
+    ),
+    "Utilities" to mapOf(
+        "revenue" to (100_000_000.0 to 20_000_000_000.0),
+        "net_income" to (-100_000_000.0 to 2_000_000_000.0),
+        "eps" to (-1.0 to 6.0),
+        "pe_ratio" to (8.0 to 25.0),
+        "ps_ratio" to (0.4 to 5.0),
+        "roe" to (0.0 to 0.20),
+        "debt_to_equity" to (0.3 to 3.0),
+        "pb_ratio" to (0.5 to 4.0),
+        "ebitda" to (0.0 to 5_000_000_000.0),
+        "total_assets" to (500_000_000.0 to 400_000_000_000.0),
+        "total_liabilities" to (300_000_000.0 to 300_000_000_000.0)
+    ),
+    "Consumer Cyclical" to mapOf(
+        "revenue" to (10_000_000.0 to 50_000_000_000.0),
+        "net_income" to (-200_000_000.0 to 3_000_000_000.0),
+        "eps" to (-2.0 to 10.0),
+        "pe_ratio" to (5.0 to 40.0),
+        "ps_ratio" to (0.2 to 8.0),
+        "roe" to (-0.2 to 0.4),
+        "debt_to_equity" to (0.0 to 3.0),
+        "pb_ratio" to (0.4 to 8.0),
+        "ebitda" to (-500_000_000.0 to 5_000_000_000.0),
+        "total_assets" to (100_000_000.0 to 250_000_000_000.0),
+        "total_liabilities" to (50_000_000.0 to 150_000_000_000.0)
+    ),
+    "Consumer Defensive" to mapOf(
+        "revenue" to (50_000_000.0 to 100_000_000_000.0),
+        "net_income" to (-100_000_000.0 to 5_000_000_000.0),
+        "eps" to (-1.0 to 8.0),
+        "pe_ratio" to (10.0 to 35.0),
+        "ps_ratio" to (0.3 to 6.0),
+        "roe" to (0.0 to 0.35),
+        "debt_to_equity" to (0.2 to 2.0),
+        "pb_ratio" to (0.4 to 8.0),
+        "ebitda" to (0.0 to 8_000_000_000.0),
+        "total_assets" to (200_000_000.0 to 300_000_000_000.0),
+        "total_liabilities" to (100_000_000.0 to 150_000_000_000.0)
+    ),
+    "Materials" to mapOf(
+        "revenue" to (10_000_000.0 to 40_000_000_000.0),
+        "net_income" to (-100_000_000.0 to 2_000_000_000.0),
+        "eps" to (-2.0 to 6.0),
+        "pe_ratio" to (5.0 to 30.0),
+        "ps_ratio" to (0.3 to 5.0),
+        "roe" to (-0.1 to 0.3),
+        "debt_to_equity" to (0.0 to 2.5),
+        "pb_ratio" to (0.3 to 6.0),
+        "ebitda" to (-200_000_000.0 to 3_000_000_000.0),
+        "total_assets" to (50_000_000.0 to 150_000_000_000.0),
+        "total_liabilities" to (25_000_000.0 to 80_000_000_000.0)
+    ),
+    "Real Estate" to mapOf(
+        "revenue" to (5_000_000.0 to 10_000_000_000.0),
+        "net_income" to (-100_000_000.0 to 2_000_000_000.0),
+        "eps" to (-1.0 to 6.0),
+        "pe_ratio" to (4.0 to 25.0),
+        "ps_ratio" to (0.3 to 5.0),
+        "roe" to (0.0 to 0.25),
+        "debt_to_equity" to (0.5 to 3.5),
+        "pb_ratio" to (0.4 to 5.0),
+        "ebitda" to (-200_000_000.0 to 3_000_000_000.0),
+        "total_assets" to (100_000_000.0 to 200_000_000_000.0),
+        "total_liabilities" to (50_000_000.0 to 120_000_000_000.0)
+    ),
+    "Communication Services" to mapOf(
+        "revenue" to (50_000_000.0 to 100_000_000_000.0),
+        "net_income" to (-500_000_000.0 to 10_000_000_000.0),
+        "eps" to (-3.0 to 15.0),
+        "pe_ratio" to (5.0 to 45.0),
+        "ps_ratio" to (0.3 to 10.0),
+        "roe" to (-0.15 to 0.45),
+        "debt_to_equity" to (0.0 to 3.0),
+        "pb_ratio" to (0.4 to 9.0),
+        "ebitda" to (-1_000_000_000.0 to 20_000_000_000.0),
+        "total_assets" to (500_000_000.0 to 400_000_000_000.0),
+        "total_liabilities" to (250_000_000.0 to 300_000_000_000.0)
+    ),
+
     )
-)
 
 // Your original sector weight logic, moved into config form (weights only)
 private val SECTOR_WEIGHT_OVERRIDES: Map<String, Map<String, Double>> = mapOf(

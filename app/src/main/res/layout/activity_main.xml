@@ -446,7 +446,7 @@
                         android:id="@+id/tvLastRefreshed"
                         android:layout_width="match_parent"
                         android:layout_height="wrap_content"
-                        android:layout_marginTop="8dp"
+                        android:layout_marginBottom="8dp"
                         android:text="@string/last_refreshed_unknown"
                         android:textAlignment="center"
                         android:textColor="@color/textSecondary"

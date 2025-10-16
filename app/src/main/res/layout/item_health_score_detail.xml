@@ -7,13 +7,29 @@
     android:background="@drawable/bg_detail_card"
     android:layout_marginBottom="12dp">
 
-    <TextView
-        android:id="@+id/tvDetailLabel"
+    <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:textColor="@color/textPrimary"
-        android:textSize="16sp"
-        android:textStyle="bold" />
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <View
+            android:id="@+id/viewPerformanceIndicator"
+            android:layout_width="12dp"
+            android:layout_height="12dp"
+            android:layout_marginEnd="8dp"
+            android:background="@drawable/bg_metric_indicator"
+            android:visibility="gone" />
+
+        <TextView
+            android:id="@+id/tvDetailLabel"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="@color/textPrimary"
+            android:textSize="16sp"
+            android:textStyle="bold" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/tvDetailValue"

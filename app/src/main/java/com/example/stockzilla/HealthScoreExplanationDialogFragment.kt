@@ -7,6 +7,8 @@ import androidx.fragment.app.DialogFragment
 import com.example.stockzilla.databinding.DialogHealthScoreExplanationBinding
 import com.example.stockzilla.databinding.ItemHealthScoreDetailBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import android.content.res.ColorStateList
+import androidx.core.content.ContextCompat
 
 @Suppress("DEPRECATION")
 class HealthScoreExplanationDialogFragment : DialogFragment() {
@@ -34,6 +36,22 @@ class HealthScoreExplanationDialogFragment : DialogFragment() {
                 val itemBinding = ItemHealthScoreDetailBinding.inflate(layoutInflater, binding.detailContainer, false)
                 itemBinding.tvDetailLabel.text = detail.label
                 itemBinding.tvDetailValue.text = getString(R.string.health_score_detail_value, detail.value)
+
+                val indicatorView = itemBinding.viewPerformanceIndicator
+                val performance = detail.performance
+                if (performance != null) {
+                    val colorRes = when (performance) {
+                        MetricPerformance.GOOD -> R.color.scoreGood
+                        MetricPerformance.NEUTRAL -> R.color.scoreMedium
+                        MetricPerformance.POOR -> R.color.scorePoor
+                    }
+                    val color = ContextCompat.getColor(requireContext(), colorRes)
+                    indicatorView.isVisible = true
+                    indicatorView.backgroundTintList = ColorStateList.valueOf(color)
+                } else {
+                    indicatorView.isVisible = false
+                }
+
 
                 if (!detail.weight.isNullOrBlank()) {
                     itemBinding.tvDetailWeight.isVisible = true

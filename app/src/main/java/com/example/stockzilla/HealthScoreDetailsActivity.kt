@@ -200,6 +200,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                 value = formatMetricValue(metricKey, metricScore.value),
                 weight = formatPercentText(metricScore.weight * 100.0),
                 normalized = formatPercentText(metricScore.normalizedPercent),
+                performance = classifyPerformance(metricScore.normalizedPercent),
                 rationale = metricRationale(metricKey)
             )
         }
@@ -279,6 +280,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                     value = valueText,
                     weight = weightPercent,
                     normalized = normalized,
+                    performance = classifyPerformance(assessment.normalizedScore?.times(100.0)),
                     rationale = getString(R.string.health_score_rationale_relative_valuation)
                 )
             )
@@ -332,6 +334,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                     value = formatPercent(ratio),
                     weight = formatPercentText((coefficient / totalCoefficient) * 100.0),
                     normalized = formatPercentText(normalized),
+                    performance = classifyPerformance(normalized),
                     rationale = getString(rationaleRes)
                 )
             )
@@ -375,6 +378,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                     value = getString(R.string.health_score_two_year_loss_detail_value),
                     weight = null,
                     normalized = null,
+                    performance = null,
                     rationale = getString(R.string.health_score_rationale_two_year_loss_penalty)
                 )
             )
@@ -406,8 +410,18 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             value = formatPercent(safeValue),
             weight = formatPercentText(weight * 100.0),
             normalized = formatPercentText(safeNormalized * 100.0),
+            performance = classifyPerformance(safeNormalized * 100.0),
             rationale = rationale
         )
+    }
+
+    private fun classifyPerformance(normalizedPercent: Double?): MetricPerformance? {
+        val value = normalizedPercent?.takeIf { it.isFinite() } ?: return null
+        return when {
+            value >= 70.0 -> MetricPerformance.GOOD
+            value >= 40.0 -> MetricPerformance.NEUTRAL
+            else -> MetricPerformance.POOR
+        }
     }
 
     private fun formatPercentText(value: Double?): String? {
