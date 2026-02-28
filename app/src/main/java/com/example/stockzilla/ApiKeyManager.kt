@@ -11,38 +11,30 @@ class ApiKeyManager(context: Context) {
         context.getSharedPreferences("stockzilla_prefs", Context.MODE_PRIVATE)
 
     companion object {
-        private const val API_KEY_PREF = "fmp_api_key"
-        private const val API_KEY_VALIDATED_PREF = "api_key_validated"
+        private const val FINNHUB_API_KEY_PREF = "finnhub_api_key"
+        private const val FINNHUB_API_KEY_VALIDATED_PREF = "finnhub_api_key_validated"
     }
 
-    fun saveApiKey(apiKey: String) {
+    // --- Finnhub API key only (FMP removed) ---
+    fun saveFinnhubApiKey(apiKey: String) {
         sharedPreferences.edit {
-            putString(API_KEY_PREF, apiKey)
-            // Reset validation when new key is saved
-            putBoolean(API_KEY_VALIDATED_PREF, false)
+            putString(FINNHUB_API_KEY_PREF, apiKey)
+            putBoolean(FINNHUB_API_KEY_VALIDATED_PREF, false)
         }
     }
 
-    fun getApiKey(): String? {
-        return sharedPreferences.getString(API_KEY_PREF, null)
+    fun getFinnhubApiKey(): String? = sharedPreferences.getString(FINNHUB_API_KEY_PREF, null)
+
+    fun hasFinnhubApiKey(): Boolean = !getFinnhubApiKey().isNullOrBlank()
+
+    fun markFinnhubApiKeyAsValidated() {
+        sharedPreferences.edit { putBoolean(FINNHUB_API_KEY_VALIDATED_PREF, true) }
     }
 
-    fun hasApiKey(): Boolean {
-        return !getApiKey().isNullOrBlank()
-    }
+    fun isFinnhubApiKeyValidated(): Boolean =
+        sharedPreferences.getBoolean(FINNHUB_API_KEY_VALIDATED_PREF, false)
 
-    fun markApiKeyAsValidated() {
-        sharedPreferences.edit {
-            putBoolean(API_KEY_VALIDATED_PREF, true)
-        }
-    }
-
-    fun isApiKeyValidated(): Boolean {
-        return sharedPreferences.getBoolean(API_KEY_VALIDATED_PREF, false)
-    }
-
-    fun isValidApiKeyFormat(apiKey: String): Boolean {
-        // FMP API keys are typically 32 characters long, alphanumeric
+    fun isValidFinnhubApiKeyFormat(apiKey: String): Boolean {
         return apiKey.length >= 20 && apiKey.matches(Regex("[a-zA-Z0-9]+"))
     }
 }

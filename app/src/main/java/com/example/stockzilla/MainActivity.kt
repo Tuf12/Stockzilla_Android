@@ -48,13 +48,17 @@ class MainActivity : AppCompatActivity() {
         apiKeyManager = ApiKeyManager(this)
 
         // MainActivity.onCreate()
-        supportActionBar?.hide()
+        // Set up toolbar instead of hiding action bar
+        binding.toolbar?.let {
+            setSupportActionBar(it)
+            supportActionBar?.setDisplayShowTitleEnabled(false)
+        }
 
         setupUI()
         setupObservers()
         loadFavorites()
 
-        // Check if we need to setup API key
+        // Check if we need to setup Finnhub API key for quotes
         checkApiKeySetup()
 
 
@@ -74,41 +78,24 @@ class MainActivity : AppCompatActivity() {
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
-            R.id.action_api_settings -> {
-                showApiKeyDialog(forceShow = true)
+            R.id.action_finnhub_settings -> {
+                showFinnhubApiKeyDialog()
                 true
             }
-
             else -> super.onOptionsItemSelected(item)
         }
     }
 
     private fun checkApiKeySetup() {
-        if (!apiKeyManager.hasApiKey() || !apiKeyManager.isApiKeyValidated()) {
-            showApiKeyDialog()
-        } else {
-            // Initialize ViewModel with saved API key
-            viewModel.updateApiKey(apiKeyManager.getApiKey()!!)
-        }
+        // Only Finnhub key is required now (no FMP key)
+        viewModel.updateFinnhubApiKey(apiKeyManager.getFinnhubApiKey())
     }
 
-    private fun showApiKeyDialog(forceShow: Boolean = false) {
-        if (forceShow || !apiKeyManager.hasApiKey()) {
-            val dialog = ApiKeySetupDialog { apiKey ->
-                viewModel.updateApiKey(apiKey)
-                if (apiKey != "demo") {
-                    Toast.makeText(this, "API key configured successfully!", Toast.LENGTH_SHORT)
-                        .show()
-                } else {
-                    Toast.makeText(
-                        this,
-                        "Using demo mode - limited functionality",
-                        Toast.LENGTH_LONG
-                    ).show()
-                }
-            }
-            dialog.show(supportFragmentManager, "api_key_setup")
+    private fun showFinnhubApiKeyDialog() {
+        val dialog = FinnhubApiKeySetupDialog { key ->
+            viewModel.updateFinnhubApiKey(key)
         }
+        dialog.show(supportFragmentManager, "finnhub_api_key_setup")
     }
 
     private fun handleAnalyzeIntent(intent: Intent?) {
@@ -159,11 +146,7 @@ class MainActivity : AppCompatActivity() {
         binding.btnAnalyze.setOnClickListener {
             val ticker = binding.etSearch.text.toString().uppercase(Locale.US)
             if (ticker.isNotBlank()) {
-                if (apiKeyManager.hasApiKey()) {
-                    analyzeStock(ticker)
-                } else {
-                    showApiKeyDialog()
-                }
+                analyzeStock(ticker)
             } else {
                 Toast.makeText(this, "Please enter a stock ticker", Toast.LENGTH_SHORT).show()
             }
@@ -265,10 +248,10 @@ class MainActivity : AppCompatActivity() {
 
         viewModel.error.observe(this) { error ->
             error?.let {
-                if (it.contains("401") || it.contains("Unauthorized")) {
-                    Toast.makeText(this, "API key issue - please check your key", Toast.LENGTH_LONG)
+                if (it.contains("401") || it.contains("403") || it.contains("Unauthorized") || it.contains("Forbidden")) {
+                    Toast.makeText(this, "API key issue (e.g. expired or invalid) – update your key via the menu", Toast.LENGTH_LONG)
                         .show()
-                    showApiKeyDialog(forceShow = true)
+
                 } else {
                     Toast.makeText(this, "Error: $it", Toast.LENGTH_LONG).show()
                 }
@@ -303,11 +286,6 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun searchStock(ticker: String) {
-        if (!apiKeyManager.hasApiKey()) {
-            showApiKeyDialog()
-            return
-        }
-
         lifecycleScope.launch {
             viewModel.searchStock(ticker)
         }
@@ -324,11 +302,6 @@ class MainActivity : AppCompatActivity() {
 
 
     fun analyzeStock(ticker: String) {
-        if (!apiKeyManager.hasApiKey()) {
-            showApiKeyDialog()
-            return
-        }
-
         lifecycleScope.launch {
             viewModel.analyzeStock(ticker)
         }
@@ -553,7 +526,8 @@ class MainActivity : AppCompatActivity() {
 class StockViewModel(application: android.app.Application) : AndroidViewModel(application) {
 
     private var currentApiKey: String = ApiConstants.DEFAULT_DEMO_KEY
-    private var stockRepository = StockRepository(currentApiKey)
+    private var currentFinnhubApiKey: String? = null
+    private var stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey)
 
     // Initialize database and repository properly
     private val database = StockzillaDatabase.getDatabase(application)
@@ -592,7 +566,12 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
     fun updateApiKey(apiKey: String) {
         currentApiKey = apiKey
-        stockRepository = StockRepository(apiKey)
+        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey)
+    }
+
+    fun updateFinnhubApiKey(key: String?) {
+        currentFinnhubApiKey = key?.takeIf { it.isNotBlank() }
+        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey)
     }
 
     suspend fun searchStock(ticker: String, forceRefresh: Boolean = false) {
@@ -753,8 +732,11 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
         if (!forceRefresh) {
             val cached = stockCacheRepository.getCachedStock(symbol)
             if (cached != null) {
-                _lastRefreshed.value = cached.cachedAt
-                return Result.success(cached.stockData to true)
+                val cachedData = cached.stockData
+                if (hasSufficientFinancialData(cachedData)) {
+                    _lastRefreshed.value = cached.cachedAt
+                    return Result.success(cachedData to true)
+                }
             }
         } else {
             stockCacheRepository.pruneExpired()
@@ -767,6 +749,24 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
             _lastRefreshed.value = now.toEpochMilli()
         }
         return freshResult.map { it to false }
+    }
+
+    private fun hasSufficientFinancialData(stockData: StockData): Boolean {
+        val keyMetricCount = listOf(
+            stockData.revenue,
+            stockData.netIncome,
+            stockData.eps,
+            stockData.freeCashFlow,
+            stockData.totalAssets,
+            stockData.totalLiabilities,
+            stockData.retainedEarnings,
+            stockData.netCashProvidedByOperatingActivities
+        ).count { it != null }
+
+        val hasHistory = stockData.revenueHistory.any { it != null } &&
+                stockData.netIncomeHistory.any { it != null }
+
+        return keyMetricCount >= 4 && hasHistory
     }
 
     private suspend fun refreshCachedPrice(symbol: String, stockData: StockData): StockData? {

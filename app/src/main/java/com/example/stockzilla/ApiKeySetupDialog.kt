@@ -14,7 +14,7 @@ import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
 
 class ApiKeySetupDialog(
-    private val onApiKeySet: (String) -> Unit
+    private val onApiKeySet: (String?) -> Unit
 ) : DialogFragment() {
 
     private var _binding: DialogApiKeySetupBinding? = null
@@ -35,18 +35,18 @@ class ApiKeySetupDialog(
     }
 
     private fun setupUI() {
-        // Pre-fill with existing API key if available
-        apiKeyManager.getApiKey()?.let { existingKey ->
+        // Pre-fill with existing Finnhub API key if available
+        apiKeyManager.getFinnhubApiKey()?.let { existingKey ->
             binding.etApiKey.setText(existingKey)
         }
 
         // Enable/disable save button based on input
         binding.etApiKey.addTextChangedListener { text ->
             val isValid = !text.isNullOrBlank() &&
-                    apiKeyManager.isValidApiKeyFormat(text.toString())
+                    apiKeyManager.isValidFinnhubApiKeyFormat(text.toString())
             binding.btnSave.isEnabled = isValid
 
-            if (!text.isNullOrBlank() && !apiKeyManager.isValidApiKeyFormat(text.toString())) {
+            if (!text.isNullOrBlank() && !apiKeyManager.isValidFinnhubApiKeyFormat(text.toString())) {
                 binding.tilApiKey.error = "Invalid API key format"
             } else {
                 binding.tilApiKey.error = null
@@ -55,7 +55,7 @@ class ApiKeySetupDialog(
 
         binding.btnSave.setOnClickListener {
             val apiKey = binding.etApiKey.text.toString().trim()
-            if (apiKeyManager.isValidApiKeyFormat(apiKey)) {
+            if (apiKeyManager.isValidFinnhubApiKeyFormat(apiKey)) {
                 validateAndSaveApiKey(apiKey)
             } else {
                 binding.tilApiKey.error = "Please enter a valid API key"
@@ -67,8 +67,7 @@ class ApiKeySetupDialog(
         }
 
         binding.btnSkip.setOnClickListener {
-            // Allow skipping for demo purposes
-            onApiKeySet("demo")
+            onApiKeySet(null)
             dismiss()
         }
     }
@@ -79,14 +78,13 @@ class ApiKeySetupDialog(
 
         lifecycleScope.launch {
             try {
-                // Test the API key by making a simple request
-                val stockRepository = StockRepository(apiKey)
+                // Test the Finnhub API key by fetching stock data
+                val stockRepository = StockRepository("", apiKey)
                 val result = stockRepository.getStockData("AAPL")
 
                 result.onSuccess {
-                    // API key works!
-                    apiKeyManager.saveApiKey(apiKey)
-                    apiKeyManager.markApiKeyAsValidated()
+                    apiKeyManager.saveFinnhubApiKey(apiKey)
+                    apiKeyManager.markFinnhubApiKeyAsValidated()
 
                     Toast.makeText(requireContext(),
                         "API key saved successfully!",
@@ -113,7 +111,7 @@ class ApiKeySetupDialog(
 
     private fun openApiKeyWebsite() {
         val intent = Intent(Intent.ACTION_VIEW).apply {
-            data = "https://financialmodelingprep.com/developer/docs".toUri()
+            data = "https://finnhub.io/register".toUri()
         }
         startActivity(intent)
     }

@@ -3,9 +3,9 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
-        android:id="@+id/action_api_settings"
-        android:title="@string/api_settings"
-        android:icon="@drawable/ic_analytics"
-        app:showAsAction="never" />
+        android:id="@+id/action_finnhub_settings"
+        android:title="@string/update_finnhub_api_key"
+        android:icon="@drawable/ic_settings"
+        app:showAsAction="ifRoom" />
 
 </menu>

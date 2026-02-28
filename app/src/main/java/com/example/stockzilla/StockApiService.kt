@@ -1,75 +1,11 @@
-// StockApiService.kt - Network layer for FMP API integration
+// StockApiService.kt - Network layer for stock data aggregation (quotes + fundamentals)
 package com.example.stockzilla
 
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import retrofit2.http.GET
-import retrofit2.http.Path
-import retrofit2.http.Query
+import com.google.gson.GsonBuilder
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import com.google.gson.annotations.SerializedName
-import retrofit2.HttpException
-import java.io.IOException
-
-data class FMPProfile(
-    @SerializedName("symbol") val symbol: String,
-    @SerializedName("companyName") val companyName: String?,
-    @SerializedName("mktCap") val marketCap: Double?,
-    @SerializedName("sector") val sector: String?,
-    @SerializedName("industry") val industry: String?,
-    @SerializedName("description") val description: String?
-)
-
-data class FMPQuote(
-    @SerializedName("symbol") val symbol: String,
-    @SerializedName("price") val price: Double?,
-    @SerializedName("volume") val volume: Long?,
-    @SerializedName("pe") val peRatio: Double?,
-    @SerializedName("sharesOutstanding") val sharesOutstanding: Long?
-)
-
-data class FMPIncomeStatement(
-    @SerializedName("revenue") val revenue: Double?,
-    @SerializedName("netIncome") val netIncome: Double?,
-    @SerializedName("eps") val eps: Double?,
-    @SerializedName("ebitda") val ebitda: Double?,
-    @SerializedName("calendarYear") val year: String?
-)
-
-data class FMPBalanceSheet(
-    @SerializedName("totalAssets") val totalAssets: Double?,
-    @SerializedName("totalLiabilities") val totalLiabilities: Double?,
-    @SerializedName("totalEquity") val totalEquity: Double?,
-    @SerializedName("totalDebt") val totalDebt: Double?,
-    @SerializedName("totalCurrentAssets") val totalCurrentAssets: Double?,
-    @SerializedName("totalCurrentLiabilities") val totalCurrentLiabilities: Double?,
-    @SerializedName("retainedEarnings") val retainedEarnings: Double?,
-    @SerializedName("workingCapital") val workingCapital: Double?,
-    @SerializedName("cashAndCashEquivalents") val cashAndCashEquivalents: Double? = null,
-    @SerializedName("shortTermDebt") val shortTermDebt: Double? = null
-)
-
-data class FMPCashFlow(
-    @SerializedName("freeCashFlow") val freeCashFlow: Double?,
-    @SerializedName("netCashProvidedByOperatingActivities") val netCashProvidedByOperatingActivities: Double?
-)
-
-data class FMPStockSearchResult(
-    @SerializedName("symbol") val symbol: String,
-    @SerializedName("name") val name: String?,
-    @SerializedName("exchangeShortName") val exchange: String?
-)
-
-
-data class FMPIndustryStock(
-    @SerializedName("symbol") val symbol: String,
-    @SerializedName("companyName") val companyName: String?,
-    @SerializedName("sector") val sector: String?,
-    @SerializedName("industry") val industry: String?,
-    @SerializedName("price") val price: Double?,
-    @SerializedName("marketCap") val marketCap: Double?
-)
+import retrofit2.Retrofit
+import retrofit2.converter.gson.GsonConverterFactory
 
 data class IndustryPeer(
     val symbol: String,
@@ -80,65 +16,20 @@ data class IndustryPeer(
     val marketCap: Double?
 )
 
-interface FMPApiService {
-    @GET("profile/{symbol}")
-    suspend fun getProfile(
-        @Path("symbol") symbol: String,
-        @Query("apikey") apiKey: String
-    ): List<FMPProfile>
+class StockRepository(
+    private val apiKey: String,
+    private val finnhubApiKey: String? = null
+) {
+    private val gson = GsonBuilder()
+        .create()
 
-    @GET("quote/{symbol}")
-    suspend fun getQuote(
-        @Path("symbol") symbol: String,
-        @Query("apikey") apiKey: String
-    ): List<FMPQuote>
-
-    @GET("income-statement/{symbol}")
-    suspend fun getIncomeStatement(
-        @Path("symbol") symbol: String,
-        @Query("period") period: String = "annual",
-        @Query("limit") limit: Int = 5,
-        @Query("apikey") apiKey: String
-    ): List<FMPIncomeStatement>
-
-    @GET("balance-sheet-statement/{symbol}")
-    suspend fun getBalanceSheet(
-        @Path("symbol") symbol: String,
-        @Query("period") period: String = "annual",
-        @Query("limit") limit: Int = 5,
-        @Query("apikey") apiKey: String
-    ): List<FMPBalanceSheet>
-
-    @GET("cash-flow-statement/{symbol}")
-    suspend fun getCashFlow(
-        @Path("symbol") symbol: String,
-        @Query("period") period: String = "annual",
-        @Query("limit") limit: Int = 5,
-        @Query("apikey") apiKey: String
-    ): List<FMPCashFlow>
-
-    @GET("search")
-    suspend fun searchSymbols(
-        @Query("query") query: String,
-        @Query("limit") limit: Int = 5,
-        @Query("apikey") apiKey: String
-    ): List<FMPStockSearchResult>
-
-    @GET("stock-screener")
-    suspend fun getStocksByIndustry(
-        @Query("industry") industry: String,
-        @Query("limit") limit: Int = 50,
-        @Query("apikey") apiKey: String
-    ): List<FMPIndustryStock>
-}
-
-class StockRepository(private val apiKey: String) {
-    private val retrofit = Retrofit.Builder()
-        .baseUrl("https://financialmodelingprep.com/api/v3/")
+    private val finnhubRetrofit = Retrofit.Builder()
+        .baseUrl("https://finnhub.io/api/v1/")
         .addConverterFactory(GsonConverterFactory.create())
         .build()
 
-    private val apiService = retrofit.create(FMPApiService::class.java)
+    private val finnhubApi = finnhubRetrofit.create(FinnhubApi::class.java)
+    private val quoteDataSource: QuoteDataSource = FinnhubQuoteDataSource(finnhubApi, finnhubApiKey)
 
     suspend fun resolveSymbol(query: String, limit: Int = 5): Result<String> = withContext(Dispatchers.IO) {
         val trimmedQuery = query.trim()
@@ -148,196 +39,284 @@ class StockRepository(private val apiKey: String) {
 
         val normalizedSymbol = trimmedQuery.uppercase()
 
-        try {
-            val directProfile = apiService.getProfile(normalizedSymbol, apiKey)
-            if (directProfile.isNotEmpty()) {
-                return@withContext Result.success(normalizedSymbol)
-            }
-        } catch (e: Exception) {
-            when (e) {
-                is HttpException -> {
-                    if (e.code() != 404) {
-                        return@withContext Result.failure(e)
-                    }
-                }
-
-                is IOException -> {
-                    return@withContext Result.failure(Exception("Network error while looking up $normalizedSymbol. Please try again."))
-                }
-
-                else -> {
-                    return@withContext Result.failure(e)
-                }
+        if (!finnhubApiKey.isNullOrBlank()) {
+            val finnhubResult = resolveSymbolViaFinnhub(trimmedQuery, normalizedSymbol)
+            if (finnhubResult != null) {
+                return@withContext Result.success(finnhubResult)
             }
         }
 
-        return@withContext try {
-            val searchResults = apiService.searchSymbols(trimmedQuery, limit = limit, apiKey = apiKey)
-            val bestMatch = searchResults.firstOrNull()?.symbol?.takeIf { it.isNotBlank() }?.uppercase()
+        // Fallback: just treat query as symbol if Finnhub search fails
+        return@withContext Result.success(normalizedSymbol)
+    }
 
-            if (bestMatch != null) {
-                Result.success(bestMatch)
-            } else {
-                Result.failure(Exception("No matches found for \"$trimmedQuery\"."))
+    private suspend fun resolveSymbolViaFinnhub(query: String, exactSymbol: String?): String? {
+        return try {
+            if (!exactSymbol.isNullOrBlank()) {
+                val profile = finnhubApi.getProfile(exactSymbol, finnhubApiKey!!)
+                if (profile != null && profile.ticker != null) return exactSymbol
             }
-        } catch (e: Exception) {
-            Result.failure(e)
+            val search = finnhubApi.search(query, finnhubApiKey!!)
+            val first = search.result?.firstOrNull()?.symbol?.takeIf { it.isNotBlank() }?.uppercase()
+            first
+        } catch (_: Exception) {
+            null
         }
     }
 
-    suspend fun getIndustryPeers(industry: String, limit: Int = 50): Result<List<IndustryPeer>> =
+    // Placeholder: industry peers via EDGAR/other source could go here in future.
+    suspend fun getIndustryPeers(symbol: String?, industry: String, limit: Int = 50): Result<List<IndustryPeer>> =
         withContext(Dispatchers.IO) {
-            if (industry.isBlank()) {
-                return@withContext Result.failure(Exception("Industry must not be blank."))
-            }
-
-            return@withContext try {
-                val peers = apiService.getStocksByIndustry(industry, limit = limit, apiKey = apiKey)
-                    .distinctBy { it.symbol }
-                    .map {
-                        IndustryPeer(
-                            symbol = it.symbol,
-                            companyName = it.companyName,
-                            sector = it.sector,
-                            industry = it.industry,
-                            price = it.price,
-                            marketCap = it.marketCap
-                        )
-                    }
-                Result.success(peers)
-            } catch (e: Exception) {
-                Result.failure(e)
-            }
+            Result.failure(Exception("Industry peers via EDGAR are not implemented yet."))
         }
 
     suspend fun getLatestQuotePrice(symbol: String): Result<Double?> = withContext(Dispatchers.IO) {
-        return@withContext try {
-            val quote = apiService.getQuote(symbol, apiKey).firstOrNull()
-            Result.success(quote?.price)
-        } catch (e: Exception) {
-            Result.failure(e)
-        }
+        val quoteResult = quoteDataSource.getQuote(symbol)
+        quoteResult.map { it.current }.also { return@withContext it }
     }
 
     suspend fun getStockData(symbol: String): Result<StockData> = withContext(Dispatchers.IO) {
-        try {
-            // Fetch all data concurrently
-            val profile = apiService.getProfile(symbol, apiKey).firstOrNull()
-            val quote = apiService.getQuote(symbol, apiKey).firstOrNull()
-            val incomeStatements = apiService.getIncomeStatement(symbol, apiKey = apiKey)
-            val balanceSheets = apiService.getBalanceSheet(symbol, apiKey = apiKey)
-            val cashFlows = apiService.getCashFlow(symbol, apiKey = apiKey)
+        val finnhubData = if (!finnhubApiKey.isNullOrBlank()) {
+            getStockDataFromFinnhub(symbol).getOrNull()
+        } else {
+            null
+        }
 
-            val latestIncome = incomeStatements.firstOrNull()
-            val latestBalance = balanceSheets.firstOrNull()
-            val latestCashFlow = cashFlows.firstOrNull()
-            val previousIncome = incomeStatements.getOrNull(1)
+        if (finnhubData == null) {
+            Result.failure(Exception("No data found for symbol $symbol"))
+        } else {
+            Result.success(finnhubData)
+        }
+    }
 
-            val averageRevenueGrowth = calculateAverageGrowth(incomeStatements.map { it.revenue })
-            val latestRevenueGrowth = calculateLatestGrowth(incomeStatements.map { it.revenue })
-            val averageNetIncomeGrowth = calculateAverageGrowth(incomeStatements.map { it.netIncome })
+    private suspend fun getStockDataFromFinnhub(symbol: String): Result<StockData> {
+        val token = finnhubApiKey ?: return Result.failure(Exception("No Finnhub key"))
+        return try {
+            val quote = finnhubApi.getQuote(symbol, token)
+            val profile = finnhubApi.getProfile(symbol, token)
+            val financialReports = runCatching {
+                finnhubApi.getFinancialsReported(symbol = symbol, token = token).data.orEmpty()
+            }.getOrElse { emptyList() }
 
+            val reportsByYear = financialReports.sortedByDescending { it.year ?: Int.MIN_VALUE }
+            val latestReport = reportsByYear.firstOrNull()?.report
+            val previousReport = reportsByYear.getOrNull(1)?.report
 
-            if (profile == null && quote == null) {
-                return@withContext Result.failure(Exception("No data found for symbol $symbol"))
-            }
+            val latestIncome = latestReport?.incomeStatement.orEmpty()
+            val latestBalance = latestReport?.balanceSheet.orEmpty()
+            val latestCashFlow = latestReport?.cashFlow.orEmpty()
+            val previousIncome = previousReport?.incomeStatement.orEmpty()
 
-            // Calculate derived metrics
-            val psRatio = calculatePSRatio(latestIncome?.revenue, profile?.marketCap)
-            val roe = calculateROE(latestIncome?.netIncome, latestBalance?.totalEquity)
-            val debtToEquity = calculateDebtToEquity(latestBalance?.totalDebt, latestBalance?.totalEquity)
-            val priceToBook = calculatePriceToBook(profile?.marketCap, latestBalance?.totalEquity)
-            val outstandingShares = calculateSharesOutstanding(
-                directValue = quote?.sharesOutstanding,
-                marketCap = profile?.marketCap,
-                price = quote?.price
+            val price = quote.current
+            val marketCap = profile?.marketCapitalization
+            val name = profile?.name
+            val industry = profile?.industry
+            val revenue = firstConceptValue(
+                latestIncome,
+                listOf("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "TotalRevenue")
             )
-
-            val freeCashFlowMargin = latestCashFlow?.freeCashFlow?.let { fcf ->
-                val revenue = latestIncome?.revenue
-                if (revenue != null && kotlin.math.abs(revenue) > 1e-9) fcf / revenue else null
+            val netIncome = firstConceptValue(latestIncome, listOf("NetIncomeLoss", "ProfitLoss"))
+            val eps = firstConceptValue(
+                latestIncome,
+                listOf("EarningsPerShareBasic", "BasicEarningsLossPerShare", "EarningsPerShareDiluted")
+            )
+            val ebitda = firstConceptValue(
+                latestIncome,
+                listOf("EarningsBeforeInterestTaxesDepreciationAndAmortization", "OperatingIncomeLoss")
+            )
+            val totalAssets = firstConceptValue(latestBalance, listOf("Assets", "TotalAssets"))
+            val totalLiabilities = firstConceptValue(latestBalance, listOf("Liabilities", "TotalLiabilities"))
+            val totalEquity = firstConceptValue(
+                latestBalance,
+                listOf("StockholdersEquity", "Equity", "StockholdersEquityIncludingPortionAttributableToNoncontrollingInterest")
+            )
+            val totalDebt = sumConceptValues(
+                latestBalance,
+                listOf(
+                    "LongTermDebtAndCapitalLeaseObligations",
+                    "LongTermDebt",
+                    "LongTermBorrowings",
+                    "DebtCurrent",
+                    "ShortTermBorrowings"
+                )
+            )
+            val totalCurrentAssets = firstConceptValue(latestBalance, listOf("AssetsCurrent"))
+            val totalCurrentLiabilities = firstConceptValue(latestBalance, listOf("LiabilitiesCurrent"))
+            val retainedEarnings = firstConceptValue(latestBalance, listOf("RetainedEarningsAccumulatedDeficit"))
+            val operatingCashFlow = firstConceptValue(
+                latestCashFlow,
+                listOf("NetCashProvidedByUsedInOperatingActivities", "CashProvidedByUsedInOperatingActivitiesContinuingOperations")
+            )
+            val capex = firstConceptValue(latestCashFlow, listOf("PaymentsToAcquirePropertyPlantAndEquipment"))
+            val freeCashFlow = firstConceptValue(latestCashFlow, listOf("FreeCashFlow"))
+                ?: if (operatingCashFlow != null && capex != null) operatingCashFlow + capex else null
+            val peRatio = if (price != null && eps != null && kotlin.math.abs(eps) > 1e-9) price / eps else null
+            val psRatio = calculatePSRatio(revenue, marketCap)
+            val roe = calculateROE(netIncome, totalEquity)
+            val debtToEquity = calculateDebtToEquity(totalDebt, totalEquity)
+            val pbRatio = calculatePriceToBook(marketCap, totalEquity)
+            val outstandingShares = profile?.shareOutstanding ?: run {
+                if (marketCap != null && price != null && price > 0) marketCap / price else null
+            }
+            val workingCapital = if (totalCurrentAssets != null && totalCurrentLiabilities != null) {
+                totalCurrentAssets - totalCurrentLiabilities
+            } else {
+                null
             }
 
-            val latestEbitdaMargin = latestIncome?.let { income ->
-                val revenue = income.revenue
-                val ebitda = income.ebitda
-                if (revenue != null && ebitda != null && kotlin.math.abs(revenue) > 1e-9) {
-                    ebitda / revenue
-                } else {
-                    null
-                }
+            val revenueHistory = reportsByYear.take(5).map {
+                firstConceptValue(
+                    it.report?.incomeStatement.orEmpty(),
+                    listOf("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "TotalRevenue")
+                )
             }
-
-            val previousEbitdaMargin = previousIncome?.let { income ->
-                val revenue = income.revenue
-                val ebitda = income.ebitda
-                if (revenue != null && ebitda != null && kotlin.math.abs(revenue) > 1e-9) {
-                    ebitda / revenue
-                } else {
-                    null
-                }
+            val netIncomeHistory = reportsByYear.take(5).map {
+                firstConceptValue(it.report?.incomeStatement.orEmpty(), listOf("NetIncomeLoss", "ProfitLoss"))
             }
-
+            val ebitdaHistory = reportsByYear.take(5).map {
+                firstConceptValue(
+                    it.report?.incomeStatement.orEmpty(),
+                    listOf("EarningsBeforeInterestTaxesDepreciationAndAmortization", "OperatingIncomeLoss")
+                )
+            }
+            val averageRevenueGrowth = calculateAverageGrowth(revenueHistory)
+            val latestRevenueGrowth = calculateLatestGrowth(revenueHistory)
+            val averageNetIncomeGrowth = calculateAverageGrowth(netIncomeHistory)
+            val freeCashFlowMargin = if (freeCashFlow != null && revenue != null && kotlin.math.abs(revenue) > 1e-9) {
+                freeCashFlow / revenue
+            } else {
+                null
+            }
+            val latestEbitdaMargin = if (ebitda != null && revenue != null && kotlin.math.abs(revenue) > 1e-9) {
+                ebitda / revenue
+            } else {
+                null
+            }
+            val previousRevenue = firstConceptValue(
+                previousIncome,
+                listOf("RevenueFromContractWithCustomerExcludingAssessedTax", "Revenues", "SalesRevenueNet", "TotalRevenue")
+            )
+            val previousEbitda = firstConceptValue(
+                previousIncome,
+                listOf("EarningsBeforeInterestTaxesDepreciationAndAmortization", "OperatingIncomeLoss")
+            )
+            val previousEbitdaMargin = if (previousEbitda != null && previousRevenue != null && kotlin.math.abs(previousRevenue) > 1e-9) {
+                previousEbitda / previousRevenue
+            } else {
+                null
+            }
             val ebitdaMarginGrowth = if (latestEbitdaMargin != null && previousEbitdaMargin != null) {
                 latestEbitdaMargin - previousEbitdaMargin
             } else {
                 null
             }
 
-            val operatingCashFlow = latestCashFlow?.netCashProvidedByOperatingActivities
-            val workingCapital = latestBalance?.workingCapital ?: run {
-                val currentAssets = latestBalance?.totalCurrentAssets
-                val currentLiabilities = latestBalance?.totalCurrentLiabilities
-                if (currentAssets != null && currentLiabilities != null) {
-                    currentAssets - currentLiabilities
-                } else {
-                    null
-                }
+            if (price == null && name == null && revenue == null && netIncome == null && totalAssets == null) {
+                Result.failure(Exception("No data found for $symbol"))
+            } else {
+                val data = StockData(
+                    symbol = symbol,
+                    companyName = name,
+                    price = price,
+                    marketCap = marketCap,
+                    revenue = revenue,
+                    netIncome = netIncome,
+                    eps = eps,
+                    peRatio = peRatio,
+                    psRatio = psRatio,
+                    roe = roe,
+                    debtToEquity = debtToEquity,
+                    freeCashFlow = freeCashFlow,
+                    pbRatio = pbRatio,
+                    ebitda = ebitda,
+                    outstandingShares = outstandingShares,
+                    totalAssets = totalAssets,
+                    totalLiabilities = totalLiabilities,
+                    totalCurrentAssets = totalCurrentAssets,
+                    totalCurrentLiabilities = totalCurrentLiabilities,
+                    retainedEarnings = retainedEarnings,
+                    netCashProvidedByOperatingActivities = operatingCashFlow,
+                    workingCapital = workingCapital,
+                    sector = null,
+                    industry = industry,
+                    revenueGrowth = latestRevenueGrowth,
+                    averageRevenueGrowth = averageRevenueGrowth,
+                    averageNetIncomeGrowth = averageNetIncomeGrowth,
+                    freeCashFlowMargin = freeCashFlowMargin,
+                    ebitdaMarginGrowth = ebitdaMarginGrowth,
+                    revenueHistory = revenueHistory,
+                    netIncomeHistory = netIncomeHistory,
+                    ebitdaHistory = ebitdaHistory
+                )
+                Result.success(data)
             }
-
-            val revenueHistory = incomeStatements.map { it.revenue }
-            val netIncomeHistory = incomeStatements.map { it.netIncome }
-            val ebitdaHistory = incomeStatements.map { it.ebitda }
-
-            val stockData = StockData(
-                symbol = symbol,
-                companyName = profile?.companyName,
-                price = quote?.price,
-                marketCap = profile?.marketCap,
-                revenue = latestIncome?.revenue,
-                netIncome = latestIncome?.netIncome,
-                eps = latestIncome?.eps,
-                peRatio = quote?.peRatio,
-                psRatio = psRatio,
-                roe = roe,
-                debtToEquity = debtToEquity,
-                freeCashFlow = latestCashFlow?.freeCashFlow,
-                pbRatio = priceToBook,
-                ebitda = latestIncome?.ebitda,
-                outstandingShares = outstandingShares,
-                totalAssets = latestBalance?.totalAssets,
-                totalLiabilities = latestBalance?.totalLiabilities,
-                totalCurrentAssets = latestBalance?.totalCurrentAssets,
-                totalCurrentLiabilities = latestBalance?.totalCurrentLiabilities,
-                retainedEarnings = latestBalance?.retainedEarnings,
-                netCashProvidedByOperatingActivities = operatingCashFlow,
-                workingCapital = workingCapital,
-                sector = profile?.sector,
-                industry = profile?.industry,
-                revenueGrowth = latestRevenueGrowth,
-                averageRevenueGrowth = averageRevenueGrowth,
-                averageNetIncomeGrowth = averageNetIncomeGrowth,
-                freeCashFlowMargin = freeCashFlowMargin,
-                ebitdaMarginGrowth = ebitdaMarginGrowth,
-                revenueHistory = revenueHistory,
-                netIncomeHistory = netIncomeHistory,
-                ebitdaHistory = ebitdaHistory
-            )
-
-            Result.success(stockData)
         } catch (e: Exception) {
             Result.failure(e)
         }
+    }
+
+    private fun firstConceptValue(
+        items: List<FinnhubFinancialLineItem>,
+        concepts: List<String>
+    ): Double? {
+        for (concept in concepts) {
+            val value = items.firstOrNull { it.concept.equals(concept, ignoreCase = true) }?.value
+            if (value != null && value.isFinite()) return value
+        }
+        return null
+    }
+
+    private fun sumConceptValues(
+        items: List<FinnhubFinancialLineItem>,
+        concepts: List<String>
+    ): Double? {
+        var sum = 0.0
+        var count = 0
+        for (concept in concepts) {
+            val value = items.firstOrNull { it.concept.equals(concept, ignoreCase = true) }?.value
+            if (value != null && value.isFinite()) {
+                sum += value
+                count++
+            }
+        }
+        return if (count > 0) sum else null
+    }
+
+    private fun mergeStockData(primary: StockData, backup: StockData): StockData {
+        return primary.copy(
+            companyName = primary.companyName ?: backup.companyName,
+            price = primary.price ?: backup.price,
+            marketCap = primary.marketCap ?: backup.marketCap,
+            revenue = primary.revenue ?: backup.revenue,
+            netIncome = primary.netIncome ?: backup.netIncome,
+            eps = primary.eps ?: backup.eps,
+            peRatio = primary.peRatio ?: backup.peRatio,
+            psRatio = primary.psRatio ?: backup.psRatio,
+            roe = primary.roe ?: backup.roe,
+            debtToEquity = primary.debtToEquity ?: backup.debtToEquity,
+            freeCashFlow = primary.freeCashFlow ?: backup.freeCashFlow,
+            pbRatio = primary.pbRatio ?: backup.pbRatio,
+            ebitda = primary.ebitda ?: backup.ebitda,
+            outstandingShares = primary.outstandingShares ?: backup.outstandingShares,
+            totalAssets = primary.totalAssets ?: backup.totalAssets,
+            totalLiabilities = primary.totalLiabilities ?: backup.totalLiabilities,
+            sector = primary.sector ?: backup.sector,
+            industry = primary.industry ?: backup.industry,
+            revenueGrowth = primary.revenueGrowth ?: backup.revenueGrowth,
+            averageRevenueGrowth = primary.averageRevenueGrowth ?: backup.averageRevenueGrowth,
+            averageNetIncomeGrowth = primary.averageNetIncomeGrowth ?: backup.averageNetIncomeGrowth,
+            totalCurrentAssets = primary.totalCurrentAssets ?: backup.totalCurrentAssets,
+            totalCurrentLiabilities = primary.totalCurrentLiabilities ?: backup.totalCurrentLiabilities,
+            retainedEarnings = primary.retainedEarnings ?: backup.retainedEarnings,
+            netCashProvidedByOperatingActivities = primary.netCashProvidedByOperatingActivities
+                ?: backup.netCashProvidedByOperatingActivities,
+            freeCashFlowMargin = primary.freeCashFlowMargin ?: backup.freeCashFlowMargin,
+            ebitdaMarginGrowth = primary.ebitdaMarginGrowth ?: backup.ebitdaMarginGrowth,
+            workingCapital = primary.workingCapital ?: backup.workingCapital,
+            revenueHistory = if (primary.revenueHistory.any { it != null }) primary.revenueHistory else backup.revenueHistory,
+            netIncomeHistory = if (primary.netIncomeHistory.any { it != null }) primary.netIncomeHistory else backup.netIncomeHistory,
+            ebitdaHistory = if (primary.ebitdaHistory.any { it != null }) primary.ebitdaHistory else backup.ebitdaHistory
+        )
     }
 
 

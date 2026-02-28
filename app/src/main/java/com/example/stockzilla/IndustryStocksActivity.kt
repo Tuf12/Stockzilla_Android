@@ -68,14 +68,14 @@ class IndustryStocksActivity : AppCompatActivity() {
             return
         }
 
-        val apiKey = apiKeyManager.getApiKey()
-        if (apiKey.isNullOrBlank()) {
-            Toast.makeText(this, getString(R.string.setup_api_key), Toast.LENGTH_LONG).show()
+        val finnhubKey = apiKeyManager.getFinnhubApiKey()
+        if (finnhubKey.isNullOrBlank()) {
+            Toast.makeText(this, getString(R.string.setup_finnhub_api_key), Toast.LENGTH_LONG).show()
             finish()
             return
         }
 
-        loadIndustryPeers(industry, apiKey)
+        loadIndustryPeers(industry, currentSymbol, finnhubKey)
     }
 
     private fun openStockAnalysis(symbol: String?) {
@@ -90,15 +90,15 @@ class IndustryStocksActivity : AppCompatActivity() {
         startActivity(intent)
     }
 
-    private fun loadIndustryPeers(industry: String, apiKey: String) {
+    private fun loadIndustryPeers(industry: String, symbol: String?, finnhubKey: String) {
         binding.progressBar.isVisible = true
         binding.recyclerViewPeers.isVisible = false
         binding.tvEmptyState.isVisible = false
         binding.tvEmptyState.text = getString(R.string.industry_list_empty)
 
-        val repository = StockRepository(apiKey)
+        val repository = StockRepository(finnhubKey, apiKeyManager.getFinnhubApiKey())
         lifecycleScope.launch {
-            repository.getIndustryPeers(industry)
+            repository.getIndustryPeers(symbol, industry)
                 .onSuccess { peers ->
                     val sortedPeers = peers.sortedWith(
                         compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }

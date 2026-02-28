@@ -85,4 +85,12 @@
         <item name="android:textSize">12sp</item>
         <item name="android:fontFamily">sans-serif</item>
     </style>
+
+    <!-- White background for toolbar overflow (3-dot) dropdown menu -->
+    <style name="ThemeOverlay.Stockzilla.PopupMenu" parent="ThemeOverlay.AppCompat.Light">
+        <item name="android:popupMenuStyle">@style/Widget.Stockzilla.PopupMenu</item>
+    </style>
+    <style name="Widget.Stockzilla.PopupMenu" parent="Widget.AppCompat.PopupMenu">
+        <item name="android:popupBackground">@color/white</item>
+    </style>
 </resources>
