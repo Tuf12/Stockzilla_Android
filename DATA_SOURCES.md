@@ -52,7 +52,7 @@ https://www.sec.gov/files/company_tickers.json
 
 ### API Requirements
 - **User-Agent header required**: Must include app name and contact email per SEC policy
-    - Example: `User-Agent: Stockzilla/1.0 (contact@email.com)`
+  - Example: `User-Agent: Stockzilla/1.0 (contact@email.com)`
 - **Rate limit**: 10 requests per second
 - **Cost**: Completely free
 - **Data format**: JSON with XBRL tags
@@ -109,12 +109,36 @@ Different companies may use slightly different XBRL tags for the same data. The 
 3. Try `SalesRevenueNet`
 4. Try `SalesRevenueGoodsNet`
 
-### Caching Strategy
+### Data Persistence Strategy
 
+EDGAR data serves two purposes: **immediate display** AND **long-term accumulation** for dynamic benchmarks.
+
+**On every stock analysis:**
+1. Fetch fundamental data from EDGAR
+2. Display to user with scores
+3. **Save to `analyzed_stocks` table** in Room database — this builds the peer database over time
+4. Cache in `stock_cache` for short-term reuse (expires next trading day)
+
+**Why we save every analyzed stock:**
+- The `analyzed_stocks` table accumulates over time, building a local database of financial data
+- This data calculates **dynamic industry averages** (PE, PS) that replace hardcoded benchmarks
+- It powers the **Similar Stocks** feature by providing a pool of peers to query
+- It enables **dynamic normalization ranges** — instead of hardcoded min/max for each metric, ranges are derived from actual stock distributions in each sector/cap tier
+- The more stocks the user analyzes, the more accurate the app becomes
+
+**Refresh triggers:**
 - EDGAR fundamental data only changes when new filings are published (quarterly)
-- Cache all EDGAR data locally in Room database
-- Track filing dates — only refresh when a new 10-Q or 10-K is detected
-- Finnhub price data should be cached for shorter periods (1–5 minutes)
+- Check for new filings via `https://data.sec.gov/submissions/CIK{cik_number}.json`
+- Compare the most recent filing date against `lastFilingDate` stored in `analyzed_stocks`
+- If a newer filing exists, pull fresh data from EDGAR and update the record
+- Favorited stocks get periodic background checks; other stocks refresh on next user access
+
+**Finnhub price caching:**
+- Price data cached for short periods (1–5 minutes) or until next trading day
+- On cache hit for fundamentals, price is still refreshed separately from Finnhub
+- Price-dependent ratios (PE, PS, market cap) are recalculated at display time using latest price + stored fundamentals
+
+See `DATABASE_ARCHITECTURE.md` for full schema details on the `analyzed_stocks`, `favorites`, and `stock_cache` tables.
 
 ---
 

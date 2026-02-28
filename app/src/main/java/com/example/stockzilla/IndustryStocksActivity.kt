@@ -96,7 +96,8 @@ class IndustryStocksActivity : AppCompatActivity() {
         binding.tvEmptyState.isVisible = false
         binding.tvEmptyState.text = getString(R.string.industry_list_empty)
 
-        val repository = StockRepository(finnhubKey, apiKeyManager.getFinnhubApiKey())
+        val database = StockzillaDatabase.getDatabase(this)
+        val repository = StockRepository(finnhubKey, apiKeyManager.getFinnhubApiKey(), database.analyzedStockDao())
         lifecycleScope.launch {
             repository.getIndustryPeers(symbol, industry)
                 .onSuccess { peers ->

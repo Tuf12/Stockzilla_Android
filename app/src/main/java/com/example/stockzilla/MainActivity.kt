@@ -527,10 +527,11 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
     private var currentApiKey: String = ApiConstants.DEFAULT_DEMO_KEY
     private var currentFinnhubApiKey: String? = null
-    private var stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey)
 
-    // Initialize database and repository properly
     private val database = StockzillaDatabase.getDatabase(application)
+    private val analyzedStockDao = database.analyzedStockDao()
+    private var stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey, analyzedStockDao)
+
     private val favoritesRepository = FavoritesRepository(database.favoritesDao())
     private val stockCacheRepository = StockCacheRepository(database.stockCacheDao())
     private val financialAnalyzer = FinancialHealthAnalyzer()
@@ -566,12 +567,12 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
     fun updateApiKey(apiKey: String) {
         currentApiKey = apiKey
-        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey)
+        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey, analyzedStockDao)
     }
 
     fun updateFinnhubApiKey(key: String?) {
         currentFinnhubApiKey = key?.takeIf { it.isNotBlank() }
-        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey)
+        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey, analyzedStockDao)
     }
 
     suspend fun searchStock(ticker: String, forceRefresh: Boolean = false) {
@@ -589,6 +590,14 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                                 _currentStockData.value = updated
                             }
                         }
+
+                        // Save to analyzed_stocks for persistence
+                        val score = financialAnalyzer.calculateCompositeScore(stockData)
+                        val sicCode = stockRepository.getSicCode(resolvedSymbol)
+                        val lastFilingDate = stockRepository.getLatestFilingDate(resolvedSymbol)
+                        stockRepository.saveAnalyzedStock(
+                            _currentStockData.value ?: stockData, sicCode, score, lastFilingDate
+                        )
 
                         _loading.value = false
                     }
@@ -626,10 +635,14 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                         _healthScore.value = score
                         checkIfFavorited(resolvedSymbol)
 
-                        // Auto-update favorite if it exists
+                        // Save to analyzed_stocks for persistence
+                        val sicCode = stockRepository.getSicCode(resolvedSymbol)
+                        val lastFilingDate = stockRepository.getLatestFilingDate(resolvedSymbol)
+                        stockRepository.saveAnalyzedStock(finalData, sicCode, score, lastFilingDate)
+
                         if (favoritesRepository.isFavorite(resolvedSymbol)) {
                             favoritesRepository.updateFavoriteData(finalData, score.compositeScore)
-                            loadFavorites() // Refresh favorites list
+                            loadFavorites()
                         }
 
                         _loading.value = false
@@ -670,6 +683,11 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                 _currentStockData.value = stockData
                 val score = financialAnalyzer.calculateCompositeScore(stockData)
                 _healthScore.value = score
+
+                // Save to analyzed_stocks
+                val sicCode = stockRepository.getSicCode(symbol)
+                val lastFilingDate = stockRepository.getLatestFilingDate(symbol)
+                stockRepository.saveAnalyzedStock(stockData, sicCode, score, lastFilingDate)
 
                 val isFavorite = favoritesRepository.isFavorite(symbol)
                 _isFavorited.value = isFavorite
