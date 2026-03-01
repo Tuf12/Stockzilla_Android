@@ -249,6 +249,7 @@ data class StockData(
     val totalLiabilities: Double?,
     val sector: String?,
     val industry: String?,
+    val sicCode: String? = null,
     val revenueGrowth: Double? = null,
     val averageRevenueGrowth: Double? = null,
     val averageNetIncomeGrowth: Double? = null,
@@ -262,7 +263,77 @@ data class StockData(
     val revenueHistory: List<Double?> = emptyList(),
     val netIncomeHistory: List<Double?> = emptyList(),
     val ebitdaHistory: List<Double?> = emptyList()
-): Serializable
+): Serializable {
+
+    /**
+     * Computes growth metrics from EDGAR historical lists and returns a copy with those fields set.
+     * Used before scoring so that [calculateGrowthScore] gets real values instead of defaulting to neutral.
+     * If history has fewer than 2 periods, corresponding growth fields are left unchanged (no fabrication).
+     */
+    fun withGrowthFromHistory(): StockData {
+        val rev = revenueHistory
+        val ni = netIncomeHistory
+        val ebitdaHist = ebitdaHistory
+
+        // When we have scalar revenue and exactly 1 year in history, compute single YoY from that
+        val revenueGrowth = computeLatestYoYGrowth(rev)
+            ?: if (rev.size == 1 && revenue != null) {
+                val prior = rev[0]
+                if (prior != null && abs(prior) > 1e-9) (revenue - prior) / abs(prior) else null
+            } else null
+        val averageRevenueGrowth = computeAverageYoYGrowth(rev) ?: revenueGrowth
+        val averageNetIncomeGrowth = computeAverageYoYGrowth(ni)
+            ?: if (ni.size == 1 && netIncome != null) {
+                val prior = ni[0]
+                if (prior != null && abs(prior) > 1e-9) (netIncome - prior) / abs(prior) else null
+            } else null
+
+        val freeCashFlowMargin = if (freeCashFlow != null && revenue != null && abs(revenue) > 1e-9) {
+            freeCashFlow / revenue
+        } else null
+
+        val latestEbitdaMargin = if (ebitda != null && revenue != null && abs(revenue) > 1e-9) {
+            ebitda / revenue
+        } else null
+        val priorRevenue = rev.getOrNull(1)
+        val priorEbitda = ebitdaHist.getOrNull(1)
+        val priorEbitdaMargin = if (priorEbitda != null && priorRevenue != null && abs(priorRevenue) > 1e-9) {
+            priorEbitda / priorRevenue
+        } else null
+        val ebitdaMarginGrowth = if (latestEbitdaMargin != null && priorEbitdaMargin != null) {
+            latestEbitdaMargin - priorEbitdaMargin
+        } else null
+
+        return copy(
+            revenueGrowth = revenueGrowth ?: this.revenueGrowth,
+            averageRevenueGrowth = averageRevenueGrowth ?: this.averageRevenueGrowth,
+            averageNetIncomeGrowth = averageNetIncomeGrowth ?: this.averageNetIncomeGrowth,
+            freeCashFlowMargin = freeCashFlowMargin ?: this.freeCashFlowMargin,
+            ebitdaMarginGrowth = ebitdaMarginGrowth ?: this.ebitdaMarginGrowth
+        )
+    }
+}
+
+private fun computeLatestYoYGrowth(values: List<Double?>): Double? {
+    if (values.size < 2) return null
+    val current = values[0]
+    val prior = values[1]
+    if (current == null || prior == null || abs(prior) <= 1e-9) return null
+    return (current - prior) / abs(prior)
+}
+
+private fun computeAverageYoYGrowth(values: List<Double?>): Double? {
+    if (values.size < 2) return null
+    val growthRates = mutableListOf<Double>()
+    for (i in 0 until values.size - 1) {
+        val current = values[i]
+        val prior = values[i + 1]
+        if (current != null && prior != null && abs(prior) > 1e-9) {
+            growthRates.add((current - prior) / abs(prior))
+        }
+    }
+    return if (growthRates.isNotEmpty()) growthRates.average() else null
+}
 
 data class HealthScore(
     val compositeScore: Int,
@@ -284,8 +355,8 @@ data class MetricScore(
 @Suppress("UNCHECKED_CAST")
 class FinancialHealthAnalyzer {
 
-    fun calculateCompositeScore(stockData: StockData): HealthScore {
-        val valuationAssessment = assessValuation(stockData)
+    fun calculateCompositeScore(stockData: StockData, benchmarkOverride: Benchmark? = null): HealthScore {
+        val valuationAssessment = assessValuation(stockData, benchmarkOverride)
         val (coreHealthScoreRaw, breakdown) = computeCoreHealthScore(stockData)
         val growthScoreRaw = calculateGrowthScore(stockData, valuationAssessment)
         val resilienceScoreRaw = calculateResilienceScore(stockData)
@@ -469,25 +540,37 @@ class FinancialHealthAnalyzer {
         val retainedEarningsToAssets = inputs.retainedEarningsToAssets ?: return null
         val ebitToAssets = inputs.ebitToAssets ?: return null
         val marketValueToLiabilities = inputs.marketValueToLiabilities ?: return null
-        val revenueToAssets = inputs.revenueToAssets ?: return null
 
-        val altmanZ = (1.2 * workingCapitalToAssets) +
-                (1.4 * retainedEarningsToAssets) +
-                (3.3 * ebitToAssets) +
-                (0.6 * marketValueToLiabilities) +
-                (1.0 * revenueToAssets)
-
-        if (!altmanZ.isFinite()) {
-            return null
-
+        val baseLevel = if (EdgarConcepts.isManufacturingSic(stockData.sicCode)) {
+            // Original Z-Score (manufacturing): Z = 1.2*A + 1.4*B + 3.3*C + 0.6*D + 1.0*E
+            val revenueToAssets = inputs.revenueToAssets ?: return null
+            val altmanZ = (1.2 * workingCapitalToAssets) +
+                    (1.4 * retainedEarningsToAssets) +
+                    (3.3 * ebitToAssets) +
+                    (0.6 * marketValueToLiabilities) +
+                    (1.0 * revenueToAssets)
+            if (!altmanZ.isFinite()) return null
+            when {
+                altmanZ < 1.81 -> 0
+                altmanZ < 2.3 -> 1
+                altmanZ < 2.99 -> 2
+                else -> 3
+            }
+        } else {
+            // Z''-Score (non-manufacturing): Z'' = 6.56*A + 3.26*B + 6.72*C + 1.05*D (no E)
+            val altmanZPrime = (6.56 * workingCapitalToAssets) +
+                    (3.26 * retainedEarningsToAssets) +
+                    (6.72 * ebitToAssets) +
+                    (1.05 * marketValueToLiabilities)
+            if (!altmanZPrime.isFinite()) return null
+            when {
+                altmanZPrime < 1.10 -> 0
+                altmanZPrime < 1.85 -> 1
+                altmanZPrime < 2.60 -> 2
+                else -> 3
+            }
         }
 
-        val baseLevel = when {
-            altmanZ < 1.81 -> 0
-            altmanZ < 2.3 -> 1
-            altmanZ < 2.99 -> 2
-            else -> 3
-        }
         val adjustedLevel = if (inputs.hasTwoYearLosses) {
             max(baseLevel - 1, 0)
         } else {
@@ -652,8 +735,8 @@ class FinancialHealthAnalyzer {
     }
 
 
-private fun assessValuation(stockData: StockData): ValuationAssessment? {
-    val benchmark = BenchmarkData.getBenchmarkAverages(stockData)
+private fun assessValuation(stockData: StockData, benchmarkOverride: Benchmark? = null): ValuationAssessment? {
+    val benchmark = BenchmarkData.getBenchmarkAverages(stockData, benchmarkOverride)
     val hasPositiveIncome = (stockData.netIncome ?: 0.0) > 0
 
     val ratioType: String

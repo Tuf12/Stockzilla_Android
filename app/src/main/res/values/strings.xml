@@ -29,6 +29,12 @@
     <string name="strong_buy_excellent_financial_health">Strong Buy - Excellent financial health</string>
     <string name="add_to_favorites">Add to Favorites</string>
     <string name="full_analysis">Full Analysis</string>
+    <string name="view_on_stock_analysis">View on Stock Analysis</string>
+    <string name="full_analysis_title">Analysis</string>
+    <string name="open_on_stock_analysis">Open on Stock Analysis website</string>
+    <string name="valuation_vs_benchmark">Valuation vs benchmark</string>
+    <string name="your_ratio">Your %1$s</string>
+    <string name="benchmark_avg">Benchmark avg</string>
     <string name="refresh_data">Refresh data</string>
     <string name="view_health_score_details">View Health Score Details</string>
     <string name="health_score_details_title">Health Score Details</string>
@@ -40,6 +46,7 @@
     <string name="overall_score_heading">Overall Stockzilla composite score</string>
     <string name="forecast_sub_score_label">Growth &amp; forecast</string>
     <string name="z_sub_score_label">Bankruptcy risk checker</string>
+    <string name="z_prime_score_label">Bankruptcy risk checker (Z\'\'-Score, non-manufacturing)</string>
     <string name="sub_score_format">%1$d / 10</string>
     <string name="not_available">N/A</string>
     <string name="symbol_label">Symbol</string>
@@ -123,9 +130,24 @@
     <string name="search_industry">Search Industry</string>
     <string name="industry_peers_title">Industry peers</string>
     <string name="industry_peers_subtitle">Companies operating in the %1$s industry.</string>
+    <string name="industry_peers_subtitle_no_industry">Your saved peer list for this stock.</string>
+    <string name="industry_add_by_symbol">Add by symbol</string>
+    <string name="industry_add_symbol_dialog_title">Add ticker to list</string>
+    <string name="industry_add_symbol_hint">Enter stock symbol (e.g. AAPL)</string>
+    <string name="industry_add_symbol_btn">Add</string>
+    <string name="industry_add_symbol_same">Cannot add the same stock to its own list.</string>
+    <string name="industry_add_symbol_empty">Enter a symbol.</string>
+    <string name="industry_added">Added %1$s to the list.</string>
+    <string name="industry_no_key_can_add_by_symbol">Finnhub API key not set. Search is limited; you can still add stocks by symbol.</string>
     <string name="industry_current_stock">You\'re analyzing: %1$s</string>
     <string name="industry_list_empty">No peers were found for this industry yet.</string>
     <string name="industry_list_error">Unable to load industry peers right now. Please try again later.</string>
+    <string name="industry_remove_peer">Remove from list</string>
+    <string name="industry_add_stock">Add stock</string>
+    <string name="industry_add_from_all">Browse / search all stocks to add</string>
+    <string name="add_peer_title">Add stock to list</string>
+    <string name="add_peer_search_hint">Search by symbol or company name</string>
+    <string name="add_peer_empty">Search to find stocks to add to your industry list.</string>
     <string name="industry_missing_message">Analyze a stock first to explore its industry peers.</string>
     <string name="industry_not_available_message">We couldn\'t determine the industry for this stock.</string>
     <string name="last_refreshed_format">Last refreshed: %1$s</string>
@@ -198,4 +220,13 @@
     <string name="health_score_rationale_revenue_to_assets">Revenue to assets reveals asset turnover and business efficiency.</string>
     <string name="health_score_rationale_two_year_loss_penalty">Two consecutive years of net losses weaken the Altman-style safety buffer.</string>
     <string name="health_score_two_year_loss_detail_value">Losses in both of the last two reporting periods.</string>
+
+    <!-- Diagnostic log (developer) -->
+    <string name="diagnostic_log">Diagnostic log</string>
+    <string name="diagnostic_log_title">Diagnostic log</string>
+    <string name="diagnostic_log_hint">EDGAR and data-source events. Use Copy or Share to send when reporting issues.</string>
+    <string name="diagnostic_log_copy">Copy</string>
+    <string name="diagnostic_log_share">Share</string>
+    <string name="diagnostic_log_empty">No log entries yet. Analyze a few stocks to generate logs.</string>
+    <string name="diagnostic_log_copied">Log copied to clipboard.</string>
 </resources>

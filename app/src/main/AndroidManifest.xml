@@ -25,8 +25,26 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
+            android:name=".FullAnalysisActivity"
+            android:exported="false"
+            android:label="@string/full_analysis_title"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
             android:name=".IndustryStocksActivity"
             android:exported="false"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
+            android:name=".AddPeerActivity"
+            android:exported="false"
+            android:label="@string/add_peer_title"
+            android:parentActivityName=".IndustryStocksActivity" />
+
+        <activity
+            android:name=".DiagnosticLogActivity"
+            android:exported="false"
+            android:label="@string/diagnostic_log_title"
             android:parentActivityName=".MainActivity" />
 
         <activity

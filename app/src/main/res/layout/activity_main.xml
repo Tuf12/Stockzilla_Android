@@ -486,7 +486,21 @@
                         app:icon="@drawable/ic_open_in_new"
                         app:iconTint="@color/colorOnPrimary" />
 
-
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnViewOnStockAnalysis"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginTop="8dp"
+                        android:text="@string/view_on_stock_analysis"
+                        android:textColor="@color/buttonPrimaryText"
+                        app:backgroundTint="@android:color/transparent"
+                        app:strokeColor="@color/buttonPrimaryText"
+                        app:strokeWidth="1dp"
+                        app:icon="@drawable/ic_open_in_new"
+                        app:iconTint="@color/buttonPrimaryText"
+                        style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
                 </LinearLayout>
 

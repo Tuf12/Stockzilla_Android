@@ -7,5 +7,9 @@
         android:title="@string/update_finnhub_api_key"
         android:icon="@drawable/ic_settings"
         app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_diagnostic_log"
+        android:title="@string/diagnostic_log"
+        app:showAsAction="never" />
 
 </menu>

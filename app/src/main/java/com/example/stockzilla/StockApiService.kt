@@ -73,53 +73,64 @@ class StockRepository(
     // --------------- Main Data Flow (Database-First) ---------------
 
     /**
-     * 1. Check analyzed_stocks DB for existing data
+     * 1. Unless [forceFromEdgar] is true, check analyzed_stocks DB for existing data
      * 2. If found and not stale, load from DB and merge with live price
-     * 3. If not found or stale, fetch from SEC EDGAR, save to DB, merge with price
+     * 3. If not found, stale, or forceFromEdgar, fetch from SEC EDGAR, save to DB, merge with price
      */
-    suspend fun getStockData(symbol: String): Result<StockData> = withContext(Dispatchers.IO) {
+    suspend fun getStockData(symbol: String, forceFromEdgar: Boolean = false): Result<StockData> = withContext(Dispatchers.IO) {
         val dao = analyzedStockDao
-
-        // Step 1: Check analyzed_stocks for existing data
         val existing = dao?.getStock(symbol)
 
-        if (existing != null) {
+        if (!forceFromEdgar && existing != null) {
             Log.d(TAG, "Found $symbol in analyzed_stocks, checking freshness")
+            DiagnosticsLogger.log(symbol, "DATA_CHECK", "Found in analyzed_stocks, checking freshness")
 
-            val needsRefresh = shouldRefreshFromEdgar(existing)
+            val missingGrowth = hasNoGrowthData(existing)
+            val needsRefresh = shouldRefreshFromEdgar(existing) || missingGrowth
             if (!needsRefresh) {
-                // Load from DB and merge with latest price
+                DiagnosticsLogger.log(symbol, "DATA_SOURCE_DB", "Using cached data (no refresh needed)")
                 val stockData = existing.toStockData()
                 val withPrice = mergeWithLivePrice(stockData)
                 return@withContext Result.success(withPrice)
             }
-            Log.d(TAG, "$symbol has a newer filing, refreshing from EDGAR")
+            if (missingGrowth) {
+                Log.d(TAG, "$symbol has no growth data in DB, refreshing from EDGAR")
+                DiagnosticsLogger.log(symbol, "EDGAR_REFRESH", "No growth data, fetching from EDGAR")
+            } else {
+                Log.d(TAG, "$symbol has a newer filing, refreshing from EDGAR")
+                DiagnosticsLogger.log(symbol, "EDGAR_REFRESH", "New filing detected, fetching from EDGAR")
+            }
+        }
+        if (forceFromEdgar) {
+            DiagnosticsLogger.log(symbol, "EDGAR_REFRESH", "User requested refresh, fetching latest from SEC EDGAR")
         }
 
-        // Step 2: Fetch from EDGAR
+        // Fetch from EDGAR
         val edgarResult = edgarService.loadFundamentalsForTicker(symbol)
         edgarResult.fold(
             onSuccess = { edgarData ->
+                DiagnosticsLogger.log(symbol, "DATA_SOURCE_EDGAR", "Saved to analyzed_stocks")
                 val withPrice = mergeWithLivePrice(edgarData)
                 return@withContext Result.success(withPrice)
             },
             onFailure = { error ->
-                // Fall back to existing DB data if EDGAR fails but we had a row
                 if (existing != null) {
                     Log.w(TAG, "EDGAR fetch failed for $symbol, using existing DB data", error)
+                    DiagnosticsLogger.log(symbol, "EDGAR_FAIL_FALLBACK_DB", error.message ?: "unknown", "using cached row")
                     val stockData = existing.toStockData()
                     val withPrice = mergeWithLivePrice(stockData)
                     return@withContext Result.success(withPrice)
                 }
 
-                // Try Finnhub as last resort for basic data
                 if (!finnhubApiKey.isNullOrBlank()) {
                     val finnhubResult = getBasicDataFromFinnhub(symbol)
                     if (finnhubResult != null) {
+                        DiagnosticsLogger.log(symbol, "FALLBACK_FINNHUB", "No EDGAR/DB data, using Finnhub price+profile only")
                         return@withContext Result.success(finnhubResult)
                     }
                 }
 
+                DiagnosticsLogger.log(symbol, "DATA_FAIL", "No data from EDGAR, DB, or Finnhub", error.message)
                 return@withContext Result.failure(error)
             }
         )
@@ -131,11 +142,12 @@ class StockRepository(
     suspend fun saveAnalyzedStock(
         stockData: StockData,
         sicCode: String?,
+        naicsCode: String?,
         healthScore: HealthScore?,
         lastFilingDate: String?
     ) {
         val dao = analyzedStockDao ?: return
-        val entity = AnalyzedStockEntity.fromStockData(stockData, sicCode, healthScore, lastFilingDate)
+        val entity = AnalyzedStockEntity.fromStockData(stockData, sicCode, naicsCode, healthScore, lastFilingDate)
         dao.upsertStock(entity)
         Log.d(TAG, "Saved ${stockData.symbol} to analyzed_stocks")
     }
@@ -147,6 +159,15 @@ class StockRepository(
         val cik = edgarService.resolveCikForTicker(symbol) ?: return null
         val submissions = edgarService.getSubmissionsInfo(cik) ?: return null
         return submissions.sic
+    }
+
+    /**
+     * Get the NAICS code for a ticker from EDGAR submissions.
+     */
+    suspend fun getNaicsCode(symbol: String): String? {
+        val cik = edgarService.resolveCikForTicker(symbol) ?: return null
+        val submissions = edgarService.getSubmissionsInfo(cik) ?: return null
+        return submissions.naics
     }
 
     /**
@@ -164,8 +185,12 @@ class StockRepository(
         quoteDataSource.getQuote(symbol).map { it.current }
     }
 
-    // --------------- Industry Peers (from analyzed_stocks) ---------------
+    // --------------- Industry Peers (analyzed_stocks + Finnhub peers for discovery) ---------------
 
+    /**
+     * Returns industry peers: first from DB (analyzed_stocks, so we show previously analyzed with full data),
+     * then from Finnhub stock/peers so the user can discover new stocks. Tapping a peer opens analysis.
+     */
     suspend fun getIndustryPeers(symbol: String?, industry: String, limit: Int = 50): Result<List<IndustryPeer>> =
         withContext(Dispatchers.IO) {
             val dao = analyzedStockDao
@@ -173,15 +198,16 @@ class StockRepository(
 
             try {
                 val existing = symbol?.let { dao.getStock(it) }
+                val naicsCode = existing?.naicsCode
                 val sicCode = existing?.sicCode
 
-                val peers = if (!sicCode.isNullOrBlank()) {
-                    dao.getSimilarStocks(sicCode, symbol ?: "")
-                } else {
-                    dao.getPeersBySector(industry)
+                val dbPeers = when {
+                    !naicsCode.isNullOrBlank() -> dao.getSimilarStocksByNaics(naicsCode, symbol ?: "")
+                    !sicCode.isNullOrBlank() -> dao.getSimilarStocks(sicCode, symbol ?: "")
+                    else -> dao.getPeersBySector(industry)
                 }
 
-                val result = peers.take(limit).map { entity ->
+                val fromDb = dbPeers.take(limit).map { entity ->
                     IndustryPeer(
                         symbol = entity.symbol,
                         companyName = entity.companyName,
@@ -191,13 +217,65 @@ class StockRepository(
                         marketCap = entity.marketCap
                     )
                 }
-                Result.success(result)
+                val existingSymbols = fromDb.map { it.symbol.uppercase() }.toSet()
+                val currentSymbolUpper = symbol?.uppercase()
+
+                // Add peers from Finnhub so user can discover new stocks (not yet in analyzed_stocks)
+                val fromFinnhub = if (!symbol.isNullOrBlank() && !finnhubApiKey.isNullOrBlank()) {
+                    try {
+                        val peerSymbols = finnhubApi.getStockPeers(symbol, finnhubApiKey!!)
+                        peerSymbols
+                            ?.filter { it.isNotBlank() }
+                            ?.map { it.trim().uppercase() }
+                            ?.distinct()
+                            ?.filter { it != currentSymbolUpper && it !in existingSymbols }
+                            ?.map { peerSymbol ->
+                                IndustryPeer(
+                                    symbol = peerSymbol,
+                                    companyName = null,
+                                    sector = null,
+                                    industry = null,
+                                    price = null,
+                                    marketCap = null
+                                )
+                            }
+                            ?: emptyList()
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Finnhub peers failed for $symbol", e)
+                        emptyList()
+                    }
+                } else {
+                    emptyList()
+                }
+
+                val combined = fromDb + fromFinnhub
+                Result.success(combined.take(limit))
             } catch (e: Exception) {
                 Result.failure(e)
             }
         }
 
+    /** Search symbols/companies via Finnhub (for "Add stock" flow). */
+    suspend fun searchSymbols(query: String): Result<List<FinnhubSearchResult>> = withContext(Dispatchers.IO) {
+        if (finnhubApiKey.isNullOrBlank()) return@withContext Result.failure(Exception("API key required"))
+        return@withContext try {
+            val response = finnhubApi.search(query.trim(), finnhubApiKey!!)
+            val list = response.result?.filter { it.symbol?.isNotBlank() == true }.orEmpty()
+            Result.success(list)
+        } catch (e: Exception) {
+            Log.w(TAG, "Search failed", e)
+            Result.failure(e)
+        }
+    }
+
     // --------------- Private Helpers ---------------
+
+    /** True when the DB row has no growth fields set (e.g. analyzed before growth was persisted). Triggers EDGAR refetch so we can compute and store growth. */
+    private fun hasNoGrowthData(existing: AnalyzedStockEntity): Boolean {
+        return existing.revenueGrowth == null &&
+                existing.netIncomeGrowth == null &&
+                existing.fcfMargin == null
+    }
 
     private suspend fun shouldRefreshFromEdgar(existing: AnalyzedStockEntity): Boolean {
         val lastFiling = existing.lastFilingDate ?: return true
@@ -226,7 +304,13 @@ class StockRepository(
         val price = priceResult ?: stockData.price
         if (price == null) return stockData
 
-        val shares = stockData.outstandingShares
+        var shares = stockData.outstandingShares
+        if (shares == null && !finnhubApiKey.isNullOrBlank()) {
+            try {
+                val profile = finnhubApi.getProfile(stockData.symbol, finnhubApiKey!!)
+                shares = profile?.shareOutstanding?.takeIf { it > 0 }
+            } catch (_: Exception) { }
+        }
         val marketCap = if (shares != null && shares > 0) price * shares else stockData.marketCap
         val eps = stockData.eps
             ?: if (stockData.netIncome != null && shares != null && shares > 0) stockData.netIncome / shares else null
@@ -246,7 +330,8 @@ class StockRepository(
             eps = eps,
             peRatio = peRatio,
             psRatio = psRatio,
-            pbRatio = pbRatio
+            pbRatio = pbRatio,
+            outstandingShares = shares ?: stockData.outstandingShares
         )
     }
 

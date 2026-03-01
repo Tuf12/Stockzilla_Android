@@ -88,11 +88,16 @@ object BenchmarkData {
         return Benchmark(peAvg = null, psAvg = null)
     }
 
-    fun getBenchmarkAverages(stockData: StockData): Benchmark {
+    /**
+     * Get benchmark for a stock. When [dynamicOverride] is non-null (from DynamicBenchmarkRepository),
+     * use it; otherwise use hardcoded industry/sector lookup.
+     */
+    fun getBenchmarkAverages(stockData: StockData, dynamicOverride: Benchmark? = null): Benchmark {
+        if (dynamicOverride != null) return dynamicOverride
         return getBenchmark(stockData.industry, stockData.sector)
     }
 
-    fun calculateFairValue(stockData: StockData): FairValueResult? {
+    fun calculateFairValue(stockData: StockData, dynamicOverride: Benchmark? = null): FairValueResult? {
         val sharesOutstanding = stockData.outstandingShares ?: return null
         if (sharesOutstanding <= 0) return null
 
@@ -100,19 +105,11 @@ object BenchmarkData {
         val revenue = stockData.revenue
         val usePe = (netIncome ?: 0.0) > 0
 
-        val industryBenchmark = getBenchmark(stockData.industry, stockData.sector)
+        val industryBenchmark = getBenchmarkAverages(stockData, dynamicOverride)
         val benchmark = if (usePe) {
-            if (industryBenchmark.peAvg != null) {
-                industryBenchmark
-            } else {
-                getBenchmark(null, stockData.sector)
-            }
+            if (industryBenchmark.peAvg != null) industryBenchmark else getBenchmark(null, stockData.sector)
         } else {
-            if (industryBenchmark.psAvg != null) {
-                industryBenchmark
-            } else {
-                getBenchmark(null, stockData.sector)
-            }
+            if (industryBenchmark.psAvg != null) industryBenchmark else getBenchmark(null, stockData.sector)
         }
 
         return if (usePe) {
@@ -139,10 +136,11 @@ object BenchmarkData {
         }
     }
     /**
-     * Get the appropriate ratio and benchmark based on net income
+     * Get the appropriate ratio and benchmark based on net income.
+     * When [dynamicOverride] is non-null, use it for benchmark values.
      */
-    fun getDisplayMetrics(stockData: StockData): DisplayMetrics {
-        val benchmark = getBenchmark(stockData.industry, stockData.sector)
+    fun getDisplayMetrics(stockData: StockData, dynamicOverride: Benchmark? = null): DisplayMetrics {
+        val benchmark = getBenchmarkAverages(stockData, dynamicOverride)
         val hasPositiveIncome = (stockData.netIncome ?: 0.0) > 0
 
         return if (hasPositiveIncome) {

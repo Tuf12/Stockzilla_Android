@@ -58,6 +58,7 @@ data class StockCacheEntity(
     tableName = "analyzed_stocks",
     indices = [
         Index(value = ["sicCode"]),
+        Index(value = ["naicsCode"]),
         Index(value = ["sector"]),
         Index(value = ["marketCapTier"])
     ]
@@ -66,6 +67,7 @@ data class AnalyzedStockEntity(
     @PrimaryKey val symbol: String,
     val companyName: String?,
     val sicCode: String?,
+    val naicsCode: String?,
     val sector: String?,
     val industry: String?,
     val marketCapTier: String?,
@@ -122,6 +124,7 @@ data class AnalyzedStockEntity(
         fun fromStockData(
             stockData: StockData,
             sicCode: String?,
+            naicsCode: String? = null,
             healthScore: HealthScore?,
             lastFilingDate: String?
         ): AnalyzedStockEntity {
@@ -138,6 +141,7 @@ data class AnalyzedStockEntity(
                 symbol = stockData.symbol,
                 companyName = stockData.companyName,
                 sicCode = sicCode,
+                naicsCode = naicsCode,
                 sector = stockData.sector,
                 industry = stockData.industry,
                 marketCapTier = computeMarketCapTier(stockData.marketCap),
@@ -208,6 +212,7 @@ data class AnalyzedStockEntity(
             workingCapital = workingCapital,
             sector = sector,
             industry = industry,
+            sicCode = sicCode,
             revenueGrowth = revenueGrowth,
             averageRevenueGrowth = revenueGrowth,
             averageNetIncomeGrowth = netIncomeGrowth,
@@ -299,17 +304,76 @@ interface AnalyzedStockDao {
         LIMIT :limit
     """)
     suspend fun getStaleStocks(cutoff: Long, limit: Int): List<AnalyzedStockEntity>
+
+    // NAICS-based peer grouping
+    @Query("""
+        SELECT * FROM analyzed_stocks 
+        WHERE naicsCode = :naicsCode
+        AND peRatio IS NOT NULL AND peRatio > 0
+    """)
+    suspend fun getPeersByNaics(naicsCode: String): List<AnalyzedStockEntity>
+
+    @Query("""
+        SELECT * FROM analyzed_stocks 
+        WHERE naicsCode = :naicsCode
+        AND marketCapTier = :capTier
+        AND peRatio IS NOT NULL AND peRatio > 0
+    """)
+    suspend fun getPeersByNaicsAndCapTier(naicsCode: String, capTier: String): List<AnalyzedStockEntity>
+
+    @Query("""
+        SELECT * FROM analyzed_stocks 
+        WHERE naicsCode = :naicsCode 
+        AND symbol != :excludeSymbol
+        ORDER BY compositeScore DESC
+    """)
+    suspend fun getSimilarStocksByNaics(naicsCode: String, excludeSymbol: String): List<AnalyzedStockEntity>
+}
+
+/** Saved industry peer list per stock (user can add/remove). */
+@Entity(
+    tableName = "stock_industry_peers",
+    primaryKeys = ["ownerSymbol", "peerSymbol"],
+    indices = [Index(value = ["ownerSymbol"])]
+)
+data class StockIndustryPeerEntity(
+    val ownerSymbol: String,
+    val peerSymbol: String,
+    val addedAt: Long,
+    val source: String = "initial" // "initial" | "user_added" | "finnhub"
+)
+
+@Dao
+interface StockIndustryPeerDao {
+    @Query("SELECT * FROM stock_industry_peers WHERE ownerSymbol = :ownerSymbol ORDER BY addedAt ASC")
+    suspend fun getPeersForOwner(ownerSymbol: String): List<StockIndustryPeerEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(peer: StockIndustryPeerEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(peers: List<StockIndustryPeerEntity>)
+
+    @Query("DELETE FROM stock_industry_peers WHERE ownerSymbol = :ownerSymbol AND peerSymbol = :peerSymbol")
+    suspend fun remove(ownerSymbol: String, peerSymbol: String)
+
+    @Query("DELETE FROM stock_industry_peers WHERE ownerSymbol = :ownerSymbol")
+    suspend fun removeAllForOwner(ownerSymbol: String)
+
+    @Query("SELECT COUNT(*) FROM stock_industry_peers WHERE ownerSymbol = :ownerSymbol")
+    suspend fun countForOwner(ownerSymbol: String): Int
 }
 
 @Database(
-    entities = [FavoriteEntity::class, StockCacheEntity::class, AnalyzedStockEntity::class],
-    version = 5,
+    entities = [FavoriteEntity::class, StockCacheEntity::class, AnalyzedStockEntity::class, StockIndustryPeerEntity::class],
+    version = 7,
     exportSchema = false
 )
 abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun favoritesDao(): FavoritesDao
     abstract fun stockCacheDao(): StockCacheDao
     abstract fun analyzedStockDao(): AnalyzedStockDao
+    abstract fun stockIndustryPeerDao(): StockIndustryPeerDao
 
     companion object {
         @Volatile
@@ -381,6 +445,28 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE analyzed_stocks ADD COLUMN naicsCode TEXT")
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_analyzed_stocks_naicsCode ON analyzed_stocks (naicsCode)")
+            }
+        }
+
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS stock_industry_peers (
+                        ownerSymbol TEXT NOT NULL,
+                        peerSymbol TEXT NOT NULL,
+                        addedAt INTEGER NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'initial',
+                        PRIMARY KEY (ownerSymbol, peerSymbol)
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_stock_industry_peers_ownerSymbol ON stock_industry_peers (ownerSymbol)")
+            }
+        }
+
         fun getDatabase(context: Context): StockzillaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -388,7 +474,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5)
+                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance

@@ -302,7 +302,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         stockData: StockData,
         healthScore: HealthScore
     ): SectionDetailContent {
-        val title = getString(R.string.z_sub_score_label)
+        val title = getString(R.string.z_sub_score_label) // updated below when we have inputs
         val summary = getString(R.string.health_score_resilience_summary, healthScore.zSubScore)
         val inputs = gatherResilienceRatios(stockData)
             ?: return SectionDetailContent(
@@ -312,7 +312,8 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                 emptyMessage = getString(R.string.health_score_resilience_missing)
             )
 
-        val totalCoefficient = RESILIENCE_COEFFICIENT_SUM
+        val sectionTitle = if (inputs.useZPrime) getString(R.string.z_prime_score_label) else title
+        val totalCoefficient = if (inputs.useZPrime) 17.59 else RESILIENCE_COEFFICIENT_SUM // Z'' sum: 6.56+3.26+6.72+1.05
         val totalContribution = inputs.altmanZ
         val details = mutableListOf<HealthScoreDetail>()
 
@@ -340,36 +341,65 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             )
         }
 
-        addResilienceDetail(
-            label = getString(R.string.metric_working_capital_to_assets),
-            ratio = inputs.workingCapitalToAssets,
-            coefficient = 1.2,
-            rationaleRes = R.string.health_score_rationale_working_capital_to_assets
-        )
-        addResilienceDetail(
-            label = getString(R.string.metric_retained_earnings_to_assets),
-            ratio = inputs.retainedEarningsToAssets,
-            coefficient = 1.4,
-            rationaleRes = R.string.health_score_rationale_retained_earnings_to_assets
-        )
-        addResilienceDetail(
-            label = getString(R.string.metric_ebitda_to_assets),
-            ratio = inputs.ebitdaToAssets,
-            coefficient = 3.3,
-            rationaleRes = R.string.health_score_rationale_ebitda_to_assets
-        )
-        addResilienceDetail(
-            label = getString(R.string.metric_market_cap_to_liabilities),
-            ratio = inputs.marketValueToLiabilities,
-            coefficient = 0.6,
-            rationaleRes = R.string.health_score_rationale_market_cap_to_liabilities
-        )
-        addResilienceDetail(
-            label = getString(R.string.metric_revenue_to_assets),
-            ratio = inputs.revenueToAssets,
-            coefficient = 1.0,
-            rationaleRes = R.string.health_score_rationale_revenue_to_assets
-        )
+        if (inputs.useZPrime) {
+            addResilienceDetail(
+                label = getString(R.string.metric_working_capital_to_assets),
+                ratio = inputs.workingCapitalToAssets,
+                coefficient = 6.56,
+                rationaleRes = R.string.health_score_rationale_working_capital_to_assets
+            )
+            addResilienceDetail(
+                label = getString(R.string.metric_retained_earnings_to_assets),
+                ratio = inputs.retainedEarningsToAssets,
+                coefficient = 3.26,
+                rationaleRes = R.string.health_score_rationale_retained_earnings_to_assets
+            )
+            addResilienceDetail(
+                label = getString(R.string.metric_ebitda_to_assets),
+                ratio = inputs.ebitdaToAssets,
+                coefficient = 6.72,
+                rationaleRes = R.string.health_score_rationale_ebitda_to_assets
+            )
+            addResilienceDetail(
+                label = getString(R.string.metric_market_cap_to_liabilities),
+                ratio = inputs.marketValueToLiabilities,
+                coefficient = 1.05,
+                rationaleRes = R.string.health_score_rationale_market_cap_to_liabilities
+            )
+        } else {
+            addResilienceDetail(
+                label = getString(R.string.metric_working_capital_to_assets),
+                ratio = inputs.workingCapitalToAssets,
+                coefficient = 1.2,
+                rationaleRes = R.string.health_score_rationale_working_capital_to_assets
+            )
+            addResilienceDetail(
+                label = getString(R.string.metric_retained_earnings_to_assets),
+                ratio = inputs.retainedEarningsToAssets,
+                coefficient = 1.4,
+                rationaleRes = R.string.health_score_rationale_retained_earnings_to_assets
+            )
+            addResilienceDetail(
+                label = getString(R.string.metric_ebitda_to_assets),
+                ratio = inputs.ebitdaToAssets,
+                coefficient = 3.3,
+                rationaleRes = R.string.health_score_rationale_ebitda_to_assets
+            )
+            addResilienceDetail(
+                label = getString(R.string.metric_market_cap_to_liabilities),
+                ratio = inputs.marketValueToLiabilities,
+                coefficient = 0.6,
+                rationaleRes = R.string.health_score_rationale_market_cap_to_liabilities
+            )
+            inputs.revenueToAssets?.let { rev ->
+                addResilienceDetail(
+                    label = getString(R.string.metric_revenue_to_assets),
+                    ratio = rev,
+                    coefficient = 1.0,
+                    rationaleRes = R.string.health_score_rationale_revenue_to_assets
+                )
+            }
+        }
 
         if (inputs.hasTwoYearLosses) {
             details.add(
@@ -385,7 +415,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         }
 
         return SectionDetailContent(
-            title = title,
+            title = sectionTitle,
             summary = summary,
             details = details,
             emptyMessage = getString(R.string.health_score_resilience_missing)
@@ -541,8 +571,19 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         val workingCapitalRatio = workingCapital?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
         val retainedEarningsRatio = stockData.retainedEarnings?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
         val ebitdaRatio = stockData.ebitda?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
-        val marketValueRatio = stockData.marketCap?.let { (it / totalLiabilities).takeIf { ratio -> ratio.isFinite() } } ?: return null
-        val revenueRatio = stockData.revenue?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
+        val rawMarketValueRatio = stockData.marketCap?.let { (it / totalLiabilities).takeIf { ratio -> ratio.isFinite() } } ?: return null
+        // Same log normalization as FinancialHealthAnalyzer.buildResilienceInputs for consistent display
+        val marketValueRatio = run {
+            val minValue = 0.1
+            val maxValue = 10.0
+            val transformed = if (rawMarketValueRatio > minValue) {
+                kotlin.math.ln(rawMarketValueRatio).coerceIn(kotlin.math.ln(minValue), kotlin.math.ln(maxValue))
+            } else {
+                kotlin.math.ln(minValue)
+            }
+            ((transformed - kotlin.math.ln(minValue)) / (kotlin.math.ln(maxValue) - kotlin.math.ln(minValue)) * 10.0).coerceIn(0.0, 10.0)
+        }
+        val revenueRatio = stockData.revenue?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } }
 
         val netIncomeHistory = if (stockData.netIncomeHistory.isNotEmpty()) {
             stockData.netIncomeHistory
@@ -551,13 +592,22 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         }
         val hasLosses = hasConsecutiveNetLosses(netIncomeHistory)
 
-        val altmanZ = (1.2 * workingCapitalRatio) +
-                (1.4 * retainedEarningsRatio) +
-                (3.3 * ebitdaRatio) +
-                (0.6 * marketValueRatio) +
-                (1.0 * revenueRatio)
+        val isManufacturing = EdgarConcepts.isManufacturingSic(stockData.sicCode)
+        val scoreValue = if (isManufacturing) {
+            val revenueToAssets = revenueRatio ?: return null
+            (1.2 * workingCapitalRatio) +
+                    (1.4 * retainedEarningsRatio) +
+                    (3.3 * ebitdaRatio) +
+                    (0.6 * marketValueRatio) +
+                    (1.0 * revenueToAssets)
+        } else {
+            (6.56 * workingCapitalRatio) +
+                    (3.26 * retainedEarningsRatio) +
+                    (6.72 * ebitdaRatio) +
+                    (1.05 * marketValueRatio)
+        }
 
-        if (!altmanZ.isFinite()) {
+        if (!scoreValue.isFinite()) {
             return null
         }
 
@@ -568,7 +618,8 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             marketValueToLiabilities = marketValueRatio,
             revenueToAssets = revenueRatio,
             hasTwoYearLosses = hasLosses,
-            altmanZ = altmanZ
+            altmanZ = scoreValue,
+            useZPrime = !isManufacturing
         )
     }
 
@@ -583,9 +634,10 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         val retainedEarningsToAssets: Double,
         val ebitdaToAssets: Double,
         val marketValueToLiabilities: Double,
-        val revenueToAssets: Double,
+        val revenueToAssets: Double?,
         val hasTwoYearLosses: Boolean,
-        val altmanZ: Double
+        val altmanZ: Double,
+        val useZPrime: Boolean = false
     )
 
     private data class SectionDetailContent(
