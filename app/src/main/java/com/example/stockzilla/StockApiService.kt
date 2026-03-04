@@ -331,12 +331,26 @@ class StockRepository(
         val price = priceResult ?: stockData.price
         if (price == null) return stockData
 
+        // Merge EDGAR and Finnhub views of shares outstanding.
+        // Finnhub's `shareOutstanding` is documented as being in millions of shares.
         var shares = stockData.outstandingShares
-        if (shares == null && !token.isNullOrBlank()) {
-            shares = try {
+        if (!token.isNullOrBlank()) {
+            val finnhubShares = try {
                 val profile = finnhubApi.getProfile(stockData.symbol, token)
                 profile?.shareOutstanding?.let { it * 1_000_000.0 }
-            } catch (_: Exception) { null }
+            } catch (_: Exception) {
+                null
+            }
+
+            if (finnhubShares != null && finnhubShares > 0) {
+                shares = when {
+                    shares == null -> finnhubShares
+                    // If Finnhub's view is materially larger (e.g. ADR ratios, stale EDGAR),
+                    // prefer it to avoid under-reporting shares and over-stating per-share metrics.
+                    shares > 0 && finnhubShares / shares > 1.5 -> finnhubShares
+                    else -> shares
+                }
+            }
         }
 
         val marketCap = if (shares != null && shares > 0) price * shares else null
