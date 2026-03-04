@@ -345,6 +345,7 @@
                         android:gravity="center">
 
                         <TextView
+                            android:id="@+id/tvRevenueLabel"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/revenue"
@@ -370,6 +371,7 @@
                         android:gravity="center">
 
                         <TextView
+                            android:id="@+id/tvNetIncomeLabel"
                             android:layout_width="wrap_content"
                             android:layout_height="wrap_content"
                             android:text="@string/net_income"

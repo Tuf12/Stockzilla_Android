@@ -54,7 +54,7 @@ class IndustryStocksActivity : AppCompatActivity() {
 
         apiKeyManager = ApiKeyManager(this)
         val db = StockzillaDatabase.getDatabase(this)
-        peerRepository = IndustryPeerRepository(db.stockIndustryPeerDao(), db.analyzedStockDao())
+        peerRepository = IndustryPeerRepository(db.stockIndustryPeerDao(), db.edgarRawFactsDao())
 
         industry = intent.getStringExtra(EXTRA_INDUSTRY).orEmpty()
         ownerSymbol = intent.getStringExtra(EXTRA_SYMBOL)?.trim()?.uppercase(Locale.US).orEmpty()
@@ -132,7 +132,14 @@ class IndustryStocksActivity : AppCompatActivity() {
                 binding.recyclerViewPeers.isVisible = true
                 binding.tvEmptyState.isVisible = sorted.isEmpty()
             } else if (!finnhubKey.isNullOrBlank()) {
-                val repository = StockRepository(finnhubKey, finnhubKey, StockzillaDatabase.getDatabase(this@IndustryStocksActivity).analyzedStockDao())
+                val localDb = StockzillaDatabase.getDatabase(this@IndustryStocksActivity)
+                val repository = StockRepository(
+                    finnhubKey,
+                    finnhubKey,
+                    localDb.edgarRawFactsDao(),
+                    localDb.financialDerivedMetricsDao(),
+                    localDb.scoreSnapshotDao()
+                )
                 repository.getIndustryPeers(symbol, industry)
                     .onSuccess { peers ->
                         peerRepository.replacePeers(symbol, peers, "initial")

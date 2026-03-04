@@ -8,6 +8,13 @@ Stockzilla uses a hybrid data architecture with two sources:
 
 This separation minimizes API costs (EDGAR is free) while still providing live pricing.
 
+The project data contract now separates:
+- **Raw facts** (EDGAR facts + metadata)
+- **Standard derived metrics** (deterministic finance calculations from raw facts)
+- **Scoring outputs** (health/composite/growth/resilience and normalization internals)
+
+Scoring outputs are not a data source and must not be treated as financial facts.
+
 ---
 
 ## Finnhub (Live Data)
@@ -63,7 +70,7 @@ https://www.sec.gov/files/company_tickers.json
 
 | Data Point | Common XBRL Tags | Used For |
 |---|---|---|
-| Revenue | `Revenues`, `RevenueFromContractWithCustomerExcludingAssessedTax`, `SalesRevenueNet` | PS ratio, revenue growth, asset turnover |
+| Revenue | `Revenues`, `RevenueFromContractWithCustomer*`, `SalesRevenueNet`, `ServiceRevenue`, `SalesRevenueGoodsNet`, `SalesRevenueServicesNet` (consolidated only; 10-K annual primary, TTM from 4 standalone 10-Q quarters when available) | PS ratio, revenue growth, asset turnover |
 | Net Income | `NetIncomeLoss`, `ProfitLoss` | PE ratio, net income growth, ROE |
 | Operating Income (EBIT) | `OperatingIncomeLoss` | Altman-Z, operating efficiency |
 | Gross Profit | `GrossProfit` | Gross margin calculations |
@@ -103,11 +110,14 @@ https://www.sec.gov/files/company_tickers.json
 
 ### XBRL Tag Mapping Notes
 
-Different companies may use slightly different XBRL tags for the same data. The app should try multiple tag variants in priority order. For example, for revenue:
-1. Try `Revenues`
-2. Try `RevenueFromContractWithCustomerExcludingAssessedTax`
-3. Try `SalesRevenueNet`
-4. Try `SalesRevenueGoodsNet`
+Different companies may use slightly different XBRL tags for the same data. The app tries multiple tag variants in priority order (see `EdgarConcepts.REVENUE` in code). Revenue is resolved using **consolidated facts only** (no segment dimensions).
+
+**Data-source priority (post-refactor):**
+
+- **Annual (10-K)**: The primary and authoritative source for all fundamentals. Stored in `revenue`, `netIncome`, `eps`, etc. in `StockData`. Used exclusively for YoY growth calculations.
+- **TTM (Trailing Twelve Months)**: Computed by summing exactly 4 standalone 10-Q quarters (duration 60–140 days each). Stored in `revenueTtm`, `netIncomeTtm`, `epsTtm`, etc. Used for PE/PS ratios, margins, and display values when available. If fewer than 4 standalone quarters exist, TTM is **not computed** — no partial-quarter annualization.
+- **Finnhub**: Used **only** for current stock price. No fundamentals (shares, marketCap, revenue, etc.) are sourced from Finnhub. When EDGAR lacks shares outstanding, price-dependent ratios (PE, PS, PB) are left as N/A rather than backfilled.
+- **Display logic**: The UI prefers TTM when available, falls back to annual 10-K, and labels each metric accordingly (`(TTM)` or `(Annual)`).
 
 ### Data Persistence Strategy
 
@@ -115,16 +125,15 @@ EDGAR data serves two purposes: **immediate display** AND **long-term accumulati
 
 **On every stock analysis:**
 1. Fetch fundamental data from EDGAR
-2. Display to user with scores
-3. **Save to `analyzed_stocks` table** in Room database — this builds the peer database over time
+2. Display raw/derived financial data in Full Analysis and scoring outputs only in score-specific UI
+3. **Persist raw facts first** (with clean provenance), then persist derived financial metrics
 4. Cache in `stock_cache` for short-term reuse (expires next trading day)
 
 **Why we save every analyzed stock:**
-- The `analyzed_stocks` table accumulates over time, building a local database of financial data
-- This data calculates **dynamic industry averages** (PE, PS) that replace hardcoded benchmarks
-- It powers the **Similar Stocks** feature by providing a pool of peers to query
-- It enables **dynamic normalization ranges** — instead of hardcoded min/max for each metric, ranges are derived from actual stock distributions in each sector/cap tier
-- The more stocks the user analyzes, the more accurate the app becomes
+- Build a local time-series-friendly pool of SEC fundamentals
+- Calculate dynamic peer metrics (PE/PS and other valuation context) from persisted financial data
+- Power Similar Stocks and other peer discovery features
+- Keep financial facts independent from scoring model changes
 
 **Refresh triggers:**
 - EDGAR fundamental data only changes when new filings are published (quarterly)
@@ -151,8 +160,14 @@ See `DATABASE_ARCHITECTURE.md` for full schema details on the `analyzed_stocks`,
 | Market Cap | **Calculated** | Price × Shares Outstanding |
 | PE Ratio | **Calculated** | Price ÷ (Net Income TTM ÷ Shares) |
 | PS Ratio | **Calculated** | Price ÷ (Revenue TTM ÷ Shares) |
-| All Growth Metrics | **Calculated** | YoY comparison from EDGAR quarterly data |
+| All Growth Metrics | **Calculated** | YoY comparison from EDGAR annual 10-K history only (never TTM-derived) |
 | Industry Averages | **Calculated** | Average PE/PS from BenchmarkData (currently hardcoded, future: dynamic from SIC peers) |
 | Financial Health Score | **Calculated** | Three-pillar composite from EDGAR data |
 | Altman Z-Score | **Calculated** | 5-variable formula from EDGAR + Market Cap |
 | Stock Grouping | **SIC Code + Market Cap** | SIC from EDGAR metadata, market cap calculated |
+
+## UI Consumption Rules
+
+- **Full Analysis page:** raw SEC facts + allowed standard derived metrics only.
+- **Health score pages:** scoring outputs and normalization details.
+- **Never mix UI contracts:** score normalization data should not appear in the Full Analysis financial facts view.

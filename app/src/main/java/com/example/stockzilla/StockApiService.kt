@@ -19,14 +19,16 @@ data class IndustryPeer(
 )
 
 /**
- * Database-first repository: fundamentals come from analyzed_stocks (Room),
+ * Database-first repository: fundamentals come from separated raw/derived Room tables.
  * EDGAR is called only when no local data exists or a new filing is detected.
  * Finnhub is used only for live price.
  */
 class StockRepository(
     private val apiKey: String,
     private val finnhubApiKey: String? = null,
-    private val analyzedStockDao: AnalyzedStockDao? = null
+    private val rawFactsDao: EdgarRawFactsDao? = null,
+    private val derivedMetricsDao: FinancialDerivedMetricsDao? = null,
+    private val scoreSnapshotDao: ScoreSnapshotDao? = null
 ) {
     private val finnhubRetrofit = Retrofit.Builder()
         .baseUrl("https://finnhub.io/api/v1/")
@@ -73,24 +75,26 @@ class StockRepository(
     // --------------- Main Data Flow (Database-First) ---------------
 
     /**
-     * 1. Unless [forceFromEdgar] is true, check analyzed_stocks DB for existing data
+     * 1. Unless [forceFromEdgar] is true, check separated raw/derived DB for existing data
      * 2. If found and not stale, load from DB and merge with live price
      * 3. If not found, stale, or forceFromEdgar, fetch from SEC EDGAR, save to DB, merge with price
      */
     suspend fun getStockData(symbol: String, forceFromEdgar: Boolean = false): Result<StockData> = withContext(Dispatchers.IO) {
-        val dao = analyzedStockDao
-        val existing = dao?.getStock(symbol)
+        val separatedRaw = rawFactsDao?.getBySymbol(symbol)
+        val separatedDerived = derivedMetricsDao?.getBySymbol(symbol)
+        val separatedStock = if (separatedRaw != null) separatedRaw.toStockData(separatedDerived) else null
+        val existingStockData = separatedStock
+        val existingLastFilingDate = separatedRaw?.lastFilingDate
 
-        if (!forceFromEdgar && existing != null) {
-            Log.d(TAG, "Found $symbol in analyzed_stocks, checking freshness")
-            DiagnosticsLogger.log(symbol, "DATA_CHECK", "Found in analyzed_stocks, checking freshness")
+        if (!forceFromEdgar && existingStockData != null) {
+            Log.d(TAG, "Found $symbol in separated raw/derived tables, checking freshness")
+            DiagnosticsLogger.log(symbol, "DATA_CHECK", "Found in separated raw/derived tables, checking freshness")
 
-            val missingGrowth = hasNoGrowthData(existing)
-            val needsRefresh = shouldRefreshFromEdgar(existing) || missingGrowth
+            val missingGrowth = separatedDerived?.let { hasNoGrowthData(it) } ?: true
+            val needsRefresh = shouldRefreshFromEdgar(symbol, existingLastFilingDate) || missingGrowth
             if (!needsRefresh) {
                 DiagnosticsLogger.log(symbol, "DATA_SOURCE_DB", "Using cached data (no refresh needed)")
-                val stockData = existing.toStockData()
-                val withPrice = mergeWithLivePrice(stockData)
+                val withPrice = mergeWithLivePrice(existingStockData)
                 return@withContext Result.success(withPrice)
             }
             if (missingGrowth) {
@@ -109,16 +113,15 @@ class StockRepository(
         val edgarResult = edgarService.loadFundamentalsForTicker(symbol)
         edgarResult.fold(
             onSuccess = { edgarData ->
-                DiagnosticsLogger.log(symbol, "DATA_SOURCE_EDGAR", "Saved to analyzed_stocks")
+                DiagnosticsLogger.log(symbol, "DATA_SOURCE_EDGAR", "Saved to separated raw/derived tables")
                 val withPrice = mergeWithLivePrice(edgarData)
                 return@withContext Result.success(withPrice)
             },
             onFailure = { error ->
-                if (existing != null) {
+                if (existingStockData != null) {
                     Log.w(TAG, "EDGAR fetch failed for $symbol, using existing DB data", error)
                     DiagnosticsLogger.log(symbol, "EDGAR_FAIL_FALLBACK_DB", error.message ?: "unknown", "using cached row")
-                    val stockData = existing.toStockData()
-                    val withPrice = mergeWithLivePrice(stockData)
+                    val withPrice = mergeWithLivePrice(existingStockData)
                     return@withContext Result.success(withPrice)
                 }
 
@@ -143,13 +146,35 @@ class StockRepository(
         stockData: StockData,
         sicCode: String?,
         naicsCode: String?,
-        healthScore: HealthScore?,
         lastFilingDate: String?
     ) {
-        val dao = analyzedStockDao ?: return
-        val entity = AnalyzedStockEntity.fromStockData(stockData, sicCode, naicsCode, healthScore, lastFilingDate)
-        dao.upsertStock(entity)
-        Log.d(TAG, "Saved ${stockData.symbol} to analyzed_stocks")
+        val now = System.currentTimeMillis()
+
+        rawFactsDao?.upsert(
+            EdgarRawFactsEntity.fromStockData(
+                stockData = stockData,
+                sicCode = sicCode,
+                naicsCode = naicsCode,
+                lastFilingDate = lastFilingDate
+            ).copy(analyzedAt = now, lastUpdated = now)
+        )
+
+        derivedMetricsDao?.upsert(
+            FinancialDerivedMetricsEntity.fromStockData(stockData).copy(
+                analyzedAt = now,
+                lastUpdated = now
+            )
+        )
+
+        Log.d(TAG, "Saved ${stockData.symbol} to raw/derived persistence domains")
+    }
+
+    suspend fun saveScoreSnapshot(
+        symbol: String,
+        healthScore: HealthScore,
+        modelVersion: String = "v3-pillar-separated-linear-tiered"
+    ) {
+        scoreSnapshotDao?.insert(ScoreSnapshotEntity.fromHealthScore(symbol, healthScore, modelVersion))
     }
 
     /**
@@ -185,26 +210,26 @@ class StockRepository(
         quoteDataSource.getQuote(symbol).map { it.current }
     }
 
-    // --------------- Industry Peers (analyzed_stocks + Finnhub peers for discovery) ---------------
+    // --------------- Industry Peers (separated DB + Finnhub peers for discovery) ---------------
 
     /**
-     * Returns industry peers: first from DB (analyzed_stocks, so we show previously analyzed with full data),
+     * Returns industry peers: first from separated DB (so we show previously analyzed with full data),
      * then from Finnhub stock/peers so the user can discover new stocks. Tapping a peer opens analysis.
      */
     suspend fun getIndustryPeers(symbol: String?, industry: String, limit: Int = 50): Result<List<IndustryPeer>> =
         withContext(Dispatchers.IO) {
-            val dao = analyzedStockDao
-                ?: return@withContext Result.failure(Exception("Database not available"))
+            val rawDao = rawFactsDao
+                ?: return@withContext Result.failure(Exception("Raw facts database not available"))
 
             try {
-                val existing = symbol?.let { dao.getStock(it) }
-                val naicsCode = existing?.naicsCode
-                val sicCode = existing?.sicCode
+                val owner = symbol?.let { rawDao.getBySymbol(it) }
+                val naicsCode = owner?.naicsCode
+                val sicCode = owner?.sicCode
 
                 val dbPeers = when {
-                    !naicsCode.isNullOrBlank() -> dao.getSimilarStocksByNaics(naicsCode, symbol ?: "")
-                    !sicCode.isNullOrBlank() -> dao.getSimilarStocks(sicCode, symbol ?: "")
-                    else -> dao.getPeersBySector(industry)
+                    !naicsCode.isNullOrBlank() -> rawDao.getPeerProfilesByNaics(naicsCode, symbol ?: "")
+                    !sicCode.isNullOrBlank() -> rawDao.getPeerProfilesBySic(sicCode, symbol ?: "")
+                    else -> rawDao.getPeerProfilesBySector(industry)
                 }
 
                 val fromDb = dbPeers.take(limit).map { entity ->
@@ -220,7 +245,7 @@ class StockRepository(
                 val existingSymbols = fromDb.map { it.symbol.uppercase() }.toSet()
                 val currentSymbolUpper = symbol?.uppercase()
 
-                // Add peers from Finnhub so user can discover new stocks (not yet in analyzed_stocks)
+                // Add peers from Finnhub so user can discover new stocks not yet persisted locally.
                 val fromFinnhub = if (!symbol.isNullOrBlank() && !finnhubApiKey.isNullOrBlank()) {
                     try {
                         val peerSymbols = finnhubApi.getStockPeers(symbol, finnhubApiKey!!)
@@ -270,33 +295,35 @@ class StockRepository(
 
     // --------------- Private Helpers ---------------
 
-    /** True when the DB row has no growth fields set (e.g. analyzed before growth was persisted). Triggers EDGAR refetch so we can compute and store growth. */
-    private fun hasNoGrowthData(existing: AnalyzedStockEntity): Boolean {
-        return existing.revenueGrowth == null &&
-                existing.netIncomeGrowth == null &&
-                existing.fcfMargin == null
-    }
-
-    private suspend fun shouldRefreshFromEdgar(existing: AnalyzedStockEntity): Boolean {
-        val lastFiling = existing.lastFilingDate ?: return true
+    private suspend fun shouldRefreshFromEdgar(symbol: String, lastFiling: String?): Boolean {
+        val existingLastFiling = lastFiling ?: return true
         return try {
-            val cik = edgarService.resolveCikForTicker(existing.symbol)
+            val cik = edgarService.resolveCikForTicker(symbol)
             if (cik != null) {
                 val submissions = edgarService.getSubmissionsInfo(cik)
                 val latestFiling = submissions?.latestFilingDate
-                latestFiling != null && latestFiling > lastFiling
+                latestFiling != null && latestFiling > existingLastFiling
             } else {
                 false
             }
         } catch (e: Exception) {
-            Log.w(TAG, "Failed to check filing freshness for ${existing.symbol}", e)
+            Log.w(TAG, "Failed to check filing freshness for $symbol", e)
             false
         }
     }
 
+    private fun hasNoGrowthData(derived: FinancialDerivedMetricsEntity): Boolean {
+        return derived.revenueGrowth == null &&
+                derived.averageRevenueGrowth == null &&
+                derived.averageNetIncomeGrowth == null &&
+                derived.netIncomeGrowth == null &&
+                derived.fcfGrowth == null
+    }
+
     private suspend fun mergeWithLivePrice(stockData: StockData): StockData {
+        val token = finnhubApiKey
         val priceResult = try {
-            if (!finnhubApiKey.isNullOrBlank()) {
+            if (!token.isNullOrBlank()) {
                 getLatestQuotePrice(stockData.symbol).getOrNull()
             } else null
         } catch (_: Exception) { null }
@@ -305,17 +332,22 @@ class StockRepository(
         if (price == null) return stockData
 
         var shares = stockData.outstandingShares
-        if (shares == null && !finnhubApiKey.isNullOrBlank()) {
-            try {
-                val profile = finnhubApi.getProfile(stockData.symbol, finnhubApiKey!!)
-                shares = profile?.shareOutstanding?.takeIf { it > 0 }
-            } catch (_: Exception) { }
+        if (shares == null && !token.isNullOrBlank()) {
+            shares = try {
+                val profile = finnhubApi.getProfile(stockData.symbol, token)
+                profile?.shareOutstanding?.let { it * 1_000_000.0 }
+            } catch (_: Exception) { null }
         }
-        val marketCap = if (shares != null && shares > 0) price * shares else stockData.marketCap
-        val eps = stockData.eps
-            ?: if (stockData.netIncome != null && shares != null && shares > 0) stockData.netIncome / shares else null
+
+        val marketCap = if (shares != null && shares > 0) price * shares else null
+
+        val effectiveNetIncome = stockData.netIncomeDisplay
+        val effectiveRevenue = stockData.revenueDisplay
+
+        val eps = stockData.epsDisplay
+            ?: if (effectiveNetIncome != null && shares != null && shares > 0) effectiveNetIncome / shares else null
         val peRatio = if (eps != null && abs(eps) > 1e-9) price / eps else null
-        val revenuePerShare = if (stockData.revenue != null && shares != null && shares > 0) stockData.revenue / shares else null
+        val revenuePerShare = if (effectiveRevenue != null && shares != null && shares > 0) effectiveRevenue / shares else null
         val psRatio = if (revenuePerShare != null && revenuePerShare > 0) price / revenuePerShare else null
         val equity = if (stockData.totalAssets != null && stockData.totalLiabilities != null) {
             stockData.totalAssets - stockData.totalLiabilities
@@ -326,18 +358,18 @@ class StockRepository(
 
         return stockData.copy(
             price = price,
+            outstandingShares = shares ?: stockData.outstandingShares,
             marketCap = marketCap,
             eps = eps,
             peRatio = peRatio,
             psRatio = psRatio,
-            pbRatio = pbRatio,
-            outstandingShares = shares ?: stockData.outstandingShares
+            pbRatio = pbRatio
         )
     }
 
     /**
-     * Minimal Finnhub fallback: just price + profile for company name/industry.
-     * No fundamentals from Finnhub.
+     * Minimal Finnhub fallback: price + company name/industry + shares/marketCap.
+     * No balance sheet or income statement fundamentals from Finnhub.
      */
     private suspend fun getBasicDataFromFinnhub(symbol: String): StockData? {
         val token = finnhubApiKey ?: return null
@@ -346,11 +378,15 @@ class StockRepository(
             val profile = finnhubApi.getProfile(symbol, token)
             if (quote.current == null && profile?.name == null) return null
 
+            val shares = profile?.shareOutstanding?.let { it * 1_000_000.0 }
+            val price = quote.current
+            val marketCap = if (price != null && shares != null && shares > 0) price * shares else null
+
             StockData(
                 symbol = symbol,
                 companyName = profile?.name,
-                price = quote.current,
-                marketCap = profile?.marketCapitalization,
+                price = price,
+                marketCap = marketCap,
                 revenue = null,
                 netIncome = null,
                 eps = null,
@@ -361,7 +397,7 @@ class StockRepository(
                 freeCashFlow = null,
                 pbRatio = null,
                 ebitda = null,
-                outstandingShares = profile?.shareOutstanding,
+                outstandingShares = shares,
                 totalAssets = null,
                 totalLiabilities = null,
                 sector = null,

@@ -79,7 +79,7 @@ class ApiKeySetupDialog(
         lifecycleScope.launch {
             try {
                 // Test the Finnhub API key by fetching stock data
-                val stockRepository = StockRepository("", apiKey, null)
+                val stockRepository = StockRepository("", apiKey)
                 val result = stockRepository.getLatestQuotePrice("AAPL")
 
                 result.onSuccess {

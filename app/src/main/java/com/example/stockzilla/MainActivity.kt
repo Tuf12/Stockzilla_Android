@@ -357,8 +357,11 @@ class MainActivity : AppCompatActivity() {
             tvPsRatioLabel.text = displayMetrics.benchmarkLabel
             tvPsRatio.text = displayMetrics.benchmarkRatio?.let { "%.2f".format(it) } ?: "N/A"
 
-            tvRevenue.text = stockData.revenue?.let { formatLargeNumber(it) } ?: "N/A"
-            tvNetIncome.text = stockData.netIncome?.let { formatLargeNumber(it) } ?: "N/A"
+            val ttmSuffix = if (stockData.hasTtm) " " + getString(R.string.label_ttm) else " " + getString(R.string.label_annual)
+            tvRevenueLabel.text = getString(R.string.revenue) + ttmSuffix
+            tvRevenue.text = stockData.revenueDisplay?.let { formatLargeNumber(it) } ?: "N/A"
+            tvNetIncomeLabel.text = getString(R.string.net_income) + ttmSuffix
+            tvNetIncome.text = stockData.netIncomeDisplay?.let { formatLargeNumber(it) } ?: "N/A"
 
             // Show action buttons
             layoutActions.visibility = android.view.View.VISIBLE
@@ -436,11 +439,6 @@ class MainActivity : AppCompatActivity() {
     private fun openFullAnalysisScreen(stockData: StockData) {
         val intent = Intent(this, FullAnalysisActivity::class.java).apply {
             putExtra(FullAnalysisActivity.EXTRA_STOCK_DATA, stockData)
-            latestHealthScore?.let { putExtra(FullAnalysisActivity.EXTRA_HEALTH_SCORE, it) }
-            viewModel.currentBenchmark.value?.let { b ->
-                b.peAvg?.let { putExtra(FullAnalysisActivity.EXTRA_BENCHMARK_PE, it) }
-                b.psAvg?.let { putExtra(FullAnalysisActivity.EXTRA_BENCHMARK_PS, it) }
-            }
         }
         startActivity(intent)
     }
@@ -549,9 +547,17 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
     private var currentFinnhubApiKey: String? = null
 
     private val database = StockzillaDatabase.getDatabase(application)
-    private val analyzedStockDao = database.analyzedStockDao()
-    private var stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey, analyzedStockDao)
-    private val dynamicBenchmarkRepository = DynamicBenchmarkRepository(analyzedStockDao)
+    private val rawFactsDao = database.edgarRawFactsDao()
+    private val derivedMetricsDao = database.financialDerivedMetricsDao()
+    private val scoreSnapshotDao = database.scoreSnapshotDao()
+    private var stockRepository = StockRepository(
+        currentApiKey,
+        currentFinnhubApiKey,
+        rawFactsDao,
+        derivedMetricsDao,
+        scoreSnapshotDao
+    )
+    private val dynamicBenchmarkRepository = DynamicBenchmarkRepository(rawFactsDao, derivedMetricsDao)
 
     private val favoritesRepository = FavoritesRepository(database.favoritesDao())
     private val stockCacheRepository = StockCacheRepository(database.stockCacheDao())
@@ -591,12 +597,24 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
 
     fun updateApiKey(apiKey: String) {
         currentApiKey = apiKey
-        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey, analyzedStockDao)
+        stockRepository = StockRepository(
+            currentApiKey,
+            currentFinnhubApiKey,
+            rawFactsDao,
+            derivedMetricsDao,
+            scoreSnapshotDao
+        )
     }
 
     fun updateFinnhubApiKey(key: String?) {
         currentFinnhubApiKey = key?.takeIf { it.isNotBlank() }
-        stockRepository = StockRepository(currentApiKey, currentFinnhubApiKey, analyzedStockDao)
+        stockRepository = StockRepository(
+            currentApiKey,
+            currentFinnhubApiKey,
+            rawFactsDao,
+            derivedMetricsDao,
+            scoreSnapshotDao
+        )
     }
 
     suspend fun searchStock(ticker: String, forceRefresh: Boolean = false) {
@@ -615,16 +633,17 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                             }
                         }
 
-                        // Save to analyzed_stocks for persistence (growth from history set before scoring)
+                        // Persist into separated raw/derived domains (growth precomputed for derived metrics).
                         val dataForScoring = stockData.withGrowthFromHistory()
                         val dynamicBenchmark = dynamicBenchmarkRepository.getDynamicBenchmark(resolvedSymbol)
                         _currentBenchmark.value = dynamicBenchmark
                         val score = financialAnalyzer.calculateCompositeScore(dataForScoring, dynamicBenchmark)
+                        stockRepository.saveScoreSnapshot(resolvedSymbol, score)
                         val sicCode = stockRepository.getSicCode(resolvedSymbol)
                         val naicsCode = stockRepository.getNaicsCode(resolvedSymbol)
                         val lastFilingDate = stockRepository.getLatestFilingDate(resolvedSymbol)
                         stockRepository.saveAnalyzedStock(
-                            dataForScoring, sicCode, naicsCode, score, lastFilingDate
+                            dataForScoring, sicCode, naicsCode, lastFilingDate
                         )
 
                         _loading.value = false
@@ -664,13 +683,14 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                         _currentBenchmark.value = dynamicBenchmark
                         val score = financialAnalyzer.calculateCompositeScore(dataForScoring, dynamicBenchmark)
                         _healthScore.value = score
+                        stockRepository.saveScoreSnapshot(resolvedSymbol, score)
                         checkIfFavorited(resolvedSymbol)
 
-                        // Save to analyzed_stocks for persistence
+                        // Persist into separated raw/derived domains.
                         val sicCode = stockRepository.getSicCode(resolvedSymbol)
                         val naicsCode = stockRepository.getNaicsCode(resolvedSymbol)
                         val lastFilingDate = stockRepository.getLatestFilingDate(resolvedSymbol)
-                        stockRepository.saveAnalyzedStock(dataForScoring, sicCode, naicsCode, score, lastFilingDate)
+                        stockRepository.saveAnalyzedStock(dataForScoring, sicCode, naicsCode, lastFilingDate)
 
                         if (favoritesRepository.isFavorite(resolvedSymbol)) {
                             favoritesRepository.updateFavoriteData(dataForScoring, score.compositeScore)
@@ -718,12 +738,13 @@ class StockViewModel(application: android.app.Application) : AndroidViewModel(ap
                 _currentBenchmark.value = dynamicBenchmark
                 val score = financialAnalyzer.calculateCompositeScore(dataForScoring, dynamicBenchmark)
                 _healthScore.value = score
+                stockRepository.saveScoreSnapshot(symbol, score)
 
-                // Save to analyzed_stocks
+                // Persist into separated raw/derived domains.
                 val sicCode = stockRepository.getSicCode(symbol)
                 val naicsCode = stockRepository.getNaicsCode(symbol)
                 val lastFilingDate = stockRepository.getLatestFilingDate(symbol)
-                stockRepository.saveAnalyzedStock(dataForScoring, sicCode, naicsCode, score, lastFilingDate)
+                stockRepository.saveAnalyzedStock(dataForScoring, sicCode, naicsCode, lastFilingDate)
 
                 val isFavorite = favoritesRepository.isFavorite(symbol)
                 _isFavorited.value = isFavorite

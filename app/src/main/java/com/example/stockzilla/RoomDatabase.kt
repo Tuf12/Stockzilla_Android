@@ -54,35 +54,39 @@ data class StockCacheEntity(
     val expiresAt: Long
 )
 
+private fun computeMarketCapTier(marketCap: Double?): String? {
+    if (marketCap == null) return null
+    return when {
+        marketCap < 300_000_000 -> "micro"
+        marketCap < 2_000_000_000 -> "small"
+        marketCap < 10_000_000_000 -> "mid"
+        marketCap < 200_000_000_000 -> "large"
+        else -> "mega"
+    }
+}
+
 @Entity(
-    tableName = "analyzed_stocks",
+    tableName = "edgar_raw_facts",
     indices = [
         Index(value = ["sicCode"]),
         Index(value = ["naicsCode"]),
-        Index(value = ["sector"]),
-        Index(value = ["marketCapTier"])
+        Index(value = ["sector"])
     ]
 )
-data class AnalyzedStockEntity(
+data class EdgarRawFactsEntity(
     @PrimaryKey val symbol: String,
     val companyName: String?,
+    val cik: String?,
     val sicCode: String?,
     val naicsCode: String?,
     val sector: String?,
     val industry: String?,
-    val marketCapTier: String?,
-    val price: Double?,
-    val marketCap: Double?,
     val revenue: Double?,
     val netIncome: Double?,
     val eps: Double?,
-    val peRatio: Double?,
-    val psRatio: Double?,
-    val roe: Double?,
-    val debtToEquity: Double?,
-    val freeCashFlow: Double?,
-    val pbRatio: Double?,
     val ebitda: Double?,
+    val freeCashFlow: Double?,
+    val operatingCashFlow: Double?,
     val outstandingShares: Double?,
     val totalAssets: Double?,
     val totalLiabilities: Double?,
@@ -90,117 +94,73 @@ data class AnalyzedStockEntity(
     val totalCurrentLiabilities: Double?,
     val retainedEarnings: Double?,
     val workingCapital: Double?,
-    val operatingCashFlow: Double?,
-    val grossProfit: Double?,
-    val operatingIncome: Double?,
-    val revenueGrowth: Double?,
-    val netIncomeGrowth: Double?,
-    val fcfMargin: Double?,
-    val grossMargin: Double?,
-    val netMargin: Double?,
-    val ebitdaMargin: Double?,
-    val currentRatio: Double?,
-    val compositeScore: Int?,
-    val healthSubScore: Int?,
-    val growthSubScore: Int?,
-    val resilienceSubScore: Int?,
-    val altmanZScore: Double?,
+    val revenueTtm: Double?,
+    val netIncomeTtm: Double?,
+    val epsTtm: Double?,
+    val ebitdaTtm: Double?,
+    val freeCashFlowTtm: Double?,
+    val operatingCashFlowTtm: Double?,
     val lastFilingDate: String?,
     val analyzedAt: Long,
     val lastUpdated: Long
 ) {
     companion object {
-        fun computeMarketCapTier(marketCap: Double?): String? {
-            if (marketCap == null) return null
-            return when {
-                marketCap < 300_000_000 -> "micro"
-                marketCap < 2_000_000_000 -> "small"
-                marketCap < 10_000_000_000 -> "mid"
-                marketCap < 200_000_000_000 -> "large"
-                else -> "mega"
-            }
-        }
-
         fun fromStockData(
             stockData: StockData,
             sicCode: String?,
-            naicsCode: String? = null,
-            healthScore: HealthScore?,
+            naicsCode: String?,
             lastFilingDate: String?
-        ): AnalyzedStockEntity {
-            val revenue = stockData.revenue
-            val netIncome = stockData.netIncome
-            val ebitda = stockData.ebitda
-            val freeCashFlow = stockData.freeCashFlow
-            val totalAssets = stockData.totalAssets
-            val currentAssets = stockData.totalCurrentAssets
-            val currentLiabilities = stockData.totalCurrentLiabilities
-            val grossProfit: Double? = null
-
-            return AnalyzedStockEntity(
+        ): EdgarRawFactsEntity {
+            val now = System.currentTimeMillis()
+            return EdgarRawFactsEntity(
                 symbol = stockData.symbol,
                 companyName = stockData.companyName,
-                sicCode = sicCode,
+                cik = stockData.cik,
+                sicCode = sicCode ?: stockData.sicCode,
                 naicsCode = naicsCode,
                 sector = stockData.sector,
                 industry = stockData.industry,
-                marketCapTier = computeMarketCapTier(stockData.marketCap),
-                price = stockData.price,
-                marketCap = stockData.marketCap,
-                revenue = revenue,
-                netIncome = netIncome,
+                revenue = stockData.revenue,
+                netIncome = stockData.netIncome,
                 eps = stockData.eps,
-                peRatio = stockData.peRatio,
-                psRatio = stockData.psRatio,
-                roe = stockData.roe,
-                debtToEquity = stockData.debtToEquity,
-                freeCashFlow = freeCashFlow,
-                pbRatio = stockData.pbRatio,
-                ebitda = ebitda,
+                ebitda = stockData.ebitda,
+                freeCashFlow = stockData.freeCashFlow,
+                operatingCashFlow = stockData.netCashProvidedByOperatingActivities,
                 outstandingShares = stockData.outstandingShares,
-                totalAssets = totalAssets,
+                totalAssets = stockData.totalAssets,
                 totalLiabilities = stockData.totalLiabilities,
-                totalCurrentAssets = currentAssets,
-                totalCurrentLiabilities = currentLiabilities,
+                totalCurrentAssets = stockData.totalCurrentAssets,
+                totalCurrentLiabilities = stockData.totalCurrentLiabilities,
                 retainedEarnings = stockData.retainedEarnings,
                 workingCapital = stockData.workingCapital,
-                operatingCashFlow = stockData.netCashProvidedByOperatingActivities,
-                grossProfit = grossProfit,
-                operatingIncome = stockData.ebitda,
-                revenueGrowth = stockData.revenueGrowth,
-                netIncomeGrowth = stockData.averageNetIncomeGrowth,
-                fcfMargin = stockData.freeCashFlowMargin,
-                grossMargin = null,
-                netMargin = if (netIncome != null && revenue != null && kotlin.math.abs(revenue) > 1e-9) netIncome / revenue else null,
-                ebitdaMargin = if (ebitda != null && revenue != null && kotlin.math.abs(revenue) > 1e-9) ebitda / revenue else null,
-                currentRatio = if (currentAssets != null && currentLiabilities != null && currentLiabilities > 0) currentAssets / currentLiabilities else null,
-                compositeScore = healthScore?.compositeScore,
-                healthSubScore = healthScore?.healthSubScore,
-                growthSubScore = healthScore?.forecastSubScore,
-                resilienceSubScore = healthScore?.zSubScore,
-                altmanZScore = null,
+                revenueTtm = stockData.revenueTtm,
+                netIncomeTtm = stockData.netIncomeTtm,
+                epsTtm = stockData.epsTtm,
+                ebitdaTtm = stockData.ebitdaTtm,
+                freeCashFlowTtm = stockData.freeCashFlowTtm,
+                operatingCashFlowTtm = stockData.operatingCashFlowTtm,
                 lastFilingDate = lastFilingDate,
-                analyzedAt = System.currentTimeMillis(),
-                lastUpdated = System.currentTimeMillis()
+                analyzedAt = now,
+                lastUpdated = now
             )
         }
     }
 
-    fun toStockData(): StockData {
+    fun toStockData(derived: FinancialDerivedMetricsEntity?): StockData {
         return StockData(
             symbol = symbol,
             companyName = companyName,
-            price = price,
-            marketCap = marketCap,
+            price = derived?.price,
+            marketCap = derived?.marketCap,
             revenue = revenue,
             netIncome = netIncome,
             eps = eps,
-            peRatio = peRatio,
-            psRatio = psRatio,
-            roe = roe,
-            debtToEquity = debtToEquity,
+            peRatio = derived?.peRatio,
+            psRatio = derived?.psRatio,
+            roe = derived?.roe,
+            debtToEquity = derived?.debtToEquity,
             freeCashFlow = freeCashFlow,
-            pbRatio = pbRatio,
+            pbRatio = derived?.pbRatio,
             ebitda = ebitda,
             outstandingShares = outstandingShares,
             totalAssets = totalAssets,
@@ -213,14 +173,150 @@ data class AnalyzedStockEntity(
             sector = sector,
             industry = industry,
             sicCode = sicCode,
-            revenueGrowth = revenueGrowth,
-            averageRevenueGrowth = revenueGrowth,
-            averageNetIncomeGrowth = netIncomeGrowth,
-            freeCashFlowMargin = fcfMargin,
-            ebitdaMarginGrowth = null
+            cik = cik,
+            revenueGrowth = derived?.revenueGrowth,
+            averageRevenueGrowth = derived?.averageRevenueGrowth,
+            averageNetIncomeGrowth = derived?.averageNetIncomeGrowth,
+            netIncomeGrowth = derived?.netIncomeGrowth,
+            fcfGrowth = derived?.fcfGrowth,
+            averageFcfGrowth = derived?.averageFcfGrowth,
+            freeCashFlowMargin = derived?.fcfMargin,
+            ebitdaMarginGrowth = null,
+            revenueTtm = revenueTtm,
+            netIncomeTtm = netIncomeTtm,
+            epsTtm = epsTtm,
+            ebitdaTtm = ebitdaTtm,
+            freeCashFlowTtm = freeCashFlowTtm,
+            operatingCashFlowTtm = operatingCashFlowTtm
         )
     }
 }
+
+@Entity(
+    tableName = "financial_derived_metrics",
+    indices = [
+        Index(value = ["marketCapTier"]),
+        Index(value = ["peRatio"]),
+        Index(value = ["psRatio"])
+    ]
+)
+data class FinancialDerivedMetricsEntity(
+    @PrimaryKey val symbol: String,
+    val marketCapTier: String?,
+    val price: Double?,
+    val marketCap: Double?,
+    val peRatio: Double?,
+    val psRatio: Double?,
+    val pbRatio: Double?,
+    val roe: Double?,
+    val debtToEquity: Double?,
+    val currentRatio: Double?,
+    val netMargin: Double?,
+    val ebitdaMargin: Double?,
+    val fcfMargin: Double?,
+    val revenueGrowth: Double?,
+    val averageRevenueGrowth: Double?,
+    val averageNetIncomeGrowth: Double?,
+    val netIncomeGrowth: Double?,
+    val fcfGrowth: Double?,
+    val averageFcfGrowth: Double?,
+    val analyzedAt: Long,
+    val lastUpdated: Long
+) {
+    companion object {
+        fun fromStockData(stockData: StockData): FinancialDerivedMetricsEntity {
+            val now = System.currentTimeMillis()
+            val netIncomeDisplay = stockData.netIncomeDisplay
+            val revenueDisplay = stockData.revenueDisplay
+            val ebitdaDisplay = stockData.ebitdaDisplay
+            val netMargin = if (netIncomeDisplay != null &&
+                revenueDisplay != null &&
+                kotlin.math.abs(revenueDisplay) > 1e-9
+            ) {
+                netIncomeDisplay / revenueDisplay
+            } else {
+                null
+            }
+            val ebitdaMargin = if (ebitdaDisplay != null &&
+                revenueDisplay != null &&
+                kotlin.math.abs(revenueDisplay) > 1e-9
+            ) {
+                ebitdaDisplay / revenueDisplay
+            } else {
+                null
+            }
+            val currentRatio = if (stockData.totalCurrentAssets != null &&
+                stockData.totalCurrentLiabilities != null &&
+                stockData.totalCurrentLiabilities > 0
+            ) {
+                stockData.totalCurrentAssets / stockData.totalCurrentLiabilities
+            } else {
+                null
+            }
+            return FinancialDerivedMetricsEntity(
+                symbol = stockData.symbol,
+                marketCapTier = computeMarketCapTier(stockData.marketCap),
+                price = stockData.price,
+                marketCap = stockData.marketCap,
+                peRatio = stockData.peRatio,
+                psRatio = stockData.psRatio,
+                pbRatio = stockData.pbRatio,
+                roe = stockData.roe,
+                debtToEquity = stockData.debtToEquity,
+                currentRatio = currentRatio,
+                netMargin = netMargin,
+                ebitdaMargin = ebitdaMargin,
+                fcfMargin = stockData.freeCashFlowMargin,
+                revenueGrowth = stockData.revenueGrowth,
+                averageRevenueGrowth = stockData.averageRevenueGrowth,
+                averageNetIncomeGrowth = stockData.averageNetIncomeGrowth,
+                netIncomeGrowth = stockData.netIncomeGrowth,
+                fcfGrowth = stockData.fcfGrowth,
+                averageFcfGrowth = stockData.averageFcfGrowth,
+                analyzedAt = now,
+                lastUpdated = now
+            )
+        }
+    }
+}
+
+@Entity(
+    tableName = "score_snapshots",
+    indices = [Index(value = ["symbol"]), Index(value = ["createdAt"])]
+)
+data class ScoreSnapshotEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String,
+    val modelVersion: String,
+    val compositeScore: Int?,
+    val healthSubScore: Int?,
+    val growthSubScore: Int?,
+    val resilienceSubScore: Int?,
+    val createdAt: Long
+) {
+    companion object {
+        fun fromHealthScore(symbol: String, healthScore: HealthScore, modelVersion: String): ScoreSnapshotEntity {
+            return ScoreSnapshotEntity(
+                symbol = symbol,
+                modelVersion = modelVersion,
+                compositeScore = healthScore.compositeScore,
+                healthSubScore = healthScore.healthSubScore,
+                growthSubScore = healthScore.forecastSubScore,
+                resilienceSubScore = healthScore.zSubScore,
+                createdAt = System.currentTimeMillis()
+            )
+        }
+    }
+}
+
+data class PeerProfileRow(
+    val symbol: String,
+    val companyName: String?,
+    val sector: String?,
+    val industry: String?,
+    val price: Double?,
+    val marketCap: Double?
+)
 
 @Dao
 interface FavoritesDao {
@@ -250,84 +346,117 @@ interface StockCacheDao {
 }
 
 @Dao
-interface AnalyzedStockDao {
+interface EdgarRawFactsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
-    suspend fun upsertStock(stock: AnalyzedStockEntity)
+    suspend fun upsert(rawFacts: EdgarRawFactsEntity)
 
-    @Query("SELECT * FROM analyzed_stocks WHERE symbol = :symbol")
-    suspend fun getStock(symbol: String): AnalyzedStockEntity?
-
-    @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE sicCode = :sicCode 
-        AND marketCapTier = :capTier
-        AND peRatio IS NOT NULL AND peRatio > 0
-    """)
-    suspend fun getPeersByPeGroup(sicCode: String, capTier: String): List<AnalyzedStockEntity>
+    @Query("SELECT * FROM edgar_raw_facts WHERE symbol = :symbol")
+    suspend fun getBySymbol(symbol: String): EdgarRawFactsEntity?
 
     @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE sicCode = :sicCode
-        AND peRatio IS NOT NULL AND peRatio > 0
+        SELECT
+            r.symbol AS symbol,
+            r.companyName AS companyName,
+            r.sector AS sector,
+            r.industry AS industry,
+            d.price AS price,
+            d.marketCap AS marketCap
+        FROM edgar_raw_facts r
+        LEFT JOIN financial_derived_metrics d ON d.symbol = r.symbol
+        WHERE r.symbol = :symbol
+        LIMIT 1
     """)
-    suspend fun getPeersBySic(sicCode: String): List<AnalyzedStockEntity>
+    suspend fun getPeerProfileBySymbol(symbol: String): PeerProfileRow?
 
     @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE sector = :sector
-        AND peRatio IS NOT NULL AND peRatio > 0
+        SELECT
+            r.symbol AS symbol,
+            r.companyName AS companyName,
+            r.sector AS sector,
+            r.industry AS industry,
+            d.price AS price,
+            d.marketCap AS marketCap
+        FROM edgar_raw_facts r
+        LEFT JOIN financial_derived_metrics d ON d.symbol = r.symbol
+        WHERE r.naicsCode = :naicsCode
+          AND r.symbol != :excludeSymbol
+        ORDER BY d.marketCap DESC, r.symbol ASC
     """)
-    suspend fun getPeersBySector(sector: String): List<AnalyzedStockEntity>
+    suspend fun getPeerProfilesByNaics(naicsCode: String, excludeSymbol: String): List<PeerProfileRow>
 
     @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE sicCode = :sicCode 
-        AND symbol != :excludeSymbol
-        ORDER BY compositeScore DESC
+        SELECT
+            r.symbol AS symbol,
+            r.companyName AS companyName,
+            r.sector AS sector,
+            r.industry AS industry,
+            d.price AS price,
+            d.marketCap AS marketCap
+        FROM edgar_raw_facts r
+        LEFT JOIN financial_derived_metrics d ON d.symbol = r.symbol
+        WHERE r.sicCode = :sicCode
+          AND r.symbol != :excludeSymbol
+        ORDER BY d.marketCap DESC, r.symbol ASC
     """)
-    suspend fun getSimilarStocks(sicCode: String, excludeSymbol: String): List<AnalyzedStockEntity>
+    suspend fun getPeerProfilesBySic(sicCode: String, excludeSymbol: String): List<PeerProfileRow>
 
     @Query("""
-        SELECT COUNT(*) FROM analyzed_stocks 
-        WHERE sicCode = :sicCode 
-        AND marketCapTier = :capTier
+        SELECT
+            r.symbol AS symbol,
+            r.companyName AS companyName,
+            r.sector AS sector,
+            r.industry AS industry,
+            d.price AS price,
+            d.marketCap AS marketCap
+        FROM edgar_raw_facts r
+        LEFT JOIN financial_derived_metrics d ON d.symbol = r.symbol
+        WHERE r.sector = :sector
+        ORDER BY d.marketCap DESC, r.symbol ASC
     """)
-    suspend fun countPeersInGroup(sicCode: String, capTier: String): Int
+    suspend fun getPeerProfilesBySector(sector: String): List<PeerProfileRow>
+}
 
-    @Query("SELECT * FROM analyzed_stocks ORDER BY lastUpdated DESC")
-    suspend fun getAllStocks(): List<AnalyzedStockEntity>
+@Dao
+interface FinancialDerivedMetricsDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(derived: FinancialDerivedMetricsEntity)
 
-    @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE lastUpdated < :cutoff
-        ORDER BY lastUpdated ASC
-        LIMIT :limit
-    """)
-    suspend fun getStaleStocks(cutoff: Long, limit: Int): List<AnalyzedStockEntity>
-
-    // NAICS-based peer grouping
-    @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE naicsCode = :naicsCode
-        AND peRatio IS NOT NULL AND peRatio > 0
-    """)
-    suspend fun getPeersByNaics(naicsCode: String): List<AnalyzedStockEntity>
+    @Query("SELECT * FROM financial_derived_metrics WHERE symbol = :symbol")
+    suspend fun getBySymbol(symbol: String): FinancialDerivedMetricsEntity?
 
     @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE naicsCode = :naicsCode
-        AND marketCapTier = :capTier
-        AND peRatio IS NOT NULL AND peRatio > 0
+        SELECT d.* FROM financial_derived_metrics d
+        INNER JOIN edgar_raw_facts r ON r.symbol = d.symbol
+        WHERE r.sicCode = :sicCode
+          AND d.marketCapTier = :capTier
+          AND d.peRatio IS NOT NULL AND d.peRatio > 0
     """)
-    suspend fun getPeersByNaicsAndCapTier(naicsCode: String, capTier: String): List<AnalyzedStockEntity>
+    suspend fun getBenchmarkPeersBySicAndCapTier(sicCode: String, capTier: String): List<FinancialDerivedMetricsEntity>
 
     @Query("""
-        SELECT * FROM analyzed_stocks 
-        WHERE naicsCode = :naicsCode 
-        AND symbol != :excludeSymbol
-        ORDER BY compositeScore DESC
+        SELECT d.* FROM financial_derived_metrics d
+        INNER JOIN edgar_raw_facts r ON r.symbol = d.symbol
+        WHERE r.sicCode = :sicCode
+          AND d.peRatio IS NOT NULL AND d.peRatio > 0
     """)
-    suspend fun getSimilarStocksByNaics(naicsCode: String, excludeSymbol: String): List<AnalyzedStockEntity>
+    suspend fun getBenchmarkPeersBySic(sicCode: String): List<FinancialDerivedMetricsEntity>
+
+    @Query("""
+        SELECT d.* FROM financial_derived_metrics d
+        INNER JOIN edgar_raw_facts r ON r.symbol = d.symbol
+        WHERE r.sector = :sector
+          AND d.peRatio IS NOT NULL AND d.peRatio > 0
+    """)
+    suspend fun getBenchmarkPeersBySector(sector: String): List<FinancialDerivedMetricsEntity>
+}
+
+@Dao
+interface ScoreSnapshotDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(snapshot: ScoreSnapshotEntity)
+
+    @Query("SELECT * FROM score_snapshots WHERE symbol = :symbol ORDER BY createdAt DESC LIMIT 1")
+    suspend fun getLatest(symbol: String): ScoreSnapshotEntity?
 }
 
 /** Saved industry peer list per stock (user can add/remove). */
@@ -365,105 +494,46 @@ interface StockIndustryPeerDao {
 }
 
 @Database(
-    entities = [FavoriteEntity::class, StockCacheEntity::class, AnalyzedStockEntity::class, StockIndustryPeerEntity::class],
-    version = 7,
+    entities = [
+        FavoriteEntity::class,
+        StockCacheEntity::class,
+        StockIndustryPeerEntity::class,
+        EdgarRawFactsEntity::class,
+        FinancialDerivedMetricsEntity::class,
+        ScoreSnapshotEntity::class
+    ],
+    version = 12,
     exportSchema = false
 )
 abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun favoritesDao(): FavoritesDao
     abstract fun stockCacheDao(): StockCacheDao
-    abstract fun analyzedStockDao(): AnalyzedStockDao
     abstract fun stockIndustryPeerDao(): StockIndustryPeerDao
+    abstract fun edgarRawFactsDao(): EdgarRawFactsDao
+    abstract fun financialDerivedMetricsDao(): FinancialDerivedMetricsDao
+    abstract fun scoreSnapshotDao(): ScoreSnapshotDao
 
     companion object {
         @Volatile
         private var INSTANCE: StockzillaDatabase? = null
 
-        private val MIGRATION_3_4 = object : Migration(3, 4) {
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE favorites ADD COLUMN totalCurrentAssets REAL")
-                db.execSQL("ALTER TABLE favorites ADD COLUMN totalCurrentLiabilities REAL")
-                db.execSQL("ALTER TABLE favorites ADD COLUMN retainedEarnings REAL")
-                db.execSQL("ALTER TABLE favorites ADD COLUMN workingCapital REAL")
-                db.execSQL("ALTER TABLE favorites ADD COLUMN netCashProvidedByOperatingActivities REAL")
+                // Phase 2.8: remove legacy mixed-domain table after separated domains are live.
+                db.execSQL("DROP TABLE IF EXISTS analyzed_stocks")
             }
         }
 
-        private val MIGRATION_4_5 = object : Migration(4, 5) {
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""
-                    CREATE TABLE IF NOT EXISTS `analyzed_stocks` (
-                        `symbol` TEXT NOT NULL PRIMARY KEY,
-                        `companyName` TEXT,
-                        `sicCode` TEXT,
-                        `sector` TEXT,
-                        `industry` TEXT,
-                        `marketCapTier` TEXT,
-                        `price` REAL,
-                        `marketCap` REAL,
-                        `revenue` REAL,
-                        `netIncome` REAL,
-                        `eps` REAL,
-                        `peRatio` REAL,
-                        `psRatio` REAL,
-                        `roe` REAL,
-                        `debtToEquity` REAL,
-                        `freeCashFlow` REAL,
-                        `pbRatio` REAL,
-                        `ebitda` REAL,
-                        `outstandingShares` REAL,
-                        `totalAssets` REAL,
-                        `totalLiabilities` REAL,
-                        `totalCurrentAssets` REAL,
-                        `totalCurrentLiabilities` REAL,
-                        `retainedEarnings` REAL,
-                        `workingCapital` REAL,
-                        `operatingCashFlow` REAL,
-                        `grossProfit` REAL,
-                        `operatingIncome` REAL,
-                        `revenueGrowth` REAL,
-                        `netIncomeGrowth` REAL,
-                        `fcfMargin` REAL,
-                        `grossMargin` REAL,
-                        `netMargin` REAL,
-                        `ebitdaMargin` REAL,
-                        `currentRatio` REAL,
-                        `compositeScore` INTEGER,
-                        `healthSubScore` INTEGER,
-                        `growthSubScore` INTEGER,
-                        `resilienceSubScore` INTEGER,
-                        `altmanZScore` REAL,
-                        `lastFilingDate` TEXT,
-                        `analyzedAt` INTEGER NOT NULL,
-                        `lastUpdated` INTEGER NOT NULL
-                    )
-                """.trimIndent())
-
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_analyzed_stocks_sicCode` ON `analyzed_stocks` (`sicCode`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_analyzed_stocks_sector` ON `analyzed_stocks` (`sector`)")
-                db.execSQL("CREATE INDEX IF NOT EXISTS `index_analyzed_stocks_marketCapTier` ON `analyzed_stocks` (`marketCapTier`)")
+                db.execSQL("ALTER TABLE financial_derived_metrics ADD COLUMN netIncomeGrowth REAL")
+                db.execSQL("ALTER TABLE financial_derived_metrics ADD COLUMN fcfGrowth REAL")
             }
         }
 
-        private val MIGRATION_5_6 = object : Migration(5, 6) {
+        private val MIGRATION_11_12 = object : Migration(11, 12) {
             override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("ALTER TABLE analyzed_stocks ADD COLUMN naicsCode TEXT")
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_analyzed_stocks_naicsCode ON analyzed_stocks (naicsCode)")
-            }
-        }
-
-        private val MIGRATION_6_7 = object : Migration(6, 7) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL("""
-                    CREATE TABLE IF NOT EXISTS stock_industry_peers (
-                        ownerSymbol TEXT NOT NULL,
-                        peerSymbol TEXT NOT NULL,
-                        addedAt INTEGER NOT NULL,
-                        source TEXT NOT NULL DEFAULT 'initial',
-                        PRIMARY KEY (ownerSymbol, peerSymbol)
-                    )
-                """.trimIndent())
-                db.execSQL("CREATE INDEX IF NOT EXISTS index_stock_industry_peers_ownerSymbol ON stock_industry_peers (ownerSymbol)")
+                db.execSQL("ALTER TABLE financial_derived_metrics ADD COLUMN averageFcfGrowth REAL")
             }
         }
 
@@ -474,7 +544,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .addMigrations(MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
                     .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance

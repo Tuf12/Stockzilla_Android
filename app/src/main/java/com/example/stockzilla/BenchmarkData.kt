@@ -101,8 +101,8 @@ object BenchmarkData {
         val sharesOutstanding = stockData.outstandingShares ?: return null
         if (sharesOutstanding <= 0) return null
 
-        val netIncome = stockData.netIncome
-        val revenue = stockData.revenue
+        val netIncome = stockData.netIncomeDisplay
+        val revenue = stockData.revenueDisplay
         val usePe = (netIncome ?: 0.0) > 0
 
         val industryBenchmark = getBenchmarkAverages(stockData, dynamicOverride)
@@ -141,7 +141,7 @@ object BenchmarkData {
      */
     fun getDisplayMetrics(stockData: StockData, dynamicOverride: Benchmark? = null): DisplayMetrics {
         val benchmark = getBenchmarkAverages(stockData, dynamicOverride)
-        val hasPositiveIncome = (stockData.netIncome ?: 0.0) > 0
+        val hasPositiveIncome = (stockData.netIncomeDisplay ?: 0.0) > 0
 
         return if (hasPositiveIncome) {
             // Show P/E ratio and average P/E

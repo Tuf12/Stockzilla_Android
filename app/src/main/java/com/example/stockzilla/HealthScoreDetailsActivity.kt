@@ -8,7 +8,6 @@ import androidx.core.content.ContextCompat
 import com.example.stockzilla.databinding.ActivityHealthScoreDetailsBinding
 import kotlin.math.abs
 import java.util.Locale
-import kotlin.math.exp
 
 @Suppress("DEPRECATION")
 class HealthScoreDetailsActivity : AppCompatActivity() {
@@ -59,47 +58,30 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvHealthMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
-                    getString(R.string.revenue),
-                    getString(R.string.net_income),
-                    getString(R.string.metric_eps),
-                    getString(R.string.metric_pe_ratio),
-                    getString(R.string.metric_ps_ratio),
-                    getString(R.string.metric_roe),
-                    getString(R.string.metric_debt_to_equity),
-                    getString(R.string.metric_pb_ratio),
-                    getString(R.string.metric_ebitda),
+                    getString(R.string.metric_revenue_growth),
                     getString(R.string.metric_ebitda_margin),
                     getString(R.string.metric_free_cash_flow),
-                    getString(R.string.metric_free_cash_flow_margin),
-                    getString(R.string.metric_operating_cash_flow),
-                    getString(R.string.metric_net_margin),
-                    getString(R.string.metric_liability_to_asset_ratio),
-                    getString(R.string.metric_working_capital_ratio),
-                    getString(R.string.metric_retained_earnings),
-                    getString(R.string.metric_total_assets),
-                    getString(R.string.metric_total_liabilities),
-                    getString(R.string.metric_outstanding_shares)
-
+                    getString(R.string.net_income),
+                    getString(R.string.metric_debt_to_equity),
+                    getString(R.string.metric_current_ratio),
+                    getString(R.string.metric_roe),
+                    getString(R.string.metric_pe_ratio),
+                    getString(R.string.metric_ps_ratio),
+                    getString(R.string.metric_pb_ratio)
                 ).joinToString(", ")
             )
 
             tvForecastSubScoreValue.text = getString(R.string.sub_score_format, healthScore.forecastSubScore)
-            val growthDescription = getString(R.string.growth_forecast_description)
-            val valuationInsight = formatValuationInsight(healthScore.valuationAssessment)
-            tvForecastDescription.text = if (valuationInsight != null) {
-                listOf(growthDescription, valuationInsight).joinToString("\n\n")
-            } else {
-                growthDescription
-            }
+            tvForecastDescription.text = getString(R.string.growth_forecast_description)
             tvForecastMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
                     getString(R.string.metric_average_revenue_growth),
-                    getString(R.string.metric_average_net_income_growth),
                     getString(R.string.metric_revenue_growth),
-                    getString(R.string.metric_free_cash_flow_margin),
-                    getString(R.string.metric_ebitda_margin_trend),
-                    getString(R.string.metric_relative_valuation)
+                    getString(R.string.metric_average_net_income_growth),
+                    getString(R.string.metric_recent_net_income_growth),
+                    getString(R.string.metric_fcf_growth),
+                    getString(R.string.metric_average_fcf_growth)
                 ).joinToString(", ")
             )
 
@@ -130,27 +112,37 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
     }
 
     private fun bindStockMetrics(stockData: StockData) {
+        val ttmTag = " " + getString(R.string.label_ttm)
+        val annualTag = " " + getString(R.string.label_annual)
+        val yoyTag = " " + getString(R.string.label_yoy_annual)
+        val dataSuffix = if (stockData.hasTtm) ttmTag else annualTag
+
         with(binding) {
             tvSymbolValue.text = stockData.symbol
             tvCompanyValue.text = stockData.companyName ?: getString(R.string.not_available)
             tvPriceValue.text = formatCurrency(stockData.price)
             tvMarketCapValue.text = formatLargeCurrency(stockData.marketCap)
-            tvRevenueValue.text = formatLargeCurrency(stockData.revenue)
-            tvNetIncomeValue.text = formatLargeCurrency(stockData.netIncome)
-            tvEpsValue.text = formatTwoDecimals(stockData.eps)
-            tvPeRatioValue.text = formatTwoDecimals(stockData.peRatio)
-            tvPsRatioValue.text = formatTwoDecimals(stockData.psRatio)
-            tvRoeValue.text = formatPercent(stockData.roe)
+            tvRevenueValue.text = formatLargeCurrency(stockData.revenueDisplay) + dataSuffix
+            tvNetIncomeValue.text = formatLargeCurrency(stockData.netIncomeDisplay) + dataSuffix
+            tvEpsValue.text = formatTwoDecimals(stockData.epsDisplay) + dataSuffix
+            tvPeRatioValue.text = formatTwoDecimals(stockData.peRatio) + dataSuffix
+            tvPsRatioValue.text = formatTwoDecimals(stockData.psRatio) + dataSuffix
+            tvRoeValue.text = formatPercent(stockData.roe) + dataSuffix
             tvDebtToEquityValue.text = formatTwoDecimals(stockData.debtToEquity)
-            tvFreeCashFlowValue.text = formatLargeCurrency(stockData.freeCashFlow)
+            tvFreeCashFlowValue.text = formatLargeCurrency(stockData.freeCashFlowDisplay) + dataSuffix
             tvPbRatioValue.text = formatTwoDecimals(stockData.pbRatio)
-            tvEbitdaValue.text = formatLargeCurrency(stockData.ebitda)
+            tvEbitdaValue.text = formatLargeCurrency(stockData.ebitdaDisplay) + dataSuffix
             tvOutstandingSharesValue.text = formatLargeNumber(stockData.outstandingShares)
             tvTotalAssetsValue.text = formatLargeCurrency(stockData.totalAssets)
-            tvRevenueGrowthValue.text = formatPercent(stockData.revenueGrowth)
-            tvAverageRevenueGrowthValue.text = formatPercent(stockData.averageRevenueGrowth)
-            tvAverageNetIncomeGrowthValue.text = formatPercent(stockData.averageNetIncomeGrowth)
             tvTotalLiabilitiesValue.text = formatLargeCurrency(stockData.totalLiabilities)
+            tvCurrentAssetsValue.text = formatLargeCurrency(stockData.totalCurrentAssets)
+            tvCurrentLiabilitiesValue.text = formatLargeCurrency(stockData.totalCurrentLiabilities)
+            tvRevenueGrowthValue.text = formatPercent(stockData.revenueGrowth) + yoyTag
+            tvAverageRevenueGrowthValue.text = formatPercent(stockData.averageRevenueGrowth) + yoyTag
+            tvNetIncomeGrowthValue.text = formatPercent(stockData.netIncomeGrowth) + yoyTag
+            tvAverageNetIncomeGrowthValue.text = formatPercent(stockData.averageNetIncomeGrowth) + yoyTag
+            tvFcfGrowthValue.text = formatPercent(stockData.fcfGrowth) + yoyTag
+            tvAverageFcfGrowthValue.text = formatPercent(stockData.averageFcfGrowth) + yoyTag
             tvSectorValue.text = stockData.sector ?: getString(R.string.not_available)
             tvIndustryValue.text = stockData.industry ?: getString(R.string.not_available)
         }
@@ -218,77 +210,46 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         healthScore: HealthScore
     ): SectionDetailContent {
         val title = getString(R.string.forecast_sub_score_label)
-        val summaryParts = mutableListOf(
-            getString(R.string.health_score_growth_summary, healthScore.forecastSubScore)
+        val summary = getString(R.string.health_score_growth_summary, healthScore.forecastSubScore)
+
+        val details = listOf(
+            buildGrowthDetail(
+                label = getString(R.string.metric_average_revenue_growth),
+                value = stockData.averageRevenueGrowth,
+                normalized = growthTierPercentLocal(stockData.averageRevenueGrowth),
+                rationale = getString(R.string.health_score_rationale_avg_revenue_growth)
+            ),
+            buildGrowthDetail(
+                label = getString(R.string.metric_revenue_growth),
+                value = stockData.revenueGrowth,
+                normalized = growthTierPercentLocal(stockData.revenueGrowth),
+                rationale = getString(R.string.health_score_rationale_recent_revenue_growth)
+            ),
+            buildGrowthDetail(
+                label = getString(R.string.metric_average_net_income_growth),
+                value = stockData.averageNetIncomeGrowth,
+                normalized = growthTierPercentLocal(stockData.averageNetIncomeGrowth),
+                rationale = getString(R.string.health_score_rationale_avg_net_income_growth)
+            ),
+            buildGrowthDetail(
+                label = getString(R.string.metric_recent_net_income_growth),
+                value = stockData.netIncomeGrowth,
+                normalized = growthTierPercentLocal(stockData.netIncomeGrowth),
+                rationale = getString(R.string.health_score_rationale_recent_net_income_growth)
+            ),
+            buildGrowthDetail(
+                label = getString(R.string.metric_fcf_growth),
+                value = stockData.fcfGrowth,
+                normalized = growthTierPercentLocal(stockData.fcfGrowth),
+                rationale = getString(R.string.health_score_rationale_fcf_growth)
+            ),
+            buildGrowthDetail(
+                label = getString(R.string.metric_average_fcf_growth),
+                value = stockData.averageFcfGrowth,
+                normalized = growthTierPercentLocal(stockData.averageFcfGrowth),
+                rationale = getString(R.string.health_score_rationale_avg_fcf_growth)
+            )
         )
-        formatValuationInsight(healthScore.valuationAssessment)?.let { summaryParts.add(it) }
-
-        val details = mutableListOf<HealthScoreDetail>()
-
-        buildGrowthDetail(
-            label = getString(R.string.metric_average_revenue_growth),
-            value = stockData.averageRevenueGrowth,
-            weight = 0.20,
-            normalized = normalizeGrowthRateLocal(stockData.averageRevenueGrowth),
-            rationale = getString(R.string.health_score_rationale_avg_revenue_growth)
-        )?.let(details::add)
-
-        buildGrowthDetail(
-            label = getString(R.string.metric_average_net_income_growth),
-            value = stockData.averageNetIncomeGrowth,
-            weight = 0.20,
-            normalized = normalizeGrowthRateLocal(stockData.averageNetIncomeGrowth),
-            rationale = getString(R.string.health_score_rationale_avg_net_income_growth)
-        )?.let(details::add)
-
-        buildGrowthDetail(
-            label = getString(R.string.metric_revenue_growth),
-            value = stockData.revenueGrowth,
-            weight = 0.30,
-            normalized = normalizeGrowthRateLocal(stockData.revenueGrowth),
-            rationale = getString(R.string.health_score_rationale_recent_revenue_growth)
-        )?.let(details::add)
-
-        buildGrowthDetail(
-            label = getString(R.string.metric_free_cash_flow_margin),
-            value = stockData.freeCashFlowMargin,
-            weight = 0.15,
-            normalized = normalizeMarginLocal(stockData.freeCashFlowMargin),
-            rationale = getString(R.string.health_score_rationale_free_cash_flow_margin_growth)
-        )?.let(details::add)
-
-        buildGrowthDetail(
-            label = getString(R.string.metric_ebitda_margin_trend),
-            value = stockData.ebitdaMarginGrowth,
-            weight = 0.10,
-            normalized = normalizeMarginTrendLocal(stockData.ebitdaMarginGrowth),
-            rationale = getString(R.string.health_score_rationale_ebitda_margin_trend)
-        )?.let(details::add)
-
-        healthScore.valuationAssessment?.let { assessment ->
-            val weightPercent = formatPercentText(0.05 * 100.0)
-            val normalized = assessment.normalizedScore?.let { formatPercentText(it * 100.0) }
-            val label = getString(R.string.metric_relative_valuation) + " (${assessment.ratioType})"
-            val valueText = getString(
-                R.string.health_score_growth_valuation_value,
-                formatTwoDecimals(assessment.ratio),
-                formatTwoDecimals(assessment.benchmark)
-            )
-            details.add(
-                HealthScoreDetail(
-                    label = label,
-                    value = valueText,
-                    weight = weightPercent,
-                    normalized = normalized,
-                    performance = classifyPerformance(assessment.normalizedScore?.times(100.0)),
-                    rationale = getString(R.string.health_score_rationale_relative_valuation)
-                )
-            )
-        }
-
-        val summary = summaryParts.filter { it.isNotBlank() }
-            .takeIf { it.isNotEmpty() }
-            ?.joinToString(separator = "\n\n")
 
         return SectionDetailContent(
             title = title,
@@ -313,29 +274,20 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             )
 
         val sectionTitle = if (inputs.useZPrime) getString(R.string.z_prime_score_label) else title
-        val totalCoefficient = if (inputs.useZPrime) 17.59 else RESILIENCE_COEFFICIENT_SUM // Z'' sum: 6.56+3.26+6.72+1.05
-        val totalContribution = inputs.altmanZ
         val details = mutableListOf<HealthScoreDetail>()
 
         fun addResilienceDetail(
             label: String,
             ratio: Double,
-            coefficient: Double,
             rationaleRes: Int
         ) {
-            val contribution = coefficient * ratio
-            val normalized = if (abs(totalContribution) > 1e-6) {
-                contribution / totalContribution * 100.0
-            } else {
-                null
-            }
             details.add(
                 HealthScoreDetail(
                     label = label,
                     value = formatPercent(ratio),
-                    weight = formatPercentText((coefficient / totalCoefficient) * 100.0),
-                    normalized = formatPercentText(normalized),
-                    performance = classifyPerformance(normalized),
+                    weight = null,
+                    normalized = null,
+                    performance = null,
                     rationale = getString(rationaleRes)
                 )
             )
@@ -345,57 +297,48 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             addResilienceDetail(
                 label = getString(R.string.metric_working_capital_to_assets),
                 ratio = inputs.workingCapitalToAssets,
-                coefficient = 6.56,
                 rationaleRes = R.string.health_score_rationale_working_capital_to_assets
             )
             addResilienceDetail(
                 label = getString(R.string.metric_retained_earnings_to_assets),
                 ratio = inputs.retainedEarningsToAssets,
-                coefficient = 3.26,
                 rationaleRes = R.string.health_score_rationale_retained_earnings_to_assets
             )
             addResilienceDetail(
                 label = getString(R.string.metric_ebitda_to_assets),
                 ratio = inputs.ebitdaToAssets,
-                coefficient = 6.72,
                 rationaleRes = R.string.health_score_rationale_ebitda_to_assets
             )
             addResilienceDetail(
                 label = getString(R.string.metric_market_cap_to_liabilities),
                 ratio = inputs.marketValueToLiabilities,
-                coefficient = 1.05,
                 rationaleRes = R.string.health_score_rationale_market_cap_to_liabilities
             )
         } else {
             addResilienceDetail(
                 label = getString(R.string.metric_working_capital_to_assets),
                 ratio = inputs.workingCapitalToAssets,
-                coefficient = 1.2,
                 rationaleRes = R.string.health_score_rationale_working_capital_to_assets
             )
             addResilienceDetail(
                 label = getString(R.string.metric_retained_earnings_to_assets),
                 ratio = inputs.retainedEarningsToAssets,
-                coefficient = 1.4,
                 rationaleRes = R.string.health_score_rationale_retained_earnings_to_assets
             )
             addResilienceDetail(
                 label = getString(R.string.metric_ebitda_to_assets),
                 ratio = inputs.ebitdaToAssets,
-                coefficient = 3.3,
                 rationaleRes = R.string.health_score_rationale_ebitda_to_assets
             )
             addResilienceDetail(
                 label = getString(R.string.metric_market_cap_to_liabilities),
                 ratio = inputs.marketValueToLiabilities,
-                coefficient = 0.6,
                 rationaleRes = R.string.health_score_rationale_market_cap_to_liabilities
             )
             inputs.revenueToAssets?.let { rev ->
                 addResilienceDetail(
                     label = getString(R.string.metric_revenue_to_assets),
                     ratio = rev,
-                    coefficient = 1.0,
                     rationaleRes = R.string.health_score_rationale_revenue_to_assets
                 )
             }
@@ -425,23 +368,20 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
     private fun buildGrowthDetail(
         label: String,
         value: Double?,
-        weight: Double,
         normalized: Double?,
         rationale: String
-    ): HealthScoreDetail? {
+    ): HealthScoreDetail {
         val safeValue = value?.takeIf { it.isFinite() }
         val safeNormalized = normalized?.takeIf { it.isFinite() }
-        if (safeValue == null || safeNormalized == null) {
-            return null
-        }
+        val na = getString(R.string.not_available)
 
         return HealthScoreDetail(
             label = label,
-            value = formatPercent(safeValue),
-            weight = formatPercentText(weight * 100.0),
-            normalized = formatPercentText(safeNormalized * 100.0),
-            performance = classifyPerformance(safeNormalized * 100.0),
-            rationale = rationale
+            value = safeValue?.let { formatPercent(it) } ?: na,
+            weight = null,
+            normalized = safeNormalized?.let { formatPercentText(it * 100.0) } ?: na,
+            performance = if (safeNormalized != null) classifyPerformance(safeNormalized * 100.0) else null,
+            rationale = if (safeValue != null) rationale else getString(R.string.health_score_growth_insufficient_data)
         )
     }
 
@@ -461,6 +401,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private fun metricLabel(metric: String): String {
         return when (metric) {
+            "revenue_growth" -> getString(R.string.metric_revenue_growth)
             "revenue" -> getString(R.string.revenue)
             "net_income" -> getString(R.string.net_income)
             "eps" -> getString(R.string.metric_eps)
@@ -488,6 +429,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private fun metricRationale(metric: String): String? {
         return when (metric) {
+            "revenue_growth" -> getString(R.string.health_score_rationale_recent_revenue_growth)
             "revenue" -> getString(R.string.health_score_rationale_revenue)
             "net_income" -> getString(R.string.health_score_rationale_net_income)
             "eps" -> getString(R.string.health_score_rationale_eps)
@@ -520,7 +462,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             "outstanding_shares" -> formatLargeNumber(value)
             "eps" -> formatTwoDecimals(value)
             "pe_ratio", "ps_ratio", "pb_ratio", "debt_to_equity", "current_ratio" -> formatTwoDecimals(value)
-            "roe", "net_margin", "ebitda_margin", "free_cash_flow_margin", "liability_to_asset_ratio", "working_capital_ratio" -> formatPercent(value)
+            "revenue_growth", "roe", "net_margin", "ebitda_margin", "free_cash_flow_margin", "liability_to_asset_ratio", "working_capital_ratio" -> formatPercent(value)
             else -> {
                 val safeValue = value?.takeIf { it.isFinite() }
                 safeValue?.let { String.format(Locale.US, "%.2f", it) } ?: getString(R.string.not_available)
@@ -528,32 +470,22 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         }
     }
 
-    private fun normalizeGrowthRateLocal(value: Double?): Double? {
-        value ?: return null
-        val capped = value.coerceIn(-0.5, 0.6)
-        val fraction = (capped + 0.5) / 1.1
-        return sigmoidNormalizeFractionLocal(fraction)
-    }
-
-    private fun normalizeMarginLocal(value: Double?): Double? {
-        value ?: return null
-        val capped = value.coerceIn(-0.3, 0.3)
-        val fraction = (capped + 0.3) / 0.6
-        return sigmoidNormalizeFractionLocal(fraction)
-    }
-
-    private fun normalizeMarginTrendLocal(value: Double?): Double? {
-        value ?: return null
-        val capped = value.coerceIn(-0.2, 0.2)
-        val fraction = (capped + 0.2) / 0.4
-        return sigmoidNormalizeFractionLocal(fraction)
-    }
-
-    private fun sigmoidNormalizeFractionLocal(frac: Double): Double {
-        if (!frac.isFinite()) return 0.5
-        val scaled = (frac - 0.5) * 6.0
-        val logistic = 1.0 / (1.0 + exp(-scaled))
-        return logistic.coerceIn(0.0, 1.0)
+    private fun growthTierPercentLocal(value: Double?): Double? {
+        val v = value?.takeIf { it.isFinite() } ?: return null
+        val score = when {
+            v <= 0.0 -> 0.0
+            v <= 0.05 -> 1.0
+            v <= 0.10 -> 2.0
+            v <= 0.15 -> 3.0
+            v <= 0.20 -> 4.0
+            v <= 0.25 -> 5.0
+            v <= 0.30 -> 6.0
+            v <= 0.40 -> 7.0
+            v <= 0.50 -> 8.0
+            v <= 0.75 -> 9.0
+            else -> 10.0
+        }
+        return score / 10.0
     }
 
     private fun gatherResilienceRatios(stockData: StockData): ResilienceRatios? {
@@ -570,20 +502,10 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
         val workingCapitalRatio = workingCapital?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
         val retainedEarningsRatio = stockData.retainedEarnings?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
-        val ebitdaRatio = stockData.ebitda?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
+        val ebitdaRatio = stockData.ebitdaDisplay?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } } ?: return null
         val rawMarketValueRatio = stockData.marketCap?.let { (it / totalLiabilities).takeIf { ratio -> ratio.isFinite() } } ?: return null
-        // Same log normalization as FinancialHealthAnalyzer.buildResilienceInputs for consistent display
-        val marketValueRatio = run {
-            val minValue = 0.1
-            val maxValue = 10.0
-            val transformed = if (rawMarketValueRatio > minValue) {
-                kotlin.math.ln(rawMarketValueRatio).coerceIn(kotlin.math.ln(minValue), kotlin.math.ln(maxValue))
-            } else {
-                kotlin.math.ln(minValue)
-            }
-            ((transformed - kotlin.math.ln(minValue)) / (kotlin.math.ln(maxValue) - kotlin.math.ln(minValue)) * 10.0).coerceIn(0.0, 10.0)
-        }
-        val revenueRatio = stockData.revenue?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } }
+        val marketValueRatio = rawMarketValueRatio
+        val revenueRatio = stockData.revenueDisplay?.let { (it / totalAssets).takeIf { ratio -> ratio.isFinite() } }
 
         val netIncomeHistory = if (stockData.netIncomeHistory.isNotEmpty()) {
             stockData.netIncomeHistory
@@ -713,31 +635,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         return "%.1f%%".format(safeValue * 100)
     }
 
-    private fun formatValuationInsight(assessment: ValuationAssessment?): String? {
-        assessment ?: return null
-        val ratioLabel = assessment.ratioType
-        val deviationText = assessment.deviation?.let { deviation ->
-            val percent = abs(deviation) * 100
-            if (percent.isFinite()) {
-                String.format(Locale.US, "%.1f%%", percent)
-            } else null
-        }
-        val diffSuffix = deviationText?.let { getString(R.string.valuation_diff_detail, it) }.orEmpty()
-
-        return when (assessment.classification) {
-            ValuationClassification.UNDERVALUED ->
-                getString(R.string.valuation_undervalued, ratioLabel, diffSuffix)
-            ValuationClassification.OVERVALUED ->
-                getString(R.string.valuation_overvalued, ratioLabel, diffSuffix)
-            ValuationClassification.FAIRLY_VALUED ->
-                getString(R.string.valuation_fair, ratioLabel)
-            ValuationClassification.UNKNOWN ->
-                getString(R.string.valuation_unknown, ratioLabel)
-        }
-    }
-
     companion object {
-        private const val RESILIENCE_COEFFICIENT_SUM = 7.5
         const val EXTRA_STOCK_DATA = "extra_stock_data"
         const val EXTRA_HEALTH_SCORE = "extra_health_score"
     }
