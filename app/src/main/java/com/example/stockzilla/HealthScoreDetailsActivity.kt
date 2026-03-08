@@ -190,9 +190,9 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             HealthScoreDetail(
                 label = metricLabel(metricKey),
                 value = formatMetricValue(metricKey, metricScore.value),
-                weight = formatPercentText(metricScore.weight * 100.0),
-                normalized = formatPercentText(metricScore.normalizedPercent),
-                performance = classifyPerformance(metricScore.normalizedPercent),
+                weight = formatPercentText(metricScore.weightPercent),
+                normalized = formatPercentText(metricScore.weightedContributionPercent),
+                performance = classifyPerformance(metricScore.weightedContributionPercent),
                 rationale = metricRationale(metricKey)
             )
         }

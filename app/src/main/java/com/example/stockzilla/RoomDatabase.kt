@@ -1,6 +1,7 @@
 package com.example.stockzilla
 
 import android.content.Context
+import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
@@ -11,8 +12,27 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import androidx.room.Room
 import androidx.room.RoomDatabase
+import androidx.room.TypeConverter
+import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.google.gson.Gson
+import com.google.gson.reflect.TypeToken
+
+class DoubleListConverter {
+    private val gson = Gson()
+    private val type = object : TypeToken<List<Double?>>() {}.type
+
+    @TypeConverter
+    fun fromDoubleList(list: List<Double?>?): String? {
+        return list?.let { gson.toJson(it) }
+    }
+
+    @TypeConverter
+    fun toDoubleList(json: String?): List<Double?>? {
+        return json?.let { gson.fromJson(it, type) }
+    }
+}
 
 @Entity(tableName = "favorites")
 data class FavoriteEntity(
@@ -100,6 +120,12 @@ data class EdgarRawFactsEntity(
     val ebitdaTtm: Double?,
     val freeCashFlowTtm: Double?,
     val operatingCashFlowTtm: Double?,
+    val revenueHistoryJson: List<Double?>?,
+    val netIncomeHistoryJson: List<Double?>?,
+    val ebitdaHistoryJson: List<Double?>?,
+    val operatingCashFlowHistoryJson: List<Double?>?,
+    val freeCashFlowHistoryJson: List<Double?>?,
+    val sharesOutstandingHistoryJson: List<Double?>?,
     val lastFilingDate: String?,
     val analyzedAt: Long,
     val lastUpdated: Long
@@ -139,6 +165,12 @@ data class EdgarRawFactsEntity(
                 ebitdaTtm = stockData.ebitdaTtm,
                 freeCashFlowTtm = stockData.freeCashFlowTtm,
                 operatingCashFlowTtm = stockData.operatingCashFlowTtm,
+                revenueHistoryJson = stockData.revenueHistory.takeIf { it.isNotEmpty() },
+                netIncomeHistoryJson = stockData.netIncomeHistory.takeIf { it.isNotEmpty() },
+                ebitdaHistoryJson = stockData.ebitdaHistory.takeIf { it.isNotEmpty() },
+                operatingCashFlowHistoryJson = stockData.operatingCashFlowHistory?.takeIf { it.isNotEmpty() },
+                freeCashFlowHistoryJson = stockData.freeCashFlowHistory?.takeIf { it.isNotEmpty() },
+                sharesOutstandingHistoryJson = stockData.sharesOutstandingHistory?.takeIf { it.isNotEmpty() },
                 lastFilingDate = lastFilingDate,
                 analyzedAt = now,
                 lastUpdated = now
@@ -182,6 +214,12 @@ data class EdgarRawFactsEntity(
             averageFcfGrowth = derived?.averageFcfGrowth,
             freeCashFlowMargin = derived?.fcfMargin,
             ebitdaMarginGrowth = null,
+            revenueHistory = revenueHistoryJson ?: emptyList(),
+            netIncomeHistory = netIncomeHistoryJson ?: emptyList(),
+            ebitdaHistory = ebitdaHistoryJson ?: emptyList(),
+            operatingCashFlowHistory = operatingCashFlowHistoryJson,
+            freeCashFlowHistory = freeCashFlowHistoryJson,
+            sharesOutstandingHistory = sharesOutstandingHistoryJson,
             revenueTtm = revenueTtm,
             netIncomeTtm = netIncomeTtm,
             epsTtm = epsTtm,
@@ -318,6 +356,36 @@ data class PeerProfileRow(
     val marketCap: Double?
 )
 
+/** Row for "viewed/analyzed" stocks list (from edgar_raw_facts ordered by last viewed). */
+data class ViewedStockRow(
+    val symbol: String,
+    val companyName: String?,
+    val sector: String?,
+    val industry: String?,
+    val price: Double?,
+    val marketCap: Double?,
+    val lastUpdated: Long
+)
+
+data class SymbolPriceRow(
+    val symbol: String,
+    val price: Double?
+)
+
+/** User's manual holdings or watchlist (no broker connection). */
+@Entity(
+    tableName = "user_stock_list",
+    indices = [Index(value = ["list_type"])]
+)
+data class UserStockListItemEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String,
+    @ColumnInfo(name = "list_type") val listType: String, // "holding" | "watchlist"
+    val shares: Double? = null,
+    val avgCost: Double? = null,
+    val addedAt: Long = System.currentTimeMillis()
+)
+
 @Dao
 interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY addedDate DESC")
@@ -352,6 +420,9 @@ interface EdgarRawFactsDao {
 
     @Query("SELECT * FROM edgar_raw_facts WHERE symbol = :symbol")
     suspend fun getBySymbol(symbol: String): EdgarRawFactsEntity?
+
+    @Query("DELETE FROM edgar_raw_facts WHERE symbol = :symbol")
+    suspend fun deleteBySymbol(symbol: String)
 
     @Query("""
         SELECT
@@ -414,6 +485,22 @@ interface EdgarRawFactsDao {
         ORDER BY d.marketCap DESC, r.symbol ASC
     """)
     suspend fun getPeerProfilesBySector(sector: String): List<PeerProfileRow>
+
+    /** All stocks ever analyzed, most recently updated first. */
+    @Query("""
+        SELECT
+            r.symbol AS symbol,
+            r.companyName AS companyName,
+            r.sector AS sector,
+            r.industry AS industry,
+            d.price AS price,
+            d.marketCap AS marketCap,
+            r.lastUpdated AS lastUpdated
+        FROM edgar_raw_facts r
+        LEFT JOIN financial_derived_metrics d ON d.symbol = r.symbol
+        ORDER BY r.lastUpdated DESC
+    """)
+    suspend fun getViewedStocksOrderByLastUpdated(): List<ViewedStockRow>
 }
 
 @Dao
@@ -423,6 +510,12 @@ interface FinancialDerivedMetricsDao {
 
     @Query("SELECT * FROM financial_derived_metrics WHERE symbol = :symbol")
     suspend fun getBySymbol(symbol: String): FinancialDerivedMetricsEntity?
+
+    @Query("DELETE FROM financial_derived_metrics WHERE symbol = :symbol")
+    suspend fun deleteBySymbol(symbol: String)
+
+    @Query("SELECT symbol, price FROM financial_derived_metrics WHERE symbol IN (:symbols)")
+    suspend fun getPricesBySymbols(symbols: List<String>): List<SymbolPriceRow>
 
     @Query("""
         SELECT d.* FROM financial_derived_metrics d
@@ -457,6 +550,9 @@ interface ScoreSnapshotDao {
 
     @Query("SELECT * FROM score_snapshots WHERE symbol = :symbol ORDER BY createdAt DESC LIMIT 1")
     suspend fun getLatest(symbol: String): ScoreSnapshotEntity?
+
+    @Query("DELETE FROM score_snapshots WHERE symbol = :symbol")
+    suspend fun deleteBySymbol(symbol: String)
 }
 
 /** Saved industry peer list per stock (user can add/remove). */
@@ -493,6 +589,29 @@ interface StockIndustryPeerDao {
     suspend fun countForOwner(ownerSymbol: String): Int
 }
 
+@Dao
+interface UserStockListDao {
+    /** All holdings; no limit on count. */
+    @Query("SELECT * FROM user_stock_list WHERE list_type = 'holding' ORDER BY addedAt ASC")
+    suspend fun getAllHoldings(): List<UserStockListItemEntity>
+
+    /** All watchlist items; no limit on count. */
+    @Query("SELECT * FROM user_stock_list WHERE list_type = 'watchlist' ORDER BY addedAt ASC")
+    suspend fun getAllWatchlist(): List<UserStockListItemEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(item: UserStockListItemEntity)
+
+    @Query("DELETE FROM user_stock_list WHERE id = :id")
+    suspend fun deleteById(id: Long)
+
+    @Query("DELETE FROM user_stock_list WHERE symbol = :symbol AND list_type = :listType")
+    suspend fun deleteBySymbolAndType(symbol: String, listType: String)
+
+    @Query("UPDATE user_stock_list SET shares = :shares, avgCost = :avgCost WHERE id = :id")
+    suspend fun updateHoldingValues(id: Long, shares: Double?, avgCost: Double?)
+}
+
 @Database(
     entities = [
         FavoriteEntity::class,
@@ -500,11 +619,13 @@ interface StockIndustryPeerDao {
         StockIndustryPeerEntity::class,
         EdgarRawFactsEntity::class,
         FinancialDerivedMetricsEntity::class,
-        ScoreSnapshotEntity::class
+        ScoreSnapshotEntity::class,
+        UserStockListItemEntity::class
     ],
-    version = 12,
+    version = 14,
     exportSchema = false
 )
+@TypeConverters(DoubleListConverter::class)
 abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun favoritesDao(): FavoritesDao
     abstract fun stockCacheDao(): StockCacheDao
@@ -512,6 +633,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun edgarRawFactsDao(): EdgarRawFactsDao
     abstract fun financialDerivedMetricsDao(): FinancialDerivedMetricsDao
     abstract fun scoreSnapshotDao(): ScoreSnapshotDao
+    abstract fun userStockListDao(): UserStockListDao
 
     companion object {
         @Volatile
@@ -537,6 +659,33 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_12_13 = object : Migration(12, 13) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN revenueHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN netIncomeHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN ebitdaHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN operatingCashFlowHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN freeCashFlowHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN sharesOutstandingHistoryJson TEXT")
+            }
+        }
+
+        private val MIGRATION_13_14 = object : Migration(13, 14) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("""
+                    CREATE TABLE IF NOT EXISTS user_stock_list (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        list_type TEXT NOT NULL,
+                        shares REAL,
+                        avgCost REAL,
+                        addedAt INTEGER NOT NULL DEFAULT 0
+                    )
+                """.trimIndent())
+                db.execSQL("CREATE INDEX IF NOT EXISTS index_user_stock_list_listType ON user_stock_list(list_type)")
+            }
+        }
+
         fun getDatabase(context: Context): StockzillaDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -544,7 +693,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
                     .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance

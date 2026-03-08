@@ -36,6 +36,77 @@
         android:textStyle="bold"
         android:text="" />
 
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="16dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <com.google.android.material.button.MaterialButtonToggleGroup
+            android:id="@+id/toggleTabs"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            app:singleSelection="true"
+            app:selectionRequired="true">
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTabDiscover"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/industry_tab_discover" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnTabMyGroup"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:text="@string/industry_tab_my_group" />
+        </com.google.android.material.button.MaterialButtonToggleGroup>
+
+        <ImageButton
+            android:id="@+id/btnRefreshDiscover"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_marginStart="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="@string/industry_discover_refresh"
+            android:src="@drawable/ic_refresh"
+            app:tint="?attr/colorPrimary" />
+    </LinearLayout>
+
+    <LinearLayout
+        android:id="@+id/layoutAddTickerRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginTop="12dp"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:visibility="gone">
+
+        <EditText
+            android:id="@+id/etAddTicker"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginEnd="8dp"
+            android:hint="@string/industry_add_symbol_hint"
+            android:inputType="textCapCharacters"
+            android:maxLines="1"
+            android:imeOptions="actionDone" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAddTicker"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/industry_add_symbol_btn"
+            style="@style/Widget.MaterialComponents.Button" />
+    </LinearLayout>
+
     <ProgressBar
         android:id="@+id/progressBar"
         android:layout_width="wrap_content"
@@ -67,27 +138,28 @@
         android:visibility="gone" />
 
     <LinearLayout
+        android:id="@+id/layoutAddButtons"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:layout_marginTop="8dp"
         android:orientation="horizontal"
         android:gravity="end">
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnAddBySymbol"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginEnd="4dp"
-            android:text="@string/industry_add_by_symbol"
-            style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddBySymbol"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginEnd="4dp"
+                android:text="@string/industry_add_by_symbol"
+                style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnAddStock"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:layout_marginStart="4dp"
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnAddStock"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="4dp"
             android:text="@string/industry_add_from_all"
             app:icon="@drawable/ic_open_in_new"
             style="@style/Widget.MaterialComponents.Button.OutlinedButton" />

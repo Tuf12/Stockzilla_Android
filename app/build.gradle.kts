@@ -57,6 +57,7 @@ dependencies {
     implementation(libs.androidx.activity.ktx)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.recyclerview)
+    implementation("androidx.viewpager2:viewpager2:1.1.0")
 
     // Lifecycle dependencies
     implementation(libs.androidx.lifecycle.viewmodel.ktx)

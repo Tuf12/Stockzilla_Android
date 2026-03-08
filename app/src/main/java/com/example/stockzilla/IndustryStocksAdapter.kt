@@ -8,11 +8,32 @@ import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.stockzilla.databinding.ItemIndustryStockBinding
 
+enum class IndustryPeersMode { Discover, MyGroup }
+
 class IndustryStocksAdapter(
     private val currentSymbol: String?,
     private val onStockClick: (IndustryPeer) -> Unit,
-    private val onRemove: ((IndustryPeer) -> Unit)? = null
+    mode: IndustryPeersMode,
+    private val onRemove: ((IndustryPeer) -> Unit)? = null,
+    private val onAddToGroup: ((IndustryPeer) -> Unit)? = null,
+    savedPeerSymbols: Set<String> = emptySet()
 ) : ListAdapter<IndustryPeer, IndustryStocksAdapter.ViewHolder>(DiffCallback) {
+
+    var mode: IndustryPeersMode = mode
+        set(value) {
+            if (field != value) {
+                field = value
+                notifyDataSetChanged()
+            }
+        }
+
+    var savedPeerSymbols: Set<String> = savedPeerSymbols
+        set(value) {
+            if (field != value) {
+                field = value
+                notifyDataSetChanged()
+            }
+        }
 
     override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): ViewHolder {
         val binding = ItemIndustryStockBinding.inflate(LayoutInflater.from(parent.context), parent, false)
@@ -42,8 +63,23 @@ class IndustryStocksAdapter(
             binding.tvCurrentBadge.isVisible = isCurrent
             binding.root.strokeWidth = if (isCurrent) 4 else 0
             binding.root.setOnClickListener { onStockClick(item) }
-            binding.btnRemove.isVisible = onRemove != null
-            binding.btnRemove.setOnClickListener { onRemove?.invoke(item) }
+
+            val inMyGroup = item.symbol.uppercase() in savedPeerSymbols
+            when (mode) {
+                IndustryPeersMode.Discover -> {
+                    binding.btnAddToGroup.isVisible = true
+                    binding.btnRemove.isVisible = false
+                    binding.btnAddToGroup.isEnabled = !inMyGroup
+                    binding.btnAddToGroup.setOnClickListener { if (!inMyGroup) onAddToGroup?.invoke(item) }
+                    binding.tvInMyGroupBadge.isVisible = inMyGroup
+                }
+                IndustryPeersMode.MyGroup -> {
+                    binding.btnAddToGroup.isVisible = false
+                    binding.btnRemove.isVisible = true
+                    binding.tvInMyGroupBadge.isVisible = false
+                    binding.btnRemove.setOnClickListener { onRemove?.invoke(item) }
+                }
+            }
         }
     }
 

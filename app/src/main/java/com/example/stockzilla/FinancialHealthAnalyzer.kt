@@ -173,7 +173,9 @@ data class MetricScore(
     val value: Double?,
     val normalizedPercent: Double,
     val weight: Double,
-    val score: Double
+    val score: Double,
+    val weightPercent: Double,
+    val weightedContributionPercent: Double
 ): Serializable
 
 /**
@@ -262,32 +264,46 @@ class FinancialHealthAnalyzer {
             return null to emptyList()
         }
 
-        var totalScore = 0.0
-        val breakdown = mutableListOf<MetricScore>()
+        val interim = mutableListOf<InterimMetricScore>()
+        var totalWeightedScore = 0.0
+        var totalAvailableWeight = 0.0
 
         metricData.forEach { (name, metric) ->
             val value = metric.value ?: return@forEach
             val cfg = DEFAULT_METRIC_CONFIG[name] ?: return@forEach
             val normalizedFraction = normalizeLinear(value, metric.min, metric.max, cfg.direction)
             val weighted = normalizedFraction * metric.weight
-            totalScore += weighted
+            totalWeightedScore += weighted
+            totalAvailableWeight += metric.weight
 
-            breakdown.add(
-                MetricScore(
+            interim.add(
+                InterimMetricScore(
                     metric = name,
                     value = value,
-                    normalizedPercent = normalizedFraction * 100.0,
+                    normalizedFraction = normalizedFraction,
                     weight = metric.weight,
-                    score = weighted
+                    weightedScore = weighted
                 )
             )
         }
 
-        if (breakdown.isEmpty()) {
-            return null to breakdown
+        if (interim.isEmpty() || totalAvailableWeight <= 0.0) {
+            return null to emptyList()
         }
 
-        val score = totalScore
+        // Re-scale by available metric weight so missing metrics do not force lower scores.
+        val score = (totalWeightedScore / totalAvailableWeight) * CORE_HEALTH_SCORE_MAX
+        val breakdown = interim.map { item ->
+            MetricScore(
+                metric = item.metric,
+                value = item.value,
+                normalizedPercent = item.normalizedFraction * 100.0,
+                weight = item.weight,
+                score = item.weightedScore,
+                weightPercent = (item.weight / totalAvailableWeight) * 100.0,
+                weightedContributionPercent = (item.weightedScore / totalAvailableWeight) * 100.0
+            )
+        }
         return score.coerceIn(0.0, 10.0) to breakdown
     }
 
@@ -535,6 +551,15 @@ private const val CORE_WEIGHT = 0.4
 private const val GROWTH_WEIGHT = 0.4
 private const val RESILIENCE_WEIGHT = 0.2
 private const val RESILIENCE_LEVEL_MAX = 3.0
+private const val CORE_HEALTH_SCORE_MAX = 10.0
+
+private data class InterimMetricScore(
+    val metric: String,
+    val value: Double?,
+    val normalizedFraction: Double,
+    val weight: Double,
+    val weightedScore: Double
+)
 
 data class MetricData(
     val value: Double?,

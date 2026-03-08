@@ -43,6 +43,16 @@
                 android:textStyle="bold" />
 
             <ImageButton
+                android:id="@+id/btnAddToGroup"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:background="?attr/selectableItemBackgroundBorderless"
+                android:contentDescription="@string/industry_add_to_my_group"
+                android:src="@drawable/ic_add"
+                android:padding="8dp"
+                android:visibility="gone"
+                app:tint="@color/colorPrimary" />
+            <ImageButton
                 android:id="@+id/btnRemove"
                 android:layout_width="40dp"
                 android:layout_height="40dp"
@@ -69,19 +79,38 @@
             android:textColor="@color/textSecondary"
             android:textSize="14sp" />
 
-        <TextView
-            android:id="@+id/tvCurrentBadge"
-            android:layout_width="wrap_content"
+        <LinearLayout
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="8dp"
-            android:background="@drawable/score_background"
-            android:paddingHorizontal="8dp"
-            android:paddingVertical="4dp"
-            android:text="@string/industry_current_badge"
-            android:textColor="@color/colorOnPrimary"
-            android:textSize="12sp"
-            android:visibility="gone" />
+            android:orientation="horizontal"
+            android:gravity="center_vertical">
 
+            <TextView
+                android:id="@+id/tvCurrentBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:background="@drawable/score_background"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="@string/industry_current_badge"
+                android:textColor="@color/colorOnPrimary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <TextView
+                android:id="@+id/tvInMyGroupBadge"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:background="@drawable/score_background"
+                android:paddingHorizontal="8dp"
+                android:paddingVertical="4dp"
+                android:text="@string/industry_in_my_group"
+                android:textColor="@color/colorOnPrimary"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
     </LinearLayout>
 
 </com.google.android.material.card.MaterialCardView>

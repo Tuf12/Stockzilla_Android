@@ -3,6 +3,7 @@ package com.example.stockzilla
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.Toast
 import androidx.appcompat.app.AlertDialog
@@ -27,8 +28,11 @@ class IndustryStocksActivity : AppCompatActivity() {
     private lateinit var apiKeyManager: ApiKeyManager
     private lateinit var adapter: IndustryStocksAdapter
     private lateinit var peerRepository: IndustryPeerRepository
+    private var stockRepository: StockRepository? = null
     private var ownerSymbol: String = ""
     private var industry: String = ""
+    private var currentMode: IndustryPeersMode = IndustryPeersMode.Discover
+    private var discoverList: List<IndustryPeer> = emptyList()
 
     private val addPeerLauncher = registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
         if (result.resultCode == RESULT_OK) {
@@ -36,7 +40,7 @@ class IndustryStocksActivity : AppCompatActivity() {
             if (!symbol.isNullOrBlank()) {
                 lifecycleScope.launch {
                     peerRepository.addPeer(ownerSymbol, symbol.trim().uppercase(Locale.US), "user_added")
-                    refreshPeerList()
+                    if (currentMode == IndustryPeersMode.MyGroup) refreshMyGroupList()
                 }
             }
         }
@@ -55,6 +59,16 @@ class IndustryStocksActivity : AppCompatActivity() {
         apiKeyManager = ApiKeyManager(this)
         val db = StockzillaDatabase.getDatabase(this)
         peerRepository = IndustryPeerRepository(db.stockIndustryPeerDao(), db.edgarRawFactsDao())
+        val finnhubKey = apiKeyManager.getFinnhubApiKey()
+        if (!finnhubKey.isNullOrBlank()) {
+            stockRepository = StockRepository(
+                finnhubKey,
+                finnhubKey,
+                db.edgarRawFactsDao(),
+                db.financialDerivedMetricsDao(),
+                db.scoreSnapshotDao()
+            )
+        }
 
         industry = intent.getStringExtra(EXTRA_INDUSTRY).orEmpty()
         ownerSymbol = intent.getStringExtra(EXTRA_SYMBOL)?.trim()?.uppercase(Locale.US).orEmpty()
@@ -78,15 +92,33 @@ class IndustryStocksActivity : AppCompatActivity() {
         adapter = IndustryStocksAdapter(
             currentSymbol = ownerSymbol,
             onStockClick = { peer -> openStockAnalysis(peer.symbol) },
+            mode = IndustryPeersMode.Discover,
             onRemove = { peer ->
                 lifecycleScope.launch {
                     peerRepository.removePeer(ownerSymbol, peer.symbol)
-                    refreshPeerList()
+                    refreshMyGroupList()
+                }
+            },
+            onAddToGroup = { peer ->
+                lifecycleScope.launch {
+                    peerRepository.addPeer(ownerSymbol, peer.symbol, "discover")
+                    Toast.makeText(this@IndustryStocksActivity, getString(R.string.industry_added_to_my_group, peer.symbol), Toast.LENGTH_SHORT).show()
+                    updateSavedPeerSymbolsInAdapter()
                 }
             }
         )
         binding.recyclerViewPeers.layoutManager = LinearLayoutManager(this)
         binding.recyclerViewPeers.adapter = adapter
+
+        binding.toggleTabs.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (!isChecked) return@addOnButtonCheckedListener
+            when (checkedId) {
+                R.id.btnTabDiscover -> switchToDiscover()
+                R.id.btnTabMyGroup -> switchToMyGroup()
+            }
+        }
+        binding.toggleTabs.check(R.id.btnTabDiscover)
+        binding.btnRefreshDiscover.setOnClickListener { refreshDiscover() }
 
         binding.btnAddStock.setOnClickListener {
             val intent = Intent(this, AddPeerActivity::class.java).apply {
@@ -97,11 +129,18 @@ class IndustryStocksActivity : AppCompatActivity() {
 
         binding.btnAddBySymbol.setOnClickListener { showAddBySymbolDialog() }
 
-        val finnhubKey = apiKeyManager.getFinnhubApiKey()
+        binding.btnAddTicker.setOnClickListener { performAddTickerFromInput() }
+        binding.etAddTicker.setOnEditorActionListener { _, actionId, _ ->
+            if (actionId == EditorInfo.IME_ACTION_DONE) {
+                performAddTickerFromInput()
+                true
+            } else false
+        }
+
         if (finnhubKey.isNullOrBlank()) {
             Toast.makeText(this, getString(R.string.industry_no_key_can_add_by_symbol), Toast.LENGTH_LONG).show()
         }
-        loadIndustryPeers(industry, ownerSymbol, finnhubKey)
+        loadDiscover()
     }
 
     private fun openStockAnalysis(symbol: String?) {
@@ -114,57 +153,136 @@ class IndustryStocksActivity : AppCompatActivity() {
         })
     }
 
-    private fun loadIndustryPeers(industry: String, symbol: String, finnhubKey: String?) {
+    private fun switchToDiscover() {
+        currentMode = IndustryPeersMode.Discover
+        adapter.mode = IndustryPeersMode.Discover
+        lifecycleScope.launch { updateSavedPeerSymbolsInAdapter() }
+        binding.btnRefreshDiscover.isVisible = true
+        binding.layoutAddTickerRow.isVisible = false
+        binding.layoutAddButtons.isVisible = false
+        binding.tvEmptyState.text = getString(R.string.industry_discover_empty)
+        val sorted = discoverList.sortedWith(
+            compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
+                .thenBy { it.symbol }
+        )
+        adapter.submitList(sorted)
+        binding.recyclerViewPeers.isVisible = sorted.isNotEmpty()
+        binding.tvEmptyState.isVisible = sorted.isEmpty()
+    }
+
+    private fun switchToMyGroup() {
+        currentMode = IndustryPeersMode.MyGroup
+        adapter.mode = IndustryPeersMode.MyGroup
+        binding.btnRefreshDiscover.isVisible = false
+        binding.layoutAddTickerRow.isVisible = true
+        binding.layoutAddButtons.isVisible = true
+        binding.tvEmptyState.text = getString(R.string.industry_my_group_empty)
+        lifecycleScope.launch { refreshMyGroupList() }
+    }
+
+    private fun loadDiscover() {
+        binding.tvEmptyState.text = getString(R.string.industry_discover_empty)
         binding.progressBar.isVisible = true
         binding.recyclerViewPeers.isVisible = false
         binding.tvEmptyState.isVisible = false
-        binding.tvEmptyState.text = getString(R.string.industry_list_empty)
 
+        val repo = stockRepository
+        if (repo == null) {
+            discoverList = emptyList()
+            adapter.submitList(emptyList())
+            adapter.mode = IndustryPeersMode.Discover
+            lifecycleScope.launch { updateSavedPeerSymbolsInAdapter() }
+            binding.tvEmptyState.isVisible = true
+            binding.progressBar.isVisible = false
+            return
+        }
         lifecycleScope.launch {
-            val hasSaved = peerRepository.hasSavedPeers(symbol)
-            if (hasSaved) {
-                val peers = peerRepository.getSavedPeers(symbol)
-                val sorted = peers.sortedWith(
-                    compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
-                        .thenBy { it.symbol }
-                )
-                adapter.submitList(sorted)
-                binding.recyclerViewPeers.isVisible = true
-                binding.tvEmptyState.isVisible = sorted.isEmpty()
-            } else if (!finnhubKey.isNullOrBlank()) {
-                val localDb = StockzillaDatabase.getDatabase(this@IndustryStocksActivity)
-                val repository = StockRepository(
-                    finnhubKey,
-                    finnhubKey,
-                    localDb.edgarRawFactsDao(),
-                    localDb.financialDerivedMetricsDao(),
-                    localDb.scoreSnapshotDao()
-                )
-                repository.getIndustryPeers(symbol, industry)
-                    .onSuccess { peers ->
-                        peerRepository.replacePeers(symbol, peers, "initial")
-                        val sorted = peers.sortedWith(
-                            compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
-                                .thenBy { it.symbol }
-                        )
+            repo.getIndustryPeers(ownerSymbol, industry)
+                .onSuccess { peers ->
+                    discoverList = peers
+                    val sorted = peers.sortedWith(
+                        compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
+                            .thenBy { it.symbol }
+                    )
+                    adapter.mode = IndustryPeersMode.Discover
+                    updateSavedPeerSymbolsInAdapter()
+                    adapter.submitList(sorted)
+                    binding.recyclerViewPeers.isVisible = true
+                    binding.tvEmptyState.isVisible = sorted.isEmpty()
+                }
+                .onFailure {
+                    discoverList = emptyList()
+                    adapter.submitList(emptyList())
+                    adapter.mode = IndustryPeersMode.Discover
+                    binding.tvEmptyState.text = getString(R.string.industry_list_error)
+                    binding.tvEmptyState.isVisible = true
+                    Toast.makeText(
+                        this@IndustryStocksActivity,
+                        getString(R.string.industry_list_error),
+                        Toast.LENGTH_LONG
+                    ).show()
+                }
+            binding.progressBar.isVisible = false
+        }
+    }
+
+    private fun refreshDiscover() {
+        val repo = stockRepository ?: return
+        binding.progressBar.isVisible = true
+        lifecycleScope.launch {
+            repo.getIndustryPeers(ownerSymbol, industry)
+                .onSuccess { peers ->
+                    discoverList = peers
+                    val sorted = peers.sortedWith(
+                        compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
+                            .thenBy { it.symbol }
+                    )
+                    if (currentMode == IndustryPeersMode.Discover) {
+                        updateSavedPeerSymbolsInAdapter()
                         adapter.submitList(sorted)
                         binding.recyclerViewPeers.isVisible = true
                         binding.tvEmptyState.isVisible = sorted.isEmpty()
                     }
-                    .onFailure {
-                        Toast.makeText(
-                            this@IndustryStocksActivity,
-                            getString(R.string.industry_list_error),
-                            Toast.LENGTH_LONG
-                        ).show()
-                        binding.tvEmptyState.text = getString(R.string.industry_list_error)
-                        binding.tvEmptyState.isVisible = true
-                    }
-            } else {
-                adapter.submitList(emptyList())
-                binding.tvEmptyState.isVisible = true
-            }
+                    Toast.makeText(this@IndustryStocksActivity, getString(R.string.industry_suggestions_updated), Toast.LENGTH_SHORT).show()
+                }
+                .onFailure {
+                    Toast.makeText(this@IndustryStocksActivity, getString(R.string.industry_list_error), Toast.LENGTH_SHORT).show()
+                }
             binding.progressBar.isVisible = false
+        }
+    }
+
+    private suspend fun updateSavedPeerSymbolsInAdapter() {
+        val saved = peerRepository.getSavedPeers(ownerSymbol).map { it.symbol.uppercase(Locale.US) }.toSet()
+        adapter.savedPeerSymbols = saved
+    }
+
+    private suspend fun refreshMyGroupList() {
+        val peers = peerRepository.getSavedPeers(ownerSymbol)
+        val sorted = peers.sortedWith(
+            compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
+                .thenBy { it.symbol }
+        )
+        adapter.submitList(sorted)
+        binding.recyclerViewPeers.isVisible = sorted.isNotEmpty()
+        binding.tvEmptyState.isVisible = sorted.isEmpty()
+    }
+
+    private fun performAddTickerFromInput() {
+        val raw = binding.etAddTicker.text?.toString()?.trim()?.uppercase(Locale.US).orEmpty()
+        if (raw.isEmpty()) {
+            Toast.makeText(this, getString(R.string.industry_add_symbol_empty), Toast.LENGTH_SHORT).show()
+            return
+        }
+        if (raw == ownerSymbol) {
+            Toast.makeText(this, getString(R.string.industry_add_symbol_same), Toast.LENGTH_SHORT).show()
+            return
+        }
+        binding.etAddTicker.setText("")
+        lifecycleScope.launch {
+            peerRepository.addPeer(ownerSymbol, raw, "manual")
+            if (currentMode == IndustryPeersMode.MyGroup) refreshMyGroupList()
+            Toast.makeText(this@IndustryStocksActivity, getString(R.string.industry_added, raw), Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -189,22 +307,11 @@ class IndustryStocksActivity : AppCompatActivity() {
                 }
                 lifecycleScope.launch {
                     peerRepository.addPeer(ownerSymbol, raw, "manual")
-                    refreshPeerList()
+                    if (currentMode == IndustryPeersMode.MyGroup) refreshMyGroupList()
                     Toast.makeText(this@IndustryStocksActivity, getString(R.string.industry_added, raw), Toast.LENGTH_SHORT).show()
                 }
             }
             .setNegativeButton(android.R.string.cancel, null)
             .show()
-    }
-
-    private suspend fun refreshPeerList() {
-        val peers = peerRepository.getSavedPeers(ownerSymbol)
-        val sorted = peers.sortedWith(
-            compareByDescending<IndustryPeer> { it.marketCap ?: Double.MIN_VALUE }
-                .thenBy { it.symbol }
-        )
-        adapter.submitList(sorted)
-        binding.recyclerViewPeers.isVisible = sorted.isNotEmpty()
-        binding.tvEmptyState.isVisible = sorted.isEmpty()
     }
 }
