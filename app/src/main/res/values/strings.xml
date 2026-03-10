@@ -70,8 +70,12 @@
     <string name="metric_free_cash_flow">Free Cash Flow</string>
     <string name="metric_pb_ratio">Price to Book</string>
     <string name="metric_ebitda">EBITDA</string>
+    <string name="metric_cogs">COGS</string>
     <string name="metric_outstanding_shares">Outstanding Shares</string>
     <string name="metric_ebitda_margin">EBITDA Margin</string>
+    <string name="metric_gross_profit">Gross Profit</string>
+    <string name="metric_gross_margin">Gross Margin</string>
+    <string name="metric_gross_margin_yoy">Gross Margin YoY</string>
     <string name="metric_total_assets">Total Assets</string>
     <string name="metric_total_liabilities">Total Liabilities</string>
     <string name="metric_current_assets">Current Assets</string>
@@ -80,7 +84,7 @@
     <string name="industry">Industry</string>
     <string name="metrics_used_label">Metrics considered</string>
     <string name="metrics_used_value">%1$s</string>
-    <string name="core_health_description">Measures profitability, operational efficiency, and earnings quality to judge how sturdy the core business is today.</string>
+    <string name="core_health_description">Measures annual profitability, funding discipline, liquidity, and operating efficiency using the Piotroski F-Score framework.</string>
     <string name="growth_forecast_description">Measures business growth using tiered scoring on revenue, net income, and free cash flow growth trends.</string>
     <string name="balance_sheet_resilience_description">Applies the Altman Z-score playbook to bankruptcy risk by blending asset productivity, solvency, liquidity, profitability, and equity cushion ratios.</string>
     <string name="metric_revenue_growth">Revenue Growth</string>
@@ -188,12 +192,14 @@
     <string name="metric_two_year_net_income_trend">Two-Year Net Income Trend</string>
 
     <string name="health_score_detail_value">Value: %1$s</string>
-    <string name="health_score_detail_weight">Weight share: %1$s</string>
-    <string name="health_score_detail_normalized">Weighted contribution: %1$s</string>
+    <string name="health_score_detail_weight">Test share: %1$s</string>
+    <string name="health_score_detail_normalized">Score contribution: %1$s</string>
+    <string name="health_score_test_pass">Pass</string>
+    <string name="health_score_test_fail">Fail</string>
     <string name="health_score_no_details_available">We couldn\'t surface the supporting metrics for this section.</string>
     <string name="health_score_missing_section_details">No additional details available for %1$s yet.</string>
     <string name="health_score_neutral_assumption">Neutral placeholder used because this data point wasn\'t reported.</string>
-    <string name="health_score_core_summary">Core health score: %1$d / 10. Higher scores reflect durable profitability, cash generation, and balance sheet quality.</string>
+    <string name="health_score_core_summary">Core health score: %1$d / 10. This uses a strict annual Piotroski F-Score framework with 9 pass/fail tests across profitability, funding discipline, liquidity, and operating efficiency.</string>
     <string name="health_score_growth_summary">Growth score: %1$d / 10. Higher scores indicate stronger and more consistent business expansion.</string>
     <string name="health_score_resilience_summary">Bankruptcy risk checker level: %1$d / 3. Higher levels signal sturdier Altman Z-style resilience.</string>
     <string name="health_score_no_metric_breakdown">We couldn\'t calculate a detailed metric breakdown for this company.</string>
@@ -231,6 +237,26 @@
     <string name="health_score_rationale_recent_revenue_growth">Latest revenue growth reveals current momentum in sales.</string>
     <string name="health_score_rationale_free_cash_flow_margin_growth">Sustained free cash flow margins suggest growth is backed by real cash.</string>
     <string name="health_score_rationale_ebitda_margin_trend">EBITDA margin trend highlights whether operating leverage is improving.</string>
+
+    <string name="metric_piotroski_positive_roa">Positive ROA / profitability</string>
+    <string name="metric_piotroski_positive_cfo">Positive operating cash flow</string>
+    <string name="metric_piotroski_delta_roa_positive">Higher return on assets vs prior year</string>
+    <string name="metric_piotroski_accrual_quality">Operating cash flow exceeds net income</string>
+    <string name="metric_piotroski_leverage_improved">Lower long-term debt to assets vs prior year</string>
+    <string name="metric_piotroski_current_ratio_improved">Higher current ratio vs prior year</string>
+    <string name="metric_piotroski_no_dilution">No new shares issued</string>
+    <string name="metric_piotroski_margin_improved">Higher gross margin vs prior year</string>
+    <string name="metric_piotroski_asset_turnover_improved">Higher asset turnover vs prior year</string>
+
+    <string name="health_score_rationale_piotroski_positive_roa">Passes when profitability relative to assets is positive.</string>
+    <string name="health_score_rationale_piotroski_positive_cfo">Passes when operating cash flow is positive.</string>
+    <string name="health_score_rationale_piotroski_delta_roa_positive">Passes when annual return on assets is higher than the prior fiscal year.</string>
+    <string name="health_score_rationale_piotroski_accrual_quality">Passes when operating cash flow is greater than reported net income, signaling stronger earnings quality.</string>
+    <string name="health_score_rationale_piotroski_leverage_improved">Passes when long-term debt as a share of assets is lower than the prior fiscal year.</string>
+    <string name="health_score_rationale_piotroski_current_ratio_improved">Passes when annual current ratio improved versus the prior fiscal year.</string>
+    <string name="health_score_rationale_piotroski_no_dilution">Passes when annual shares outstanding did not increase versus the prior fiscal year.</string>
+    <string name="health_score_rationale_piotroski_margin_improved">Passes when annual gross margin is higher than the prior fiscal year.</string>
+    <string name="health_score_rationale_piotroski_asset_turnover_improved">Passes when annual revenue generated per dollar of assets is higher than the prior fiscal year.</string>
 
     <string name="health_score_rationale_working_capital_to_assets">Working capital to assets measures liquidity strength after inventory and receivables.</string>
     <string name="health_score_rationale_retained_earnings_to_assets">Retained earnings to assets shows how much of the asset base was financed by cumulative profits.</string>

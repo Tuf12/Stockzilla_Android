@@ -105,6 +105,8 @@ data class EdgarRawFactsEntity(
     val netIncome: Double?,
     val eps: Double?,
     val ebitda: Double?,
+    val costOfGoodsSold: Double?,
+    val grossProfit: Double?,
     val freeCashFlow: Double?,
     val operatingCashFlow: Double?,
     val outstandingShares: Double?,
@@ -112,17 +114,24 @@ data class EdgarRawFactsEntity(
     val totalLiabilities: Double?,
     val totalCurrentAssets: Double?,
     val totalCurrentLiabilities: Double?,
+    val totalAssetsHistoryJson: List<Double?>?,
+    val totalCurrentAssetsHistoryJson: List<Double?>?,
+    val totalCurrentLiabilitiesHistoryJson: List<Double?>?,
+    val longTermDebtHistoryJson: List<Double?>?,
     val retainedEarnings: Double?,
     val workingCapital: Double?,
     val revenueTtm: Double?,
     val netIncomeTtm: Double?,
     val epsTtm: Double?,
     val ebitdaTtm: Double?,
+    val costOfGoodsSoldTtm: Double?,
     val freeCashFlowTtm: Double?,
     val operatingCashFlowTtm: Double?,
     val revenueHistoryJson: List<Double?>?,
     val netIncomeHistoryJson: List<Double?>?,
     val ebitdaHistoryJson: List<Double?>?,
+    val costOfGoodsSoldHistoryJson: List<Double?>?,
+    val grossProfitHistoryJson: List<Double?>?,
     val operatingCashFlowHistoryJson: List<Double?>?,
     val freeCashFlowHistoryJson: List<Double?>?,
     val sharesOutstandingHistoryJson: List<Double?>?,
@@ -150,6 +159,8 @@ data class EdgarRawFactsEntity(
                 netIncome = stockData.netIncome,
                 eps = stockData.eps,
                 ebitda = stockData.ebitda,
+                costOfGoodsSold = stockData.costOfGoodsSold,
+                grossProfit = stockData.grossProfit,
                 freeCashFlow = stockData.freeCashFlow,
                 operatingCashFlow = stockData.netCashProvidedByOperatingActivities,
                 outstandingShares = stockData.outstandingShares,
@@ -157,17 +168,24 @@ data class EdgarRawFactsEntity(
                 totalLiabilities = stockData.totalLiabilities,
                 totalCurrentAssets = stockData.totalCurrentAssets,
                 totalCurrentLiabilities = stockData.totalCurrentLiabilities,
+                totalAssetsHistoryJson = stockData.totalAssetsHistory.takeIf { it.isNotEmpty() },
+                totalCurrentAssetsHistoryJson = stockData.totalCurrentAssetsHistory.takeIf { it.isNotEmpty() },
+                totalCurrentLiabilitiesHistoryJson = stockData.totalCurrentLiabilitiesHistory.takeIf { it.isNotEmpty() },
+                longTermDebtHistoryJson = stockData.longTermDebtHistory.takeIf { it.isNotEmpty() },
                 retainedEarnings = stockData.retainedEarnings,
                 workingCapital = stockData.workingCapital,
                 revenueTtm = stockData.revenueTtm,
                 netIncomeTtm = stockData.netIncomeTtm,
                 epsTtm = stockData.epsTtm,
                 ebitdaTtm = stockData.ebitdaTtm,
+                costOfGoodsSoldTtm = stockData.costOfGoodsSoldTtm,
                 freeCashFlowTtm = stockData.freeCashFlowTtm,
                 operatingCashFlowTtm = stockData.operatingCashFlowTtm,
                 revenueHistoryJson = stockData.revenueHistory.takeIf { it.isNotEmpty() },
                 netIncomeHistoryJson = stockData.netIncomeHistory.takeIf { it.isNotEmpty() },
                 ebitdaHistoryJson = stockData.ebitdaHistory.takeIf { it.isNotEmpty() },
+                costOfGoodsSoldHistoryJson = stockData.costOfGoodsSoldHistory.takeIf { it.isNotEmpty() },
+                grossProfitHistoryJson = stockData.grossProfitHistory.takeIf { it.isNotEmpty() },
                 operatingCashFlowHistoryJson = stockData.operatingCashFlowHistory?.takeIf { it.isNotEmpty() },
                 freeCashFlowHistoryJson = stockData.freeCashFlowHistory?.takeIf { it.isNotEmpty() },
                 sharesOutstandingHistoryJson = stockData.sharesOutstandingHistory?.takeIf { it.isNotEmpty() },
@@ -194,11 +212,17 @@ data class EdgarRawFactsEntity(
             freeCashFlow = freeCashFlow,
             pbRatio = derived?.pbRatio,
             ebitda = ebitda,
+            costOfGoodsSold = costOfGoodsSold,
+            grossProfit = grossProfit,
             outstandingShares = outstandingShares,
             totalAssets = totalAssets,
             totalLiabilities = totalLiabilities,
             totalCurrentAssets = totalCurrentAssets,
             totalCurrentLiabilities = totalCurrentLiabilities,
+            totalAssetsHistory = totalAssetsHistoryJson ?: emptyList(),
+            totalCurrentAssetsHistory = totalCurrentAssetsHistoryJson ?: emptyList(),
+            totalCurrentLiabilitiesHistory = totalCurrentLiabilitiesHistoryJson ?: emptyList(),
+            longTermDebtHistory = longTermDebtHistoryJson ?: emptyList(),
             retainedEarnings = retainedEarnings,
             netCashProvidedByOperatingActivities = operatingCashFlow,
             workingCapital = workingCapital,
@@ -217,6 +241,8 @@ data class EdgarRawFactsEntity(
             revenueHistory = revenueHistoryJson ?: emptyList(),
             netIncomeHistory = netIncomeHistoryJson ?: emptyList(),
             ebitdaHistory = ebitdaHistoryJson ?: emptyList(),
+            costOfGoodsSoldHistory = costOfGoodsSoldHistoryJson ?: emptyList(),
+            grossProfitHistory = grossProfitHistoryJson ?: emptyList(),
             operatingCashFlowHistory = operatingCashFlowHistoryJson,
             freeCashFlowHistory = freeCashFlowHistoryJson,
             sharesOutstandingHistory = sharesOutstandingHistoryJson,
@@ -224,6 +250,7 @@ data class EdgarRawFactsEntity(
             netIncomeTtm = netIncomeTtm,
             epsTtm = epsTtm,
             ebitdaTtm = ebitdaTtm,
+            costOfGoodsSoldTtm = costOfGoodsSoldTtm,
             freeCashFlowTtm = freeCashFlowTtm,
             operatingCashFlowTtm = operatingCashFlowTtm
         )
@@ -251,6 +278,7 @@ data class FinancialDerivedMetricsEntity(
     val currentRatio: Double?,
     val netMargin: Double?,
     val ebitdaMargin: Double?,
+    val grossMargin: Double?,
     val fcfMargin: Double?,
     val revenueGrowth: Double?,
     val averageRevenueGrowth: Double?,
@@ -283,6 +311,15 @@ data class FinancialDerivedMetricsEntity(
             } else {
                 null
             }
+            val grossProfitDisplay = stockData.grossProfitDisplay
+            val grossMargin = if (grossProfitDisplay != null &&
+                revenueDisplay != null &&
+                kotlin.math.abs(revenueDisplay) > 1e-9
+            ) {
+                grossProfitDisplay / revenueDisplay
+            } else {
+                null
+            }
             val currentRatio = if (stockData.totalCurrentAssets != null &&
                 stockData.totalCurrentLiabilities != null &&
                 stockData.totalCurrentLiabilities > 0
@@ -304,6 +341,7 @@ data class FinancialDerivedMetricsEntity(
                 currentRatio = currentRatio,
                 netMargin = netMargin,
                 ebitdaMargin = ebitdaMargin,
+                grossMargin = grossMargin,
                 fcfMargin = stockData.freeCashFlowMargin,
                 revenueGrowth = stockData.revenueGrowth,
                 averageRevenueGrowth = stockData.averageRevenueGrowth,
@@ -622,7 +660,7 @@ interface UserStockListDao {
         ScoreSnapshotEntity::class,
         UserStockListItemEntity::class
     ],
-    version = 14,
+    version = 17,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -670,6 +708,31 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_14_15 = object : Migration(14, 15) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN grossProfit REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN grossProfitHistoryJson TEXT")
+                db.execSQL("ALTER TABLE financial_derived_metrics ADD COLUMN grossMargin REAL")
+            }
+        }
+
+        private val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN costOfGoodsSold REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN costOfGoodsSoldTtm REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN costOfGoodsSoldHistoryJson TEXT")
+            }
+        }
+
+        private val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN totalAssetsHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN totalCurrentAssetsHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN totalCurrentLiabilitiesHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN longTermDebtHistoryJson TEXT")
+            }
+        }
+
         private val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -693,7 +756,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14)
+                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                     .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance

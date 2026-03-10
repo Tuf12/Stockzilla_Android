@@ -2,34 +2,10 @@
 package com.example.stockzilla
 
 import java.io.Serializable
-import java.util.LinkedHashMap
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.math.max
 
-
-enum class Direction { HIGHER_IS_BETTER, LOWER_IS_BETTER }
-
-data class MetricConfig(
-    val min: Double,
-    val max: Double,
-    val baseWeight: Double,
-    val direction: Direction
-)
-
-private val DEFAULT_METRIC_CONFIG = mapOf(
-    // Jesse metric: 10 metrics, weighted sum targets a 0-10 score.
-    "revenue_growth" to MetricConfig(0.10, 0.50, 2.0, Direction.HIGHER_IS_BETTER),
-    "ebitda_margin" to MetricConfig(0.10, 0.30, 1.5, Direction.HIGHER_IS_BETTER),
-    "free_cash_flow" to MetricConfig(-500_000_000.0, 5_000_000_000.0, 1.5, Direction.HIGHER_IS_BETTER),
-    "net_income" to MetricConfig(-1_000_000_000.0, 3_000_000_000.0, 1.0, Direction.HIGHER_IS_BETTER),
-    "debt_to_equity" to MetricConfig(0.1, 2.0, 1.0, Direction.LOWER_IS_BETTER),
-    "current_ratio" to MetricConfig(1.0, 3.0, 0.5, Direction.HIGHER_IS_BETTER),
-    "roe" to MetricConfig(0.0, 0.30, 1.0, Direction.HIGHER_IS_BETTER),
-    "pe_ratio" to MetricConfig(1.0, 200.0, 0.5, Direction.LOWER_IS_BETTER),
-    "ps_ratio" to MetricConfig(0.5, 15.0, 0.5, Direction.LOWER_IS_BETTER),
-    "pb_ratio" to MetricConfig(1.0, 30.0, 0.5, Direction.LOWER_IS_BETTER)
-)
 data class StockData(
     val symbol: String,
     val companyName: String?,
@@ -45,6 +21,8 @@ data class StockData(
     val freeCashFlow: Double?,
     val pbRatio: Double?,
     val ebitda: Double?,
+    val costOfGoodsSold: Double? = null,
+    val grossProfit: Double? = null,
     val outstandingShares: Double?,
     val totalAssets: Double?,
     val totalLiabilities: Double?,
@@ -60,14 +38,21 @@ data class StockData(
     val averageFcfGrowth: Double? = null,
     val totalCurrentAssets: Double? = null,
     val totalCurrentLiabilities: Double? = null,
+    val totalAssetsHistory: List<Double?> = emptyList(),
+    val totalCurrentAssetsHistory: List<Double?> = emptyList(),
+    val totalCurrentLiabilitiesHistory: List<Double?> = emptyList(),
+    val longTermDebtHistory: List<Double?> = emptyList(),
     val retainedEarnings: Double? = null,
     val netCashProvidedByOperatingActivities: Double? = null,
     val freeCashFlowMargin: Double? = null,
     val ebitdaMarginGrowth: Double? = null,
+    val grossMarginGrowth: Double? = null,
     val workingCapital: Double? = null,
     val revenueHistory: List<Double?> = emptyList(),
     val netIncomeHistory: List<Double?> = emptyList(),
     val ebitdaHistory: List<Double?> = emptyList(),
+    val costOfGoodsSoldHistory: List<Double?> = emptyList(),
+    val grossProfitHistory: List<Double?> = emptyList(),
     val operatingCashFlowHistory: List<Double?>? = null,
     val freeCashFlowHistory: List<Double?>? = null,
     val sharesOutstandingHistory: List<Double?>? = null,
@@ -75,6 +60,7 @@ data class StockData(
     val netIncomeTtm: Double? = null,
     val epsTtm: Double? = null,
     val ebitdaTtm: Double? = null,
+    val costOfGoodsSoldTtm: Double? = null,
     val freeCashFlowTtm: Double? = null,
     val operatingCashFlowTtm: Double? = null
 ): Serializable {
@@ -84,15 +70,21 @@ data class StockData(
     val netIncomeDisplay: Double? get() = netIncomeTtm ?: netIncome
     val epsDisplay: Double? get() = epsTtm ?: eps
     val ebitdaDisplay: Double? get() = ebitdaTtm ?: ebitda
+    val costOfGoodsSoldDisplay: Double? get() = costOfGoodsSoldTtm ?: costOfGoodsSold
     val freeCashFlowDisplay: Double? get() = freeCashFlowTtm ?: freeCashFlow
     val operatingCashFlowDisplay: Double? get() = operatingCashFlowTtm ?: netCashProvidedByOperatingActivities
+    val grossProfitDisplay: Double?
+        get() = when {
+            revenueDisplay != null && costOfGoodsSoldDisplay != null -> revenueDisplay!! - costOfGoodsSoldDisplay!!
+            else -> grossProfit
+        }
 
     /** True when at least one TTM metric is available from four 10-Q quarters. */
     val hasTtm: Boolean get() = revenueTtm != null
 
     /**
      * Computes growth metrics from EDGAR annual 10-K history only.
-     * TTM/scalar values are never mixed into YoY growth; margins use TTM-preferred values.
+     * TTM/scalar values are never mixed into YoY growth.
      */
     fun withGrowthFromHistory(): StockData {
         val rev = revenueHistory
@@ -126,6 +118,19 @@ data class StockData(
             latestEbitdaMargin - priorEbitdaMargin
         } else null
 
+        val currentAnnualRevenue = rev.getOrNull(0)
+        val currentAnnualGrossProfit = grossProfitHistory.getOrNull(0)
+        val latestGrossMargin = if (currentAnnualGrossProfit != null && currentAnnualRevenue != null && abs(currentAnnualRevenue) > 1e-9) {
+            currentAnnualGrossProfit / currentAnnualRevenue
+        } else null
+        val priorGrossProfit = grossProfitHistory.getOrNull(1)
+        val priorGrossMargin = if (priorGrossProfit != null && priorRevenue != null && abs(priorRevenue) > 1e-9) {
+            priorGrossProfit / priorRevenue
+        } else null
+        val grossMarginGrowth = if (latestGrossMargin != null && priorGrossMargin != null) {
+            latestGrossMargin - priorGrossMargin
+        } else null
+
         return copy(
             revenueGrowth = revenueGrowth ?: this.revenueGrowth,
             averageRevenueGrowth = averageRevenueGrowth ?: this.averageRevenueGrowth,
@@ -134,7 +139,8 @@ data class StockData(
             fcfGrowth = fcfGrowth ?: this.fcfGrowth,
             averageFcfGrowth = averageFcfGrowth ?: this.averageFcfGrowth,
             freeCashFlowMargin = freeCashFlowMargin ?: this.freeCashFlowMargin,
-            ebitdaMarginGrowth = ebitdaMarginGrowth ?: this.ebitdaMarginGrowth
+            ebitdaMarginGrowth = ebitdaMarginGrowth ?: this.ebitdaMarginGrowth,
+            grossMarginGrowth = grossMarginGrowth ?: this.grossMarginGrowth
         )
     }
 }
@@ -259,121 +265,128 @@ class FinancialHealthAnalyzer {
     }
 
     private fun computeCoreHealthScore(stockData: StockData): Pair<Double?, List<MetricScore>> {
-        val metricData = buildJesseCoreMetricData(stockData)
-        if (metricData.isEmpty()) {
+        val tests = evaluatePiotroskiTests(stockData)
+        if (tests.any { it.pass == null }) {
             return null to emptyList()
         }
 
-        val interim = mutableListOf<InterimMetricScore>()
-        var totalWeightedScore = 0.0
-        var totalAvailableWeight = 0.0
-
-        metricData.forEach { (name, metric) ->
-            val value = metric.value ?: return@forEach
-            val cfg = DEFAULT_METRIC_CONFIG[name] ?: return@forEach
-            val normalizedFraction = normalizeLinear(value, metric.min, metric.max, cfg.direction)
-            val weighted = normalizedFraction * metric.weight
-            totalWeightedScore += weighted
-            totalAvailableWeight += metric.weight
-
-            interim.add(
-                InterimMetricScore(
-                    metric = name,
-                    value = value,
-                    normalizedFraction = normalizedFraction,
-                    weight = metric.weight,
-                    weightedScore = weighted
-                )
-            )
-        }
-
-        if (interim.isEmpty() || totalAvailableWeight <= 0.0) {
-            return null to emptyList()
-        }
-
-        // Re-scale by available metric weight so missing metrics do not force lower scores.
-        val score = (totalWeightedScore / totalAvailableWeight) * CORE_HEALTH_SCORE_MAX
-        val breakdown = interim.map { item ->
+        val testSharePercent = 100.0 / tests.size.toDouble()
+        val contributionPoints = CORE_HEALTH_SCORE_MAX / tests.size.toDouble()
+        val breakdown = tests.map { test ->
+            val passed = test.pass == true
             MetricScore(
-                metric = item.metric,
-                value = item.value,
-                normalizedPercent = item.normalizedFraction * 100.0,
-                weight = item.weight,
-                score = item.weightedScore,
-                weightPercent = (item.weight / totalAvailableWeight) * 100.0,
-                weightedContributionPercent = (item.weightedScore / totalAvailableWeight) * 100.0
+                metric = test.metric,
+                value = if (passed) 1.0 else 0.0,
+                normalizedPercent = if (passed) 100.0 else 0.0,
+                weight = testSharePercent / 100.0,
+                score = if (passed) contributionPoints else 0.0,
+                weightPercent = testSharePercent,
+                weightedContributionPercent = if (passed) testSharePercent else 0.0
             )
         }
-        return score.coerceIn(0.0, 10.0) to breakdown
+        val score = breakdown.sumOf { it.score }
+        return score.coerceIn(0.0, CORE_HEALTH_SCORE_MAX) to breakdown
     }
 
-    private fun buildJesseCoreMetricData(stockData: StockData): Map<String, MetricData> {
-        val tier = toMarketCapTier(stockData.marketCap)
-        val revenue = stockData.revenueDisplay
-        val ebitda = stockData.ebitdaDisplay
-        val ebitdaMargin = if (ebitda != null && revenue != null && abs(revenue) > 1e-9) {
-            ebitda / revenue
-        } else {
-            null
-        }
-        val currentRatio = if (stockData.totalCurrentAssets != null &&
-            stockData.totalCurrentLiabilities != null &&
-            abs(stockData.totalCurrentLiabilities) > 1e-9
-        ) {
-            stockData.totalCurrentAssets / stockData.totalCurrentLiabilities
-        } else {
-            null
-        }
+    private fun evaluatePiotroskiTests(stockData: StockData): List<PiotroskiTestResult> {
+        val currentNetIncome = stockData.netIncomeHistory.getOrNull(0)?.finiteOrNull()
+            ?: stockData.netIncome?.finiteOrNull()
+        val priorNetIncome = stockData.netIncomeHistory.getOrNull(1)?.finiteOrNull()
+        val currentOperatingCashFlow = stockData.operatingCashFlowHistory?.getOrNull(0)?.finiteOrNull()
+            ?: stockData.netCashProvidedByOperatingActivities?.finiteOrNull()
+        val currentAssets = stockData.totalAssetsHistory.getOrNull(0)?.positiveFiniteOrNull()
+        val priorAssets = stockData.totalAssetsHistory.getOrNull(1)?.positiveFiniteOrNull()
+        val currentRoa = ratio(currentNetIncome, currentAssets)
+        val priorRoa = ratio(priorNetIncome, priorAssets)
 
-        val values = linkedMapOf(
-            "revenue_growth" to stockData.revenueGrowth,
-            "ebitda_margin" to ebitdaMargin,
-            "free_cash_flow" to stockData.freeCashFlowDisplay,
-            "net_income" to stockData.netIncomeDisplay,
-            "debt_to_equity" to stockData.debtToEquity,
-            "current_ratio" to currentRatio,
-            "roe" to stockData.roe,
-            "pe_ratio" to stockData.peRatio,
-            "ps_ratio" to stockData.psRatio,
-            "pb_ratio" to stockData.pbRatio
+        val currentLongTermDebt = stockData.longTermDebtHistory.getOrNull(0)?.nonNegativeFiniteOrNull()
+        val priorLongTermDebt = stockData.longTermDebtHistory.getOrNull(1)?.nonNegativeFiniteOrNull()
+        val currentLeverage = ratio(currentLongTermDebt, currentAssets)
+        val priorLeverage = ratio(priorLongTermDebt, priorAssets)
+
+        val currentCurrentAssets = stockData.totalCurrentAssetsHistory.getOrNull(0)?.finiteOrNull()
+        val priorCurrentAssets = stockData.totalCurrentAssetsHistory.getOrNull(1)?.finiteOrNull()
+        val currentCurrentLiabilities = stockData.totalCurrentLiabilitiesHistory.getOrNull(0)?.positiveFiniteOrNull()
+        val priorCurrentLiabilities = stockData.totalCurrentLiabilitiesHistory.getOrNull(1)?.positiveFiniteOrNull()
+        val currentRatio = ratio(currentCurrentAssets, currentCurrentLiabilities)
+        val priorCurrentRatio = ratio(priorCurrentAssets, priorCurrentLiabilities)
+
+        val currentShares = stockData.sharesOutstandingHistory?.getOrNull(0)?.positiveFiniteOrNull()
+        val priorShares = stockData.sharesOutstandingHistory?.getOrNull(1)?.positiveFiniteOrNull()
+
+        val currentRevenue = stockData.revenueHistory.getOrNull(0)?.finiteOrNull()
+            ?: stockData.revenue?.finiteOrNull()
+        val priorRevenue = stockData.revenueHistory.getOrNull(1)?.finiteOrNull()
+        val currentGrossProfit = stockData.grossProfitHistory.getOrNull(0)?.finiteOrNull()
+            ?: stockData.grossProfit?.finiteOrNull()
+        val priorGrossProfit = stockData.grossProfitHistory.getOrNull(1)?.finiteOrNull()
+        val currentGrossMargin = ratio(currentGrossProfit, currentRevenue)
+        val priorGrossMargin = ratio(priorGrossProfit, priorRevenue)
+        val currentAssetTurnover = ratio(currentRevenue, currentAssets)
+        val priorAssetTurnover = ratio(priorRevenue, priorAssets)
+
+        return listOf(
+            PiotroskiTestResult(
+                metric = "piotroski_positive_roa",
+                pass = currentRoa?.let { it > 0.0 }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_positive_cfo",
+                pass = currentOperatingCashFlow?.let { it > 0.0 }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_delta_roa_positive",
+                pass = if (currentRoa != null && priorRoa != null) currentRoa > priorRoa else null
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_accrual_quality",
+                pass = if (currentOperatingCashFlow != null && currentNetIncome != null) {
+                    currentOperatingCashFlow > currentNetIncome
+                } else {
+                    null
+                }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_leverage_improved",
+                pass = if (currentLeverage != null && priorLeverage != null) {
+                    currentLeverage < priorLeverage
+                } else {
+                    null
+                }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_current_ratio_improved",
+                pass = if (currentRatio != null && priorCurrentRatio != null) {
+                    currentRatio > priorCurrentRatio
+                } else {
+                    null
+                }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_no_dilution",
+                pass = if (currentShares != null && priorShares != null) {
+                    currentShares <= priorShares
+                } else {
+                    null
+                }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_margin_improved",
+                pass = if (currentGrossMargin != null && priorGrossMargin != null) {
+                    currentGrossMargin > priorGrossMargin
+                } else {
+                    null
+                }
+            ),
+            PiotroskiTestResult(
+                metric = "piotroski_asset_turnover_improved",
+                pass = if (currentAssetTurnover != null && priorAssetTurnover != null) {
+                    currentAssetTurnover > priorAssetTurnover
+                } else {
+                    null
+                }
+            )
         )
-
-        val ordered = LinkedHashMap<String, MetricData>()
-        values.forEach { (metric, rawValue) ->
-            val value = rawValue?.takeIf { it.isFinite() } ?: return@forEach
-            val cfg = getTierAdjustedConfig(metric, tier) ?: return@forEach
-            ordered[metric] = MetricData(value = value, min = cfg.min, max = cfg.max, weight = cfg.baseWeight)
-        }
-        return ordered
-    }
-
-    private fun toMarketCapTier(marketCap: Double?): String {
-        val cap = marketCap ?: return "unknown"
-        return when {
-            cap < 300_000_000.0 -> "micro"
-            cap < 2_000_000_000.0 -> "small"
-            cap < 10_000_000_000.0 -> "mid"
-            cap < 200_000_000_000.0 -> "large"
-            else -> "mega"
-        }
-    }
-
-    private fun getTierAdjustedConfig(metric: String, tier: String): MetricConfig? {
-        val cfg = DEFAULT_METRIC_CONFIG[metric] ?: return null
-        return when (tier) {
-            "micro", "small" -> when (metric) {
-                "revenue_growth" -> cfg.copy(min = 0.20, max = 0.80, baseWeight = 2.5)
-                "ebitda_margin" -> cfg.copy(min = -0.15, max = 0.25)
-                "free_cash_flow" -> cfg.copy(min = -5_000_000.0, max = 10_000_000.0, baseWeight = 2.0)
-                "net_income" -> cfg.copy(min = -2_000_000.0, max = 5_000_000.0)
-                "pe_ratio" -> cfg.copy(min = 15.0, max = 50.0)
-                "ps_ratio" -> cfg.copy(min = 0.5, max = 10.0, baseWeight = 0.25)
-                "pb_ratio" -> cfg.copy(min = 1.0, max = 5.0, baseWeight = 0.25)
-                "roe" -> cfg.copy(min = -0.10, max = 0.20, baseWeight = 0.5)
-                else -> cfg
-            }
-            else -> cfg
-        }
     }
 
     private fun calculateGrowthScore(stockData: StockData): Double? {
@@ -466,16 +479,20 @@ class FinancialHealthAnalyzer {
         return adjustedLevel.toDouble()
     }
 
-    private fun normalizeLinear(value: Double, min: Double, max: Double, direction: Direction): Double {
-        val denominator = max - min
-        if (!denominator.isFinite() || denominator <= 0.0) return 0.5
-        val fraction = ((value - min) / denominator).coerceIn(0.0, 1.0)
-        return when (direction) {
-            Direction.HIGHER_IS_BETTER -> fraction
-            Direction.LOWER_IS_BETTER -> 1.0 - fraction
-        }
-    }
 }
+
+private fun ratio(numerator: Double?, denominator: Double?): Double? {
+    if (numerator == null || denominator == null || !numerator.isFinite() || !denominator.isFinite() || abs(denominator) <= 1e-9) {
+        return null
+    }
+    return (numerator / denominator).takeIf { it.isFinite() }
+}
+
+private fun Double.finiteOrNull(): Double? = takeIf { it.isFinite() }
+
+private fun Double.positiveFiniteOrNull(): Double? = takeIf { it.isFinite() && it > 0.0 }
+
+private fun Double.nonNegativeFiniteOrNull(): Double? = takeIf { it.isFinite() && it >= 0.0 }
 
 private fun buildResilienceInputs(stockData: StockData): ResilienceInputs? {
     val totalAssets = stockData.totalAssets?.takeIf { it > 0 } ?: return null
@@ -553,17 +570,7 @@ private const val RESILIENCE_WEIGHT = 0.2
 private const val RESILIENCE_LEVEL_MAX = 3.0
 private const val CORE_HEALTH_SCORE_MAX = 10.0
 
-private data class InterimMetricScore(
+private data class PiotroskiTestResult(
     val metric: String,
-    val value: Double?,
-    val normalizedFraction: Double,
-    val weight: Double,
-    val weightedScore: Double
-)
-
-data class MetricData(
-    val value: Double?,
-    val min: Double,
-    val max: Double,
-    val weight: Double
+    val pass: Boolean?
 )

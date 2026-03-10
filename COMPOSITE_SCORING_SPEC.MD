@@ -17,11 +17,11 @@ Scoring logic depends on clean input domains:
 ```
 ┌─────────────────────┐  ┌─────────────────────┐  ┌─────────────────────┐
 │  FINANCIAL HEALTH   │  │   GROWTH SCORE      │  │  BANKRUPTCY RISK    │
-│  (Jesse's Metric)   │  │   (Business Growth) │  │  (Altman Z-Score)   │
+│  (Piotroski F-Score)│  │   (Business Growth) │  │  (Altman Z-Score)   │
 │                     │  │                     │  │                     │
-│  10 specific metrics│  │  5 growth metrics   │  │  Standard 5-ratio   │
-│  Linear normalize   │  │  Tiered scoring     │  │  formula (raw)      │
-│  Weighted sum / 10  │  │  Simple average /10 │  │  Zone → 0-3 level   │
+│  9 strict annual    │  │  5 growth metrics   │  │  Standard 5-ratio   │
+│  pass/fail tests    │  │  Tiered scoring     │  │  formula (raw)      │
+│  full-score /10     │  │  Simple average /10 │  │  Zone → 0-3 level   │
 └────────┬────────────┘  └────────┬────────────┘  └────────┬────────────┘
          │                        │                        │
          │ × 0.40                 │ × 0.40                 │ × 0.20
@@ -66,16 +66,15 @@ If a pillar returns null (insufficient data), a neutral fallback of 5.0 is used 
 
 | Metric | Pillar | NOT In |
 |--------|--------|--------|
-| Revenue Growth (single value) | Financial Health | — |
-| EBITDA Margin | Financial Health | Growth |
-| Free Cash Flow (dollar amount) | Financial Health | Growth |
-| Net Income (dollar amount) | Financial Health | Growth |
-| Debt-to-Equity | Financial Health | Growth |
-| Current Ratio | Financial Health | Growth |
-| ROE | Financial Health | Growth |
-| PE Ratio | Financial Health | Growth |
-| PS Ratio | Financial Health | Growth |
-| PB Ratio | Financial Health | Growth |
+| Positive ROA / profitability | Financial Health | Growth |
+| Positive Operating Cash Flow | Financial Health | Growth |
+| Delta ROA | Financial Health | Growth |
+| Operating Cash Flow > Net Income | Financial Health | Growth |
+| Lower Long-Term Debt / Assets vs prior year | Financial Health | Growth |
+| Higher Current Ratio vs prior year | Financial Health | Growth |
+| No new shares issued | Financial Health | Growth |
+| Higher Gross Margin vs prior year | Financial Health | Growth |
+| Higher Asset Turnover vs prior year | Financial Health | Growth |
 | 5-Year Avg Revenue Growth | Growth | Financial Health |
 | Recent YoY Revenue Growth | Growth | Financial Health |
 | 5-Year Avg Net Income Growth | Growth | Financial Health |
@@ -93,7 +92,7 @@ If a pillar returns null (insufficient data), a neutral fallback of 5.0 is used 
 
 | Pillar | Method | Details |
 |--------|--------|---------|
-| Financial Health | Linear: `(value - min) / (max - min)`, capped 0–1, then × weight | See HEALTH_SCORE_SPEC.md |
+| Financial Health | Strict annual Piotroski F-Score: 9 pass/fail tests scaled to 0–10 | See HEALTH_SCORE_SPEC.md |
 | Growth | Tiered lookup: growth rate → score 0–10, then simple average | See GROWTH_SCORE_SPEC.md |
 | Bankruptcy Risk | Altman Z-Score formula → zone classification → 0–3 level | See ALTMAN_Z_SCORE_SPEC.md |
 
@@ -105,6 +104,6 @@ If a pillar returns null (insufficient data), a neutral fallback of 5.0 is used 
 
 ## Score Snapshot Versioning
 
-Current model version tag: `v3-pillar-separated-linear-tiered`
+Current model version tag: `v5-strict-annual-piotroski`
 
 Score snapshots are persisted in the `score_snapshots` table with the model version so historical scores can be compared across algorithm changes.

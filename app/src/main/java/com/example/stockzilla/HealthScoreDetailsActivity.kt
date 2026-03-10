@@ -58,16 +58,15 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvHealthMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
-                    getString(R.string.metric_revenue_growth),
-                    getString(R.string.metric_ebitda_margin),
-                    getString(R.string.metric_free_cash_flow),
-                    getString(R.string.net_income),
-                    getString(R.string.metric_debt_to_equity),
-                    getString(R.string.metric_current_ratio),
-                    getString(R.string.metric_roe),
-                    getString(R.string.metric_pe_ratio),
-                    getString(R.string.metric_ps_ratio),
-                    getString(R.string.metric_pb_ratio)
+                    getString(R.string.metric_piotroski_positive_roa),
+                    getString(R.string.metric_piotroski_positive_cfo),
+                    getString(R.string.metric_piotroski_delta_roa_positive),
+                    getString(R.string.metric_piotroski_accrual_quality),
+                    getString(R.string.metric_piotroski_leverage_improved),
+                    getString(R.string.metric_piotroski_current_ratio_improved),
+                    getString(R.string.metric_piotroski_no_dilution),
+                    getString(R.string.metric_piotroski_margin_improved),
+                    getString(R.string.metric_piotroski_asset_turnover_improved)
                 ).joinToString(", ")
             )
 
@@ -116,6 +115,15 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         val annualTag = " " + getString(R.string.label_annual)
         val yoyTag = " " + getString(R.string.label_yoy_annual)
         val dataSuffix = if (stockData.hasTtm) ttmTag else annualTag
+        val grossProfitDisplay = stockData.grossProfitDisplay
+        val revenueDisplay = stockData.revenueDisplay
+        val grossMarginVal = if (grossProfitDisplay != null &&
+            revenueDisplay != null &&
+            kotlin.math.abs(revenueDisplay) > 1e-9
+        ) {
+            grossProfitDisplay / revenueDisplay
+        } else null
+        val grossMarginYoY = computeAnnualGrossMarginYoY(stockData)
 
         with(binding) {
             tvSymbolValue.text = stockData.symbol
@@ -132,6 +140,10 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvFreeCashFlowValue.text = formatLargeCurrency(stockData.freeCashFlowDisplay) + dataSuffix
             tvPbRatioValue.text = formatTwoDecimals(stockData.pbRatio)
             tvEbitdaValue.text = formatLargeCurrency(stockData.ebitdaDisplay) + dataSuffix
+            tvCogsValue.text = formatLargeCurrency(stockData.costOfGoodsSoldDisplay) + dataSuffix
+            tvGrossProfitValue.text = formatLargeCurrency(grossProfitDisplay) + dataSuffix
+            tvGrossMarginValue.text = formatPercent(grossMarginVal) + dataSuffix
+            tvGrossMarginGrowthValue.text = formatPercent(grossMarginYoY) + yoyTag
             tvOutstandingSharesValue.text = formatLargeNumber(stockData.outstandingShares)
             tvTotalAssetsValue.text = formatLargeCurrency(stockData.totalAssets)
             tvTotalLiabilitiesValue.text = formatLargeCurrency(stockData.totalLiabilities)
@@ -146,6 +158,20 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvSectorValue.text = stockData.sector ?: getString(R.string.not_available)
             tvIndustryValue.text = stockData.industry ?: getString(R.string.not_available)
         }
+    }
+
+    private fun computeAnnualGrossMarginYoY(stockData: StockData): Double? {
+        val currentRevenue = stockData.revenueHistory.getOrNull(0)
+        val priorRevenue = stockData.revenueHistory.getOrNull(1)
+        val currentGrossProfit = stockData.grossProfitHistory.getOrNull(0)
+        val priorGrossProfit = stockData.grossProfitHistory.getOrNull(1)
+        if (currentRevenue == null || priorRevenue == null || currentGrossProfit == null || priorGrossProfit == null) {
+            return null
+        }
+        if (kotlin.math.abs(currentRevenue) <= 1e-9 || kotlin.math.abs(priorRevenue) <= 1e-9) return null
+        val currentGrossMargin = currentGrossProfit / currentRevenue
+        val priorGrossMargin = priorGrossProfit / priorRevenue
+        return currentGrossMargin - priorGrossMargin
     }
 
     private fun setupSectionClickListeners() {
@@ -187,12 +213,21 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
         val details = healthScore.breakdown.map { metricScore ->
             val metricKey = metricScore.metric
+            val isPiotroskiMetric = metricKey.startsWith("piotroski_")
             HealthScoreDetail(
                 label = metricLabel(metricKey),
-                value = formatMetricValue(metricKey, metricScore.value),
+                value = if (isPiotroskiMetric) {
+                    formatPiotroskiOutcome(metricScore.value)
+                } else {
+                    formatMetricValue(metricKey, metricScore.value)
+                },
                 weight = formatPercentText(metricScore.weightPercent),
                 normalized = formatPercentText(metricScore.weightedContributionPercent),
-                performance = classifyPerformance(metricScore.weightedContributionPercent),
+                performance = if (isPiotroskiMetric) {
+                    classifyPiotroskiPerformance(metricScore.value)
+                } else {
+                    classifyPerformance(metricScore.weightedContributionPercent)
+                },
                 rationale = metricRationale(metricKey)
             )
         }
@@ -399,8 +434,30 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         return safeValue?.let { String.format(Locale.US, "%.1f%%", it) }
     }
 
+    private fun formatPiotroskiOutcome(value: Double?): String {
+        return when {
+            value == null -> getString(R.string.not_available)
+            value >= 0.5 -> getString(R.string.health_score_test_pass)
+            else -> getString(R.string.health_score_test_fail)
+        }
+    }
+
+    private fun classifyPiotroskiPerformance(value: Double?): MetricPerformance? {
+        val safeValue = value?.takeIf { it.isFinite() } ?: return null
+        return if (safeValue >= 0.5) MetricPerformance.GOOD else MetricPerformance.POOR
+    }
+
     private fun metricLabel(metric: String): String {
         return when (metric) {
+            "piotroski_positive_roa" -> getString(R.string.metric_piotroski_positive_roa)
+            "piotroski_positive_cfo" -> getString(R.string.metric_piotroski_positive_cfo)
+            "piotroski_delta_roa_positive" -> getString(R.string.metric_piotroski_delta_roa_positive)
+            "piotroski_accrual_quality" -> getString(R.string.metric_piotroski_accrual_quality)
+            "piotroski_leverage_improved" -> getString(R.string.metric_piotroski_leverage_improved)
+            "piotroski_current_ratio_improved" -> getString(R.string.metric_piotroski_current_ratio_improved)
+            "piotroski_no_dilution" -> getString(R.string.metric_piotroski_no_dilution)
+            "piotroski_margin_improved" -> getString(R.string.metric_piotroski_margin_improved)
+            "piotroski_asset_turnover_improved" -> getString(R.string.metric_piotroski_asset_turnover_improved)
             "revenue_growth" -> getString(R.string.metric_revenue_growth)
             "revenue" -> getString(R.string.revenue)
             "net_income" -> getString(R.string.net_income)
@@ -429,6 +486,15 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private fun metricRationale(metric: String): String? {
         return when (metric) {
+            "piotroski_positive_roa" -> getString(R.string.health_score_rationale_piotroski_positive_roa)
+            "piotroski_positive_cfo" -> getString(R.string.health_score_rationale_piotroski_positive_cfo)
+            "piotroski_delta_roa_positive" -> getString(R.string.health_score_rationale_piotroski_delta_roa_positive)
+            "piotroski_accrual_quality" -> getString(R.string.health_score_rationale_piotroski_accrual_quality)
+            "piotroski_leverage_improved" -> getString(R.string.health_score_rationale_piotroski_leverage_improved)
+            "piotroski_current_ratio_improved" -> getString(R.string.health_score_rationale_piotroski_current_ratio_improved)
+            "piotroski_no_dilution" -> getString(R.string.health_score_rationale_piotroski_no_dilution)
+            "piotroski_margin_improved" -> getString(R.string.health_score_rationale_piotroski_margin_improved)
+            "piotroski_asset_turnover_improved" -> getString(R.string.health_score_rationale_piotroski_asset_turnover_improved)
             "revenue_growth" -> getString(R.string.health_score_rationale_recent_revenue_growth)
             "revenue" -> getString(R.string.health_score_rationale_revenue)
             "net_income" -> getString(R.string.health_score_rationale_net_income)
