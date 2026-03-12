@@ -13,6 +13,7 @@ class ApiKeyManager(context: Context) {
     companion object {
         private const val FINNHUB_API_KEY_PREF = "finnhub_api_key"
         private const val FINNHUB_API_KEY_VALIDATED_PREF = "finnhub_api_key_validated"
+        private const val AI_API_KEY_PREF = "ai_api_key"
     }
 
     // --- Finnhub API key only (FMP removed) ---
@@ -37,4 +38,15 @@ class ApiKeyManager(context: Context) {
     fun isValidFinnhubApiKeyFormat(apiKey: String): Boolean {
         return apiKey.length >= 20 && apiKey.matches(Regex("[a-zA-Z0-9]+"))
     }
+
+    // --- AI API key (Grok/Anthropic/OpenAI-style BYOK) ---
+    fun saveAiApiKey(apiKey: String) {
+        sharedPreferences.edit {
+            putString(AI_API_KEY_PREF, apiKey)
+        }
+    }
+
+    fun getAiApiKey(): String? = sharedPreferences.getString(AI_API_KEY_PREF, null)
+
+    fun hasAiApiKey(): Boolean = !getAiApiKey().isNullOrBlank()
 }

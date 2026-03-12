@@ -287,14 +287,17 @@
     <string name="diagnostic_log_copied">Log copied to clipboard.</string>
 
     <!-- Full analysis: raw + derived financial view -->
-    <string name="business_profile_heading">Business Profile (Finnhub)</string>
-    <string name="business_profile_loading">Loading business profile...</string>
-    <string name="business_profile_no_key">Finnhub API key not configured. Business profile is unavailable.</string>
-    <string name="business_profile_unavailable">Business profile unavailable.</string>
+    <string name="business_profile_heading">Business profile &amp; About</string>
+    <string name="business_profile_loading">Add your own "About" summary or notes about this company below.</string>
+    <string name="business_profile_no_key">No business profile has been added yet. Use the field below to write one.</string>
+    <string name="business_profile_unavailable">No additional business profile details available.</string>
     <string name="business_profile_industry">Industry: %1$s</string>
     <string name="business_profile_country">Country: %1$s</string>
     <string name="business_profile_exchange">Exchange: %1$s</string>
     <string name="business_profile_currency">Currency: %1$s</string>
+    <string name="business_profile_about_hint">Your "About" summary or notes for this company</string>
+    <string name="business_profile_save_about">Save About</string>
+    <string name="business_profile_edit_about">Edit</string>
     <string name="raw_financial_facts_heading">Raw Financial Facts (EDGAR)</string>
     <string name="standard_derived_metrics_heading">Standard Derived Metrics (from facts)</string>
     <string name="metric_column_name">Metric</string>
@@ -334,4 +337,18 @@
     <string name="watchlist_refresh_key_missing">Set a Finnhub API key to refresh watchlist prices.</string>
     <string name="watchlist_refreshed_count">Updated %1$d/%2$d watchlist prices.</string>
     <string name="watchlist_nothing_to_refresh">No watchlist symbols to refresh.</string>
+
+    <!-- AI Assistant -->
+    <string name="ai_assistant_menu_title">AI assistant</string>
+    <string name="ai_assistant_title">AI assistant</string>
+    <string name="ai_assistant_missing_key_hint">Add an AI API key in settings to start a conversation.</string>
+    <string name="ai_conversations_label">Conversations</string>
+    <string name="ai_new_conversation">New chat</string>
+    <string name="ai_drawer_open">Open conversations</string>
+    <string name="ai_drawer_close">Close conversations</string>
+    <string name="ai_conversations_empty">No conversations yet. Ask a question to start.</string>
+    <string name="ai_messages_empty">Ask a question about this stock or your watchlist to start a conversation.</string>
+    <string name="ai_message_hint">Ask a question about this stock, your portfolio, or peers…</string>
+    <string name="ai_send_message">Send message</string>
+    <string name="enter_ai_api_key">Enter your AI API key (Grok, etc.)</string>
 </resources>

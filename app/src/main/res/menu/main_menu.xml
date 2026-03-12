@@ -8,6 +8,10 @@
         android:icon="@drawable/ic_settings"
         app:showAsAction="ifRoom" />
     <item
+        android:id="@+id/action_ai_assistant"
+        android:title="@string/ai_assistant_menu_title"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_diagnostic_log"
         android:title="@string/diagnostic_log"
         app:showAsAction="never" />

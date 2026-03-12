@@ -5,6 +5,7 @@ import androidx.room.ColumnInfo
 import androidx.room.Dao
 import androidx.room.Database
 import androidx.room.Entity
+import androidx.room.ForeignKey
 import androidx.room.Index
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
@@ -424,6 +425,80 @@ data class UserStockListItemEntity(
     val addedAt: Long = System.currentTimeMillis()
 )
 
+/** User-authored business profile / "About" text for a company. */
+@Entity(tableName = "company_profiles")
+data class CompanyProfileEntity(
+    @PrimaryKey val symbol: String,
+    val about: String?,
+    val updatedAt: Long
+)
+
+/** AI-generated + user-editable business profile for a company. */
+@Entity(tableName = "stock_profiles")
+data class StockProfileEntity(
+    @PrimaryKey val symbol: String,
+    val aboutSummary: String?,
+    val aboutDetails: String?,
+    val generatedAt: Long?,
+    val editedByUser: Boolean,
+    val updatedAt: Long
+)
+
+/**
+ * Long-term AI memory notes across three scopes:
+ * - STOCK (per symbol)
+ * - GROUP (peer group id)
+ * - USER (global user preferences)
+ */
+@Entity(
+    tableName = "ai_memory_cache",
+    indices = [Index(value = ["scope", "scopeKey"])]
+)
+data class AiMemoryCacheEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val scope: String,
+    val scopeKey: String,
+    val noteType: String,
+    val noteText: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val source: String
+)
+
+/** Saved AI conversations for the assistant screen. */
+@Entity(
+    tableName = "ai_conversations",
+    indices = [Index(value = ["symbol"]), Index(value = ["updatedAt"])]
+)
+data class AiConversationEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String?,
+    val title: String,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+/** Individual messages within a conversation. */
+@Entity(
+    tableName = "ai_messages",
+    foreignKeys = [
+        ForeignKey(
+            entity = AiConversationEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["conversationId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ],
+    indices = [Index(value = ["conversationId"])]
+)
+data class AiMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val conversationId: Long,
+    val role: String,
+    val content: String,
+    val timestamp: Long
+)
+
 @Dao
 interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY addedDate DESC")
@@ -650,6 +725,98 @@ interface UserStockListDao {
     suspend fun updateHoldingValues(id: Long, shares: Double?, avgCost: Double?)
 }
 
+@Dao
+interface CompanyProfileDao {
+    @Query("SELECT * FROM company_profiles WHERE symbol = :symbol")
+    suspend fun getBySymbol(symbol: String): CompanyProfileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(profile: CompanyProfileEntity)
+}
+
+@Dao
+interface StockProfileDao {
+    @Query("SELECT * FROM stock_profiles WHERE symbol = :symbol")
+    suspend fun getBySymbol(symbol: String): StockProfileEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(profile: StockProfileEntity)
+}
+
+@Dao
+interface AiMemoryCacheDao {
+    @Query(
+        """
+        SELECT * FROM ai_memory_cache
+        WHERE scope = :scope AND scopeKey = :scopeKey
+        ORDER BY updatedAt DESC
+        """
+    )
+    suspend fun getNotesForScope(scope: String, scopeKey: String): List<AiMemoryCacheEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(note: AiMemoryCacheEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(notes: List<AiMemoryCacheEntity>)
+
+    @Query("DELETE FROM ai_memory_cache WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+@Dao
+interface AiConversationDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(conversation: AiConversationEntity): Long
+
+    @Query("SELECT * FROM ai_conversations WHERE id = :id")
+    suspend fun getById(id: Long): AiConversationEntity?
+
+    @Query(
+        """
+        SELECT * FROM ai_conversations
+        ORDER BY updatedAt DESC
+        """
+    )
+    suspend fun getAllOrderedByUpdated(): List<AiConversationEntity>
+
+    @Query(
+        """
+        SELECT * FROM ai_conversations
+        WHERE symbol = :symbol
+        ORDER BY updatedAt DESC
+        """
+    )
+    suspend fun getBySymbol(symbol: String): List<AiConversationEntity>
+
+    @Query("UPDATE ai_conversations SET title = :title, updatedAt = :updatedAt WHERE id = :id")
+    suspend fun renameConversation(id: Long, title: String, updatedAt: Long)
+
+    @Query("DELETE FROM ai_conversations WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
+@Dao
+interface AiMessageDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(message: AiMessageEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(messages: List<AiMessageEntity>)
+
+    @Query(
+        """
+        SELECT * FROM ai_messages
+        WHERE conversationId = :conversationId
+        ORDER BY timestamp ASC, id ASC
+        """
+    )
+    suspend fun getMessagesForConversation(conversationId: Long): List<AiMessageEntity>
+
+    @Query("DELETE FROM ai_messages WHERE conversationId = :conversationId")
+    suspend fun deleteForConversation(conversationId: Long)
+}
+
 @Database(
     entities = [
         FavoriteEntity::class,
@@ -658,9 +825,14 @@ interface UserStockListDao {
         EdgarRawFactsEntity::class,
         FinancialDerivedMetricsEntity::class,
         ScoreSnapshotEntity::class,
-        UserStockListItemEntity::class
+        UserStockListItemEntity::class,
+        CompanyProfileEntity::class,
+        StockProfileEntity::class,
+        AiMemoryCacheEntity::class,
+        AiConversationEntity::class,
+        AiMessageEntity::class
     ],
-    version = 17,
+    version = 19,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -672,6 +844,11 @@ abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun financialDerivedMetricsDao(): FinancialDerivedMetricsDao
     abstract fun scoreSnapshotDao(): ScoreSnapshotDao
     abstract fun userStockListDao(): UserStockListDao
+    abstract fun companyProfileDao(): CompanyProfileDao
+        abstract fun stockProfileDao(): StockProfileDao
+        abstract fun aiMemoryCacheDao(): AiMemoryCacheDao
+        abstract fun aiConversationDao(): AiConversationDao
+        abstract fun aiMessageDao(): AiMessageDao
 
     companion object {
         @Volatile
@@ -733,6 +910,89 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_17_18 = object : Migration(17, 18) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS company_profiles (
+                        symbol TEXT NOT NULL PRIMARY KEY,
+                        about TEXT,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        private val MIGRATION_18_19 = object : Migration(18, 19) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS stock_profiles (
+                        symbol TEXT NOT NULL PRIMARY KEY,
+                        aboutSummary TEXT,
+                        aboutDetails TEXT,
+                        generatedAt INTEGER,
+                        editedByUser INTEGER NOT NULL DEFAULT 0,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ai_memory_cache (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        scope TEXT NOT NULL,
+                        scopeKey TEXT NOT NULL,
+                        noteType TEXT NOT NULL,
+                        noteText TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        source TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_ai_memory_cache_scope_scopeKey ON ai_memory_cache(scope, scopeKey)"
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ai_conversations (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        symbol TEXT,
+                        title TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_ai_conversations_symbol ON ai_conversations(symbol)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_ai_conversations_updatedAt ON ai_conversations(updatedAt)"
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS ai_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        conversationId INTEGER NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        timestamp INTEGER NOT NULL,
+                        FOREIGN KEY(conversationId) REFERENCES ai_conversations(id) ON DELETE CASCADE
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_ai_messages_conversationId ON ai_messages(conversationId)"
+                )
+            }
+        }
+
         private val MIGRATION_13_14 = object : Migration(13, 14) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL("""
@@ -756,7 +1016,18 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     StockzillaDatabase::class.java,
                     "stockzilla_database"
                 )
-                    .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
+                    .addMigrations(
+                        MIGRATION_9_10,
+                        MIGRATION_10_11,
+                        MIGRATION_11_12,
+                        MIGRATION_12_13,
+                        MIGRATION_13_14,
+                        MIGRATION_14_15,
+                        MIGRATION_15_16,
+                        MIGRATION_16_17,
+                        MIGRATION_17_18,
+                        MIGRATION_18_19
+                    )
                     .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance

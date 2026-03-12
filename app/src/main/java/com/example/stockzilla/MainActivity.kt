@@ -58,6 +58,11 @@ class MainActivity : AppCompatActivity() {
                 showFinnhubApiKeyDialog()
                 true
             }
+            R.id.action_ai_assistant -> {
+                val currentSymbol = viewModel.resolvedSymbol.value
+                AiAssistantActivity.start(this, currentSymbol)
+                true
+            }
             R.id.action_diagnostic_log -> {
                 DiagnosticLogActivity.start(this)
                 true
