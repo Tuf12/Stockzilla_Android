@@ -54,9 +54,9 @@ One dedicated conversation per ticker, auto-created or reopened from the stock p
 Eidos saves important notes per stock, group, and user — not summaries, just what matters.
 
 - [ ] Create `AiMemoryCache` Room entity and DAO
-- [ ] Wire `write_memory_note` action in `AiActionDispatcher`
-- [ ] Load stock + group + user notes into context packet before conversation history
-- [ ] Prompt Eidos to extract and save key information from conversations as notes
+- [ ] Expose a `write_memory_note` tool to the LLM (via the Grok client) that writes directly into `AiMemoryCache`
+- [ ] Load stock + group + user notes from `AiMemoryCache` into the context packet before conversation history
+- [ ] Prompt Eidos to decide when to call `write_memory_note` based on whether the conversation produced a durable, useful perspective about a stock, group, or the user
 - [ ] Seed 2-3 default `USER_PREFERENCE` notes to start
 - [ ] Build simple UI for user to view, edit, and delete memory notes
 

@@ -775,10 +775,21 @@ interface AiConversationDao {
     @Query(
         """
         SELECT * FROM ai_conversations
-        ORDER BY updatedAt DESC
+        ORDER BY
+            CASE WHEN symbol IS NULL THEN 0 ELSE 1 END,
+            updatedAt DESC
         """
     )
     suspend fun getAllOrderedByUpdated(): List<AiConversationEntity>
+
+    @Query(
+        """
+        SELECT * FROM ai_conversations
+        WHERE symbol IS NULL
+        ORDER BY updatedAt DESC
+        """
+    )
+    suspend fun getGeneralConversations(): List<AiConversationEntity>
 
     @Query(
         """

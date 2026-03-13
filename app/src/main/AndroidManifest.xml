@@ -49,6 +49,12 @@
             android:parentActivityName=".MainActivity" />
 
         <activity
+            android:name=".AiMemoryCacheActivity"
+            android:exported="false"
+            android:label="@string/ai_memory_menu_title"
+            android:parentActivityName=".AiAssistantActivity" />
+
+        <activity
             android:name=".AiAssistantActivity"
             android:exported="false"
             android:label="@string/ai_assistant_title"

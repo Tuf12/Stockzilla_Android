@@ -77,8 +77,9 @@ dependencies {
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
 
-    // Markdown rendering for AI assistant messages
+    // Markdown / HTML rendering for AI assistant messages
     implementation("io.noties.markwon:core:4.6.2")
+    implementation("io.noties.markwon:html:4.6.2")
 
     // Core library desugaring for java.time APIs on older devices
     coreLibraryDesugaring(libs.desugar.jdk.libs)

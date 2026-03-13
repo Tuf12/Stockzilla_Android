@@ -90,11 +90,59 @@ Every AI model connected to the app shares the same Memory Cache. If a different
 | `id` | Long (PK) |
 | `scope` | `STOCK` \| `GROUP` \| `USER` |
 | `scopeKey` | Symbol for STOCK · groupId for GROUP · `"user"` for USER |
-| `noteType` | `BUSINESS_MODEL` · `FINANCIAL_OBSERVATION` · `INVESTMENT_THESIS` · `PEER_RATIONALE` · `PEER_REJECTION` · `GROUP_PATTERN` · `USER_PREFERENCE` |
+| `noteType` | Optional label used internally for grouping/filtering notes (Eidos does not need to set this explicitly) |
 | `noteText` | The note — concise, written by Eidos |
 | `createdAt` | Long |
 | `updatedAt` | Long |
 | `source` | `AI_GENERATED` \| `USER_CONFIRMED` \| `USER_EDITED` |
+
+### How Eidos Writes to the Memory Cache
+
+Eidos does **not** hack around with hidden tags or scraped markers in chat text. Instead, it uses a single explicit tool inside the app:
+
+- **Tool name**: `write_memory_note`
+- **Where it writes**: directly into the `ai_memory_cache` Room table shown above
+
+**Tool arguments (conceptual schema):**
+
+- `scope`: `"STOCK"` \| `"GROUP"` \| `"USER"`
+- `scopeKey`:
+  - For `STOCK`: the ticker symbol (e.g. `"AAPL"`)
+  - For `GROUP`: the peer group id string
+  - For `USER`: the literal string `"user"`
+- `noteText`: the concise note text Eidos wants to remember
+
+The app is responsible for exposing this tool to the LLM (via the Grok client) and for turning tool calls into concrete `AiMemoryCacheEntity` writes. The model **never** writes SQL or touches the database directly; it only calls `write_memory_note`.
+
+**When to call `write_memory_note`:**
+
+- If anything in the conversation creates or refines a meaningful perspective about:
+  - a stock (business model, thesis, patterns, catalysts, reactions),
+  - a peer group (how the group behaves, how the user curates it), or
+  - the user (style, preferences, constraints),
+  and that perspective would be useful in a future conversation,
+  **Eidos should save it as a discrete note** via `write_memory_note`.
+
+**Scope behavior:**
+
+- **User-level notes** (`scope="USER"`, `scopeKey="user"`) are always loaded in every conversation. They capture things like:
+  - Preference for certain cap sizes or sectors
+  - Risk tolerance
+  - Time horizon and style
+- **Stock-level notes** (`scope="STOCK"`, `scopeKey=symbol`) live alongside that stock’s other data and its chat history. Examples:
+  - The user’s personal thesis for owning the stock
+  - Important qualitative updates not present in the financials
+  - How the stock reacted to a specific catalyst
+- **Group-level notes** (`scope="GROUP"`, `scopeKey=groupId`) are attached to a peer group entry in the database. Examples:
+  - Why these companies belong together
+  - How the group is typically valued
+  - Patterns Eidos or the user has noticed about the group
+
+At runtime, the app:
+
+1. Loads all relevant notes (USER + STOCK + GROUP) from `ai_memory_cache` for the current context.
+2. Includes them in the single system message as part of the context JSON.
+3. Exposes `write_memory_note` so Eidos can add or refine notes as conversations progress.
 
 ---
 

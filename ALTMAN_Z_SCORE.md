@@ -2,7 +2,7 @@
 
 ## Overview
 
-The Altman Z-Score predicts bankruptcy probability using 5 weighted financial ratios. In Stockzilla, it serves as the **Resilience pillar** (30% of the composite score), answering the question: "Is this company at risk of going bankrupt?"
+The Altman Z-Score predicts bankruptcy probability using 5 weighted financial ratios. In Stockzilla, it serves as the **Resilience pillar** (20% of the composite score), answering the question: "Is this company at risk of going bankrupt?"
 
 ---
 
@@ -67,7 +67,7 @@ The 0–3 level is converted to a 0–10 scale for inclusion in the composite:
 resilience_score = (level / 3.0) × 10.0
 ```
 
-Then weighted at 30% in the final composite.
+Then weighted at 20% in the final composite.
 
 ---
 
@@ -80,12 +80,10 @@ The original Altman Z-Score was calibrated for manufacturing companies. A modifi
 ```
 Z'' = 6.56×A + 3.26×B + 6.72×C + 1.05×D
 ```
-
-| Z''-Score | Zone |
-|---|---|
-| > 2.60 | Safe |
-| 1.10 – 2.60 | Grey |
-| < 1.10 | Distress |
+altmanZPrime < 1.10 -> 0
+altmanZPrime < 1.85 -> 1
+altmanZPrime < 2.60 -> 2
+else -> 3
 
 Consider implementing both versions and selecting based on the company's SIC code (manufacturing vs service).
 

@@ -338,17 +338,21 @@
     <string name="watchlist_refreshed_count">Updated %1$d/%2$d watchlist prices.</string>
     <string name="watchlist_nothing_to_refresh">No watchlist symbols to refresh.</string>
 
-    <!-- AI Assistant -->
-    <string name="ai_assistant_menu_title">AI assistant</string>
-    <string name="ai_assistant_title">AI assistant</string>
-    <string name="ai_assistant_missing_key_hint">Add an AI API key in settings to start a conversation.</string>
-    <string name="ai_conversations_label">Conversations</string>
-    <string name="ai_new_conversation">New chat</string>
-    <string name="ai_drawer_open">Open conversations</string>
-    <string name="ai_drawer_close">Close conversations</string>
-    <string name="ai_conversations_empty">No conversations yet. Ask a question to start.</string>
-    <string name="ai_messages_empty">Ask a question about this stock or your watchlist to start a conversation.</string>
-    <string name="ai_message_hint">Ask a question about this stock, your portfolio, or peers…</string>
+    <!-- Eidos Assistant -->
+    <string name="ai_assistant_menu_title">Eidos — AI assistant</string>
+    <string name="ai_assistant_title">Eidos — AI assistant</string>
+    <string name="ai_assistant_missing_key_hint">Add an AI API key in settings to start a conversation with Eidos.</string>
+    <string name="ai_conversations_label">Eidos chats</string>
+    <string name="ai_search_conversation">Search for a stock to chat about</string>
+    <string name="ai_drawer_open">Open Eidos conversations</string>
+    <string name="ai_drawer_close">Close Eidos conversations</string>
+    <string name="ai_conversations_empty">No Eidos conversations yet. Ask a question to start.</string>
+    <string name="ai_messages_empty">Ask Eidos about this stock or your watchlist to start a conversation.</string>
+    <string name="ai_message_hint">Ask Eidos about this stock, your portfolio, or peers…</string>
     <string name="ai_send_message">Send message</string>
-    <string name="enter_ai_api_key">Enter your AI API key (Grok, etc.)</string>
+    <string name="enter_ai_api_key">Enter your Eidos API key (Grok, etc.)</string>
+    <string name="ai_memory_menu_title">Memory</string>
+    <string name="ai_memory_empty">No Memory Cache notes yet. As you chat, Eidos will save important observations here.</string>
+    <string name="ai_memory_delete">Delete memory note</string>
+    <string name="ai_delete_conversation">Delete conversation</string>
 </resources>
