@@ -58,6 +58,12 @@ class MainActivity : AppCompatActivity() {
                 showFinnhubApiKeyDialog()
                 true
             }
+            R.id.action_ai_chat -> {
+                // Open the assistant without binding the conversation to the current stock.
+                // This lets the user keep a general or existing chat thread while analyzing stocks separately.
+                AiAssistantActivity.start(this, null)
+                true
+            }
             R.id.action_ai_assistant -> {
                 val currentSymbol = viewModel.resolvedSymbol.value
                 AiAssistantActivity.start(this, currentSymbol)

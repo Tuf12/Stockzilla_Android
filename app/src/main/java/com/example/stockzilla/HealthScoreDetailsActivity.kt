@@ -2,6 +2,7 @@
 package com.example.stockzilla
 
 import android.os.Bundle
+import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
@@ -39,10 +40,20 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         setupSectionClickListeners()
     }
 
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.chat_menu, menu)
+        return true
+    }
+
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> {
                 onBackPressedDispatcher.onBackPressed()
+                true
+            }
+            R.id.action_ai_chat -> {
+                // Open Eidos chat without rebinding the conversation to this stock.
+                AiAssistantActivity.start(this, null)
                 true
             }
             else -> super.onOptionsItemSelected(item)

@@ -14,6 +14,7 @@ Work through one item at a time. Reference STOCKZILLA_AI.md before starting each
 - Editable About/description field — saves per stock to DB
 - OkHttp timeouts — connect 30s / write 30s / read 120s
 - System prompt — single combined message, general knowledge leads
+- **Memory Cache** — `AiMemoryCacheEntity` + DAO; `write_memory_note` tool exposed to Grok; tool-call loop (memory before or after reply); notes loaded into context (USER + STOCK); Memory screen to view and delete notes
 
 ---
 
@@ -50,15 +51,11 @@ One dedicated conversation per ticker, auto-created or reopened from the stock p
 
 ---
 
-### 4. Memory Cache
-Eidos saves important notes per stock, group, and user — not summaries, just what matters.
+### 4. Memory Cache — refinements (optional)
+Core is done; possible follow-ups.
 
-- [ ] Create `AiMemoryCache` Room entity and DAO
-- [ ] Expose a `write_memory_note` tool to the LLM (via the Grok client) that writes directly into `AiMemoryCache`
-- [ ] Load stock + group + user notes from `AiMemoryCache` into the context packet before conversation history
-- [ ] Prompt Eidos to decide when to call `write_memory_note` based on whether the conversation produced a durable, useful perspective about a stock, group, or the user
-- [ ] Seed 2-3 default `USER_PREFERENCE` notes to start
-- [ ] Build simple UI for user to view, edit, and delete memory notes
+- [ ] Wire GROUP-scope notes when peer groups are available (currently stubbed in context)
+- [ ] Optional: seed a few default USER notes on first run; optional: edit UI for notes (view/delete exist)
 
 ---
 

@@ -318,13 +318,21 @@
     <string name="symbol_hint">Symbol (e.g. AAPL)</string>
     <string name="shares_optional">Shares (optional)</string>
     <string name="avg_cost_optional">Avg cost $ (optional)</string>
-    <string name="viewed_stocks_title">Recently viewed</string>
-    <string name="viewed_stocks_empty">Stocks you analyze will appear here.</string>
-    <string name="remove_from_recently_viewed">Remove from recently viewed</string>
-    <string name="viewed_stock_removed">Removed %1$s from recently viewed.</string>
+    <string name="viewed_stocks_title">Stock list</string>
+    <string name="viewed_stocks_empty">Stocks you analyze will appear in your list.</string>
+    <string name="remove_from_recently_viewed">Remove from stock list</string>
+    <string name="viewed_stock_removed">Removed %1$s from stock list.</string>
     <string name="group_other">Other</string>
     <string name="swipe_hint_profile">Swipe right for My portfolio</string>
-    <string name="swipe_hint_viewed">Swipe left for Recently viewed</string>
+    <string name="swipe_hint_viewed">Swipe left for Stock list</string>
+    <string name="viewed_sort_label">Sort</string>
+    <string name="viewed_sort_grouped">Grouped by sector / industry</string>
+    <string name="viewed_sort_recent_first">Most recent first</string>
+    <string name="viewed_sort_oldest_first">Oldest first</string>
+    <string name="viewed_sort_price_high_low">Price high to low</string>
+    <string name="viewed_sort_price_low_high">Price low to high</string>
+    <string name="viewed_group_filter_label">Group</string>
+    <string name="viewed_group_all">All groups</string>
     <string name="portfolio_value">Portfolio value</string>
     <string name="portfolio_value_format">%1$s</string>
     <string name="total_gain_loss">Total gain/loss</string>
@@ -355,4 +363,5 @@
     <string name="ai_memory_empty">No Memory Cache notes yet. As you chat, Eidos will save important observations here.</string>
     <string name="ai_memory_delete">Delete memory note</string>
     <string name="ai_delete_conversation">Delete conversation</string>
+    <string name="ai_chat_menu_title">Chat</string>
 </resources>

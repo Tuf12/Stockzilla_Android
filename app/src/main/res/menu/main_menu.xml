@@ -3,9 +3,16 @@
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
     <item
+        android:id="@+id/action_ai_chat"
+        android:title="@string/ai_chat_menu_title"
+        android:icon="@drawable/ic_send"
+        android:orderInCategory="100"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/action_finnhub_settings"
         android:title="@string/update_finnhub_api_key"
         android:icon="@drawable/ic_settings"
+        android:orderInCategory="200"
         app:showAsAction="ifRoom" />
     <item
         android:id="@+id/action_ai_assistant"

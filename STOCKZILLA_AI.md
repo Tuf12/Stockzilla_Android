@@ -55,7 +55,7 @@ The assistant is displayed as **Eidos** throughout the app — in the chat inter
 | Memory Cache notes | `AiMemoryCache` |
 | Conversation history | `AiConversationEntity` / `AiMessageEntity` |
 
-When Eidos needs to analyze an unknown stock it triggers the existing `analyzeStock()` pipeline. If the ticker resolves in EDGAR the stock is added to the database normally. If it fails the ticker is skipped silently.
+When Eidos needs data for a stock that is not yet in the database, it calls the **get_stock_data** tool with `fetch_if_missing: true`. The app then runs the same search/analyze pipeline as the Analyze Stock button (EDGAR + Finnhub fetch, then app writes to DB). Eidos has no direct write access to financial tables — it only triggers that pipeline.
 
 ## What Eidos Never Touches
 
@@ -146,6 +146,65 @@ At runtime, the app:
 
 ---
 
+## Eidos Tools
+
+Eidos has several tools exposed via the Grok API. The app executes them and returns results; Eidos never writes to the database directly (except by triggering the app’s own pipelines).
+
+### write_memory_note
+
+Persists a note to the Memory Cache.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| scope | string | Yes | `"USER"` \| `"STOCK"` \| `"GROUP"` |
+| scopeKey | string | Yes | Symbol for STOCK, groupId for GROUP, or `"user"` for USER |
+| noteText | string | Yes | The concise memory note text |
+
+### get_stock_data
+
+Returns full stock context from the app database (raw facts, derived metrics, score snapshot, health score). Used whenever Eidos needs to view or compare a symbol.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| symbol | string | Yes | Stock ticker (e.g. AAPL, MSFT) |
+| fetch_if_missing | boolean | No | Default **true**. If the symbol is not in the database and this is true, the **app** runs the same search/analyze pipeline as the Analyze Stock button (EDGAR + Finnhub fetch, then app writes to DB). Eidos does not write financial data — it only triggers that pipeline. The tool then returns the new data. |
+
+**Context behavior:** For the **current conversation’s stock** (when in a stock-specific chat), the initial context packet already includes that one stock’s full data. For **other symbols** or in **General chat**, Eidos calls **get_stock_data** to load data on demand. Calling get_stock_data does not change the selected conversation or switch the UI to another stock’s chat.
+
+### get_portfolio_overview
+
+Returns the user’s full portfolio overview: holdings with shares, average cost, current price, market value, cost basis, and gain/loss, plus watchlist and favorites symbols.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| (none) | – | – | No arguments. |
+
+### get_watchlist
+
+Returns the user’s watchlist as a list of symbols (and any light metadata the app provides).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| (none) | – | – | No arguments. |
+
+### get_favorites
+
+Returns the user’s favorited stocks as a list of symbols (and any light metadata the app provides).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| (none) | – | – | No arguments. |
+
+### list_analyzed_stocks
+
+Returns the list of stocks that have full fundamentals in the app database (all symbols in `edgar_raw_facts`), with basic identity metadata.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| (none) | – | – | No arguments. |
+
+---
+
 ## Conversation System
 
 ### Structure
@@ -162,7 +221,7 @@ Every call to the Grok API sends one combined system message built in this order
 2. User-level memory cache notes
 3. Stock-level memory cache notes (if a stock is in context)
 4. Group-level memory cache notes (if the stock belongs to a group)
-5. Current stock context packet (derived metrics — see below)
+5. Current stock context packet — when the conversation is for a specific stock, the app includes that stock’s full DB context (see below). In General chat, only Memory is included; Eidos uses tools (`get_stock_data`, `get_portfolio_overview`, `get_watchlist`, `get_favorites`, `list_analyzed_stocks`) for any symbols or lists it needs.
 6. Recent conversation history — last 20 messages
 7. User's new message
 
@@ -170,18 +229,27 @@ Memory Cache notes always load before conversation history. Eidos reads what it 
 
 ### Context Packet Fields
 
-| Category | Fields |
+The app’s data is already clean, structured, and normalized in Room. Eidos should **not** be gated by a hand‑picked list of fields.
+
+Instead, the context JSON is built directly from the full database entities for the current stock:
+
+- **Raw facts entity**: the complete `EdgarRawFactsEntity` row for the symbol (all scalar fields and history arrays)
+- **Derived metrics entity**: the complete `FinancialDerivedMetricsEntity` row for the symbol (all deterministic ratios and growth metrics)
+- **Score snapshots**: the latest `ScoreSnapshotEntity` row for the symbol
+- **Health score object**: the full `HealthScore` (composite, sub‑scores, and per‑metric `breakdown` list)
+
+These are exposed in the context as structured JSON objects so Eidos can see **everything in the row** and decide which numbers matter, rather than the app “cherry‑picking” a subset.
+
+On top of that, the context also includes (for stock-specific chats):
+
+| Category | Description |
 |---|---|
-| Identity | symbol, companyName, sector, industry, SIC, market cap tier |
-| Valuation | price, PE, PS, PB, market cap |
-| Profitability | net margin, EBITDA margin, FCF margin, ROE |
-| Growth | 5yr avg revenue growth, latest YoY revenue and net income growth, FCF growth |
-| Balance Sheet | debt-to-equity, current ratio, total assets, total liabilities |
-| Scores | composite, health sub-score, growth sub-score, resilience level |
-| Peers | current peer list with symbol, cap tier, PE/PS |
-| Portfolio | watchlist, favorites, holdings when contextually relevant |
-| Memory Cache | notes filtered by scope and type |
+| Identity | symbol, companyName, sector, industry, SIC (from the raw facts entity) |
+| Peers | current peer list and any peer/benchmark data computed from the DB |
+| Memory Cache | notes filtered by scope and type (USER, STOCK, GROUP) |
 | About | existing company description if present |
+
+Portfolio, watchlist, favorites, and the list of all analyzed stocks are **not** embedded in the base context; Eidos calls `get_portfolio_overview`, `get_watchlist`, `get_favorites`, or `list_analyzed_stocks` when it needs those views. For **other symbols** (or in General chat), Eidos uses the **get_stock_data** tool to load data on demand. The app does not parse the user message for tickers; Eidos decides which symbols it needs and calls the tool.
 
 ---
 
@@ -210,7 +278,7 @@ The current grouping system uses sector and SIC labels which are too broad and m
 
 When the user taps the "Ask Eidos" button in the Industry Peers section, Eidos reviews the current stock's About text, financial profile, and market cap tier alongside every stock already in the database. It proposes a peer list with a brief reason for each inclusion. The user reviews the proposal and approves or rejects each stock individually. Those decisions are saved to the Memory Cache as `PEER_RATIONALE` and `PEER_REJECTION` notes so Eidos learns the user's grouping preferences over time.
 
-If Eidos identifies a strong peer candidate that isn't in the database yet it triggers `analyzeStock()` for that ticker. Only stocks that successfully resolve through EDGAR get added. Failed or invalid tickers are skipped silently.
+If Eidos identifies a strong peer candidate that isn't in the database yet it calls **get_stock_data(symbol, fetch_if_missing: true)** for that ticker so the stock is added and its data is available. Only stocks that successfully resolve through EDGAR get added. Failed or invalid tickers are skipped silently.
 
 ---
 

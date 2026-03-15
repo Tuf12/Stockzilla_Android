@@ -3,6 +3,8 @@ package com.example.stockzilla
 import android.content.Intent
 import android.os.Bundle
 import android.text.InputType
+import android.view.Menu
+import android.view.MenuItem
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.Toast
@@ -141,6 +143,26 @@ class IndustryStocksActivity : AppCompatActivity() {
             Toast.makeText(this, getString(R.string.industry_no_key_can_add_by_symbol), Toast.LENGTH_LONG).show()
         }
         loadDiscover()
+    }
+
+    override fun onCreateOptionsMenu(menu: Menu?): Boolean {
+        menuInflater.inflate(R.menu.chat_menu, menu)
+        return true
+    }
+
+    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+        return when (item.itemId) {
+            android.R.id.home -> {
+                onBackPressedDispatcher.onBackPressed()
+                true
+            }
+            R.id.action_ai_chat -> {
+                // Open Eidos without changing the active conversation to this stock.
+                AiAssistantActivity.start(this, null)
+                true
+            }
+            else -> super.onOptionsItemSelected(item)
+        }
     }
 
     private fun openStockAnalysis(symbol: String?) {
