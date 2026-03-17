@@ -51,8 +51,8 @@ One dedicated conversation per ticker, auto-created or reopened from the stock p
 
 ---
 
-### 4. Memory Cache — refinements (optional)
-Core is done; possible follow-ups.
+### 4. Memory Cache Core is done; follow-ups once grouping system is fully implemented.
+Eidos saves important notes per stock, group, and user — not summaries, just what matters.
 
 - [ ] Wire GROUP-scope notes when peer groups are available (currently stubbed in context)
 - [ ] Optional: seed a few default USER notes on first run; optional: edit UI for notes (view/delete exist)

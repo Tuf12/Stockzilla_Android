@@ -62,6 +62,12 @@
             android:windowSoftInputMode="adjustResize|stateHidden" />
 
         <activity
+            android:name=".PortfolioChartActivity"
+            android:exported="false"
+            android:label="@string/portfolio_chart_title"
+            android:parentActivityName=".MainActivity" />
+
+        <activity
             android:name=".MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Stockzilla">

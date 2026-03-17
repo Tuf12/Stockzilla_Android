@@ -3,7 +3,7 @@
 ## Overview
 
 Stockzilla uses a hybrid data architecture with two sources:
-- **Finnhub** — Real-time market price data only
+- **Finnhub** — Real-time market price data only and buisness profile summary
 - **SEC EDGAR** — All fundamental financial data from official SEC filings
 
 This separation minimizes API costs (EDGAR is free) while still providing live pricing.

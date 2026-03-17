@@ -725,6 +725,55 @@ interface UserStockListDao {
     suspend fun updateHoldingValues(id: Long, shares: Double?, avgCost: Double?)
 }
 
+/** User-recorded cash adds/withdrawals for the portfolio (for ROI vs cash tracking). */
+@Entity(tableName = "portfolio_cash_flows")
+data class PortfolioCashFlowEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    /** Absolute dollar amount of the cash movement. */
+    val amount: Double,
+    /** "ADD" for deposit, "WITHDRAW" for withdrawal. */
+    val type: String,
+    val createdAt: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface PortfolioCashFlowDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(flow: PortfolioCashFlowEntity)
+
+    @Query("SELECT * FROM portfolio_cash_flows ORDER BY createdAt DESC")
+    suspend fun getAll(): List<PortfolioCashFlowEntity>
+
+    @Query("SELECT SUM(CASE WHEN type = 'ADD' THEN amount ELSE -amount END) FROM portfolio_cash_flows")
+    suspend fun getNetCash(): Double?
+}
+
+/** One row per calendar day: portfolio total value and day-over-day change. */
+@Entity(tableName = "portfolio_value_snapshots")
+data class PortfolioValueSnapshotEntity(
+    /** Start of day in millis (local timezone). */
+    @PrimaryKey val dateMs: Long,
+    val value: Double,
+    /** value minus previous day's value; null if no previous day. */
+    val dayChange: Double? = null,
+    val recordedAt: Long = System.currentTimeMillis()
+)
+
+@Dao
+interface PortfolioValueSnapshotDao {
+    @Query("SELECT * FROM portfolio_value_snapshots WHERE dateMs = :dateMs")
+    suspend fun getByDate(dateMs: Long): PortfolioValueSnapshotEntity?
+
+    @Query("SELECT * FROM portfolio_value_snapshots ORDER BY dateMs DESC LIMIT :limit")
+    suspend fun getLatest(limit: Int): List<PortfolioValueSnapshotEntity>
+
+    @Query("SELECT * FROM portfolio_value_snapshots ORDER BY dateMs ASC LIMIT :limit")
+    suspend fun getOldestFirst(limit: Int): List<PortfolioValueSnapshotEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertOrReplace(entity: PortfolioValueSnapshotEntity)
+}
+
 @Dao
 interface CompanyProfileDao {
     @Query("SELECT * FROM company_profiles WHERE symbol = :symbol")
@@ -841,9 +890,11 @@ interface AiMessageDao {
         StockProfileEntity::class,
         AiMemoryCacheEntity::class,
         AiConversationEntity::class,
-        AiMessageEntity::class
+        AiMessageEntity::class,
+        PortfolioValueSnapshotEntity::class,
+        PortfolioCashFlowEntity::class
     ],
-    version = 19,
+    version = 21,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -860,6 +911,8 @@ abstract class StockzillaDatabase : RoomDatabase() {
         abstract fun aiMemoryCacheDao(): AiMemoryCacheDao
         abstract fun aiConversationDao(): AiConversationDao
         abstract fun aiMessageDao(): AiMessageDao
+        abstract fun portfolioValueSnapshotDao(): PortfolioValueSnapshotDao
+        abstract fun portfolioCashFlowDao(): PortfolioCashFlowDao
 
     companion object {
         @Volatile
@@ -929,6 +982,36 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         symbol TEXT NOT NULL PRIMARY KEY,
                         about TEXT,
                         updatedAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        private val MIGRATION_20_21 = object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS portfolio_cash_flows (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        amount REAL NOT NULL,
+                        type TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
+        private val MIGRATION_19_20 = object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS portfolio_value_snapshots (
+                        dateMs INTEGER PRIMARY KEY NOT NULL,
+                        value REAL NOT NULL,
+                        dayChange REAL,
+                        recordedAt INTEGER NOT NULL
                     )
                     """.trimIndent()
                 )
@@ -1037,7 +1120,9 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_15_16,
                         MIGRATION_16_17,
                         MIGRATION_17_18,
-                        MIGRATION_18_19
+                        MIGRATION_18_19,
+                        MIGRATION_19_20,
+                        MIGRATION_20_21
                     )
                     .fallbackToDestructiveMigration(true)
                     .build()
