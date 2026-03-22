@@ -66,7 +66,12 @@ class MainActivity : AppCompatActivity() {
             }
             R.id.action_ai_assistant -> {
                 val currentSymbol = viewModel.resolvedSymbol.value
-                AiAssistantActivity.start(this, currentSymbol)
+                val openMode = if (currentSymbol.isNullOrBlank()) {
+                    AiAssistantViewModel.OpenMode.FORCE_GENERAL_IF_NO_SYMBOL
+                } else {
+                    AiAssistantViewModel.OpenMode.LAST_CHAT
+                }
+                AiAssistantActivity.start(this, currentSymbol, openMode)
                 true
             }
             R.id.action_diagnostic_log -> {

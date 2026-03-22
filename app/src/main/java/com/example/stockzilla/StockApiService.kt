@@ -206,10 +206,6 @@ class StockRepository(
 
     // --------------- Price ---------------
 
-    suspend fun getLatestQuotePrice(symbol: String): Result<Double?> = withContext(Dispatchers.IO) {
-        quoteDataSource.getQuote(symbol).map { it.current }
-    }
-
     // --------------- Industry Peers (separated DB + Finnhub peers for discovery) ---------------
 
     /**
@@ -293,8 +289,13 @@ class StockRepository(
         }
     }
 
-    // --------------- Private Helpers ---------------
+    // --------------- Quotes ---------------
 
+    suspend fun getLatestQuotePrice(symbol: String): Result<Double?> = withContext(Dispatchers.IO) {
+        quoteDataSource.getQuote(symbol).map { it.current }
+    }
+
+    // --------------- Private Helpers ---------------
     private suspend fun shouldRefreshFromEdgar(symbol: String, lastFiling: String?): Boolean {
         val existingLastFiling = lastFiling ?: return true
         return try {

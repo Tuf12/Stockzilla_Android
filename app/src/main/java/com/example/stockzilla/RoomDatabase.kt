@@ -877,6 +877,183 @@ interface AiMessageDao {
     suspend fun deleteForConversation(conversationId: Long)
 }
 
+// ==================== News Metadata Entity (Stage 1 — no AI data) ====================
+
+@Entity(
+    tableName = "news_metadata",
+    primaryKeys = ["symbol", "accessionNumber"],
+    indices = [Index(value = ["symbol"], name = "idx_news_meta_symbol")]
+)
+data class NewsMetadataEntity(
+    val symbol: String,
+    val cik: String,
+    val accessionNumber: String,
+    val filingDate: String,
+    val formType: String,
+    val primaryDocument: String?,
+    val itemsRaw: String?,
+    /** Comma-separated normalized item numbers, e.g. "1.01,2.02,5.02" */
+    val normalizedItems: String?,
+    val secFolderUrl: String,
+    /** PENDING | ANALYZED | FAILED */
+    val analysisStatus: String,
+    val createdAt: Long,
+    val updatedAt: Long
+)
+
+@Dao
+interface NewsMetadataDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: NewsMetadataEntity)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(entities: List<NewsMetadataEntity>)
+
+    /** Inserts only rows that don't already exist (by PK). Existing rows keep their analysisStatus. */
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertNewOnly(entities: List<NewsMetadataEntity>)
+
+    @Query("SELECT * FROM news_metadata WHERE symbol = :symbol ORDER BY filingDate DESC")
+    suspend fun getForSymbol(symbol: String): List<NewsMetadataEntity>
+
+    @Query(
+        """SELECT * FROM news_metadata
+           WHERE symbol = :symbol AND analysisStatus = 'PENDING'
+           ORDER BY filingDate DESC"""
+    )
+    suspend fun getPendingForSymbol(symbol: String): List<NewsMetadataEntity>
+
+    @Query(
+        """SELECT filingDate FROM news_metadata
+           WHERE symbol = :symbol AND analysisStatus = 'ANALYZED'
+           ORDER BY filingDate DESC LIMIT 1"""
+    )
+    suspend fun getNewestAnalyzedDate(symbol: String): String?
+
+    @Query(
+        """SELECT COUNT(*) FROM news_metadata
+           WHERE symbol = :symbol AND analysisStatus = 'PENDING'
+           AND filingDate > :afterDate"""
+    )
+    suspend fun countPendingNewerThan(symbol: String, afterDate: String): Int
+
+    @Query(
+        """SELECT COUNT(*) FROM news_metadata
+           WHERE symbol = :symbol AND analysisStatus = 'PENDING'"""
+    )
+    suspend fun countAllPending(symbol: String): Int
+
+    @Query(
+        """SELECT * FROM news_metadata
+           WHERE symbol = :symbol AND analysisStatus = 'PENDING'
+           AND filingDate > :afterDate
+           ORDER BY filingDate DESC LIMIT :limit"""
+    )
+    suspend fun getPendingNewerThan(symbol: String, afterDate: String, limit: Int): List<NewsMetadataEntity>
+
+    @Query(
+        """SELECT * FROM news_metadata
+           WHERE symbol = :symbol AND analysisStatus = 'PENDING'
+           ORDER BY filingDate DESC LIMIT :limit"""
+    )
+    suspend fun getTopPending(symbol: String, limit: Int): List<NewsMetadataEntity>
+
+    @Query("UPDATE news_metadata SET analysisStatus = :status, updatedAt = :updatedAt WHERE symbol = :symbol AND accessionNumber = :accessionNumber")
+    suspend fun updateStatus(symbol: String, accessionNumber: String, status: String, updatedAt: Long)
+}
+
+// ==================== News Summary Entity (Stage 2 — Eidos outputs only) ====================
+
+@Entity(
+    tableName = "news_summaries",
+    primaryKeys = ["symbol", "accessionNumber"],
+    indices = [Index(value = ["symbol"], name = "idx_news_summaries_symbol")]
+)
+data class NewsSummaryEntity(
+    val symbol: String,
+    val cik: String,
+    val accessionNumber: String,
+    val filingDate: String,
+    val title: String?,
+    val shortSummary: String,
+    val detailedSummary: String,
+    val impact: String,
+    /** JSON array of catalyst strings */
+    val catalystsJson: String,
+    /** Comma-separated normalized item numbers */
+    val normalizedItems: String?,
+    val secUrl: String,
+    val createdAt: Long,
+    val lastAnalyzedAt: Long
+)
+
+/**
+ * Lightweight join projection used to display form labels in the UI.
+ * We keep the `news_summaries` table schema unchanged and read `formType` from `news_metadata`.
+ */
+data class NewsSummaryWithFormTypeRow(
+    val symbol: String,
+    val cik: String,
+    val accessionNumber: String,
+    val filingDate: String,
+    val title: String?,
+    val shortSummary: String,
+    val detailedSummary: String,
+    val impact: String,
+    val catalystsJson: String,
+    val normalizedItems: String?,
+    val secUrl: String,
+    val createdAt: Long,
+    val lastAnalyzedAt: Long,
+    val formType: String
+)
+
+@Dao
+interface NewsSummariesDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(entity: NewsSummaryEntity)
+
+    @Query(
+        """SELECT * FROM news_summaries
+           WHERE symbol = :symbol
+           ORDER BY filingDate DESC
+           LIMIT :limit"""
+    )
+    suspend fun getRecentForSymbol(symbol: String, limit: Int = 3): List<NewsSummaryEntity>
+
+    @Query(
+        """
+        SELECT
+            s.symbol,
+            s.cik,
+            s.accessionNumber,
+            s.filingDate,
+            s.title,
+            s.shortSummary,
+            s.detailedSummary,
+            s.impact,
+            s.catalystsJson,
+            s.normalizedItems,
+            s.secUrl,
+            s.createdAt,
+            s.lastAnalyzedAt,
+            m.formType AS formType
+        FROM news_summaries s
+        INNER JOIN news_metadata m
+            ON m.symbol = s.symbol AND m.accessionNumber = s.accessionNumber
+        WHERE s.symbol = :symbol
+        ORDER BY s.filingDate DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getRecentForSymbolWithFormType(symbol: String, limit: Int = 3): List<NewsSummaryWithFormTypeRow>
+
+    @Query("DELETE FROM news_summaries WHERE symbol = :symbol")
+    suspend fun deleteForSymbol(symbol: String)
+}
+
+// ==================== Database ====================
+
 @Database(
     entities = [
         FavoriteEntity::class,
@@ -892,9 +1069,11 @@ interface AiMessageDao {
         AiConversationEntity::class,
         AiMessageEntity::class,
         PortfolioValueSnapshotEntity::class,
-        PortfolioCashFlowEntity::class
+        PortfolioCashFlowEntity::class,
+        NewsMetadataEntity::class,
+        NewsSummaryEntity::class
     ],
-    version = 21,
+    version = 23,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -913,6 +1092,8 @@ abstract class StockzillaDatabase : RoomDatabase() {
         abstract fun aiMessageDao(): AiMessageDao
         abstract fun portfolioValueSnapshotDao(): PortfolioValueSnapshotDao
         abstract fun portfolioCashFlowDao(): PortfolioCashFlowDao
+        abstract fun newsMetadataDao(): NewsMetadataDao
+        abstract fun newsSummariesDao(): NewsSummariesDao
 
     companion object {
         @Volatile
@@ -985,6 +1166,86 @@ abstract class StockzillaDatabase : RoomDatabase() {
                     )
                     """.trimIndent()
                 )
+            }
+        }
+
+        private val MIGRATION_21_22 = object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS eight_k_metadata (
+                        symbol TEXT NOT NULL,
+                        cik TEXT NOT NULL,
+                        accessionNumber TEXT NOT NULL,
+                        filingDate TEXT NOT NULL,
+                        formType TEXT NOT NULL,
+                        primaryDocument TEXT,
+                        itemsRaw TEXT,
+                        normalizedItems TEXT,
+                        secFolderUrl TEXT NOT NULL,
+                        analysisStatus TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        PRIMARY KEY(symbol, accessionNumber)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_8k_meta_symbol ON eight_k_metadata(symbol)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS eight_k_news (
+                        symbol TEXT NOT NULL,
+                        cik TEXT NOT NULL,
+                        accessionNumber TEXT NOT NULL,
+                        filingDate TEXT NOT NULL,
+                        title TEXT,
+                        shortSummary TEXT NOT NULL,
+                        detailedSummary TEXT NOT NULL,
+                        impact TEXT NOT NULL,
+                        catalystsJson TEXT NOT NULL,
+                        normalizedItems TEXT,
+                        secUrl TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        lastAnalyzedAt INTEGER NOT NULL,
+                        PRIMARY KEY(symbol, accessionNumber)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS idx_8k_news_symbol ON eight_k_news(symbol)"
+                )
+            }
+        }
+
+        private val MIGRATION_22_23 = object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Rename existing tables created under the old "8-K" naming.
+                try {
+                    db.execSQL("ALTER TABLE eight_k_metadata RENAME TO news_metadata")
+                } catch (_: Exception) {
+                    // ignore
+                }
+                try {
+                    db.execSQL("ALTER TABLE eight_k_news RENAME TO news_summaries")
+                } catch (_: Exception) {
+                    // ignore
+                }
+
+                // Rebuild indices with the new names.
+                try {
+                    db.execSQL("DROP INDEX IF EXISTS idx_8k_meta_symbol")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_news_meta_symbol ON news_metadata(symbol)")
+                } catch (_: Exception) {
+                    // ignore
+                }
+                try {
+                    db.execSQL("DROP INDEX IF EXISTS idx_8k_news_symbol")
+                    db.execSQL("CREATE INDEX IF NOT EXISTS idx_news_summaries_symbol ON news_summaries(symbol)")
+                } catch (_: Exception) {
+                    // ignore
+                }
             }
         }
 
@@ -1122,9 +1383,10 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_17_18,
                         MIGRATION_18_19,
                         MIGRATION_19_20,
-                        MIGRATION_20_21
+                        MIGRATION_20_21,
+                        MIGRATION_21_22,
+                        MIGRATION_22_23
                     )
-                    .fallbackToDestructiveMigration(true)
                     .build()
                 INSTANCE = instance
                 instance

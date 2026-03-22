@@ -378,5 +378,41 @@
     <string name="ai_memory_delete">Delete memory note</string>
     <string name="ai_rename_conversation">Rename conversation</string>
     <string name="ai_delete_conversation">Delete conversation</string>
+    <string name="ai_copy_eidos_response">Copy Eidos message</string>
+    <string name="ai_copied_to_clipboard">Copied to clipboard</string>
+    <string name="ai_discovery_copy_fallback">SEC filing discovery (use the card in the app to select filings).</string>
     <string name="ai_chat_menu_title">Chat</string>
+    <string name="see_all">See all</string>
+    <string name="recent_news">Recent News</string>
+    <string name="analyze_news">Analyze Recent News</string>
+    <string name="analyze_news_new">Analyze Recent News — New (%1$d)</string>
+    <string name="analyzing_news">Analyzing filings…</string>
+    <string name="all_news_title">All Analyzed News</string>
+    <string name="all_news_empty">No analyzed news summaries yet.</string>
+    <string name="view_on_sec">View on SEC.gov</string>
+    <string name="items_label">Items:</string>
+    <string name="summary_heading">Summary</string>
+    <string name="catalysts_heading">Catalysts</string>
+    <string name="no_ai_key_for_news">Set up your AI (Grok) API key to analyze SEC news</string>
+    <string name="via_avg_pe">via Avg P/E</string>
+    <string name="via_avg_ps">via Avg P/S</string>
+    <string name="fair_value">Fair Value</string>
+    <string name="fair_value_price_short">$%1$s</string>
+    <string name="avg_pe">Avg P/E</string>
+    <string name="stock">Stock</string>
+    <string name="valuation">Valuation</string>
+    <string name="free_cash_flow">Free Cash Flow</string>
+    <string name="volume">Volume</string>
+    <string name="placeholder_dash">--</string>
+
+    <!-- SEC Form Discovery -->
+    <string name="sec_discovery_title">SEC Filings: %1$s</string>
+    <string name="sec_discovery_subtitle">Found %1$d candidate filings (showing form type, filing date, and description)</string>
+    <string name="sec_discovery_confirm_none">Select filings to analyze</string>
+    <string name="sec_discovery_confirm_selected">Analyze %1$d filing(s)</string>
+    <string name="sec_discovery_decline">Decline</string>
+    <string name="sec_discovery_processing">Processing… This may take a moment while content is fetched and analyzed.</string>
+    <string name="sec_discovery_declined">Declined. No filings were saved.</string>
+    <string name="sec_discovery_completed">✓ Analysis complete. %1$d filing(s) saved and analyzed.</string>
+    <string name="sec_discovery_error">Error: %1$s</string>
 </resources>
