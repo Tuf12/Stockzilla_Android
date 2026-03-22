@@ -1,12 +1,13 @@
-// StockDetailsDialog.kt - Dialog to show detailed stock information
-package com.example.stockzilla
-
+package com.example.stockzilla.stock
 
 import android.app.Dialog
 import android.os.Bundle
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
+import com.example.stockzilla.feature.MainActivity
+import com.example.stockzilla.scoring.StockData
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.gson.Gson
 
 class StockDetailsDialog : DialogFragment() {
 
@@ -20,18 +21,18 @@ class StockDetailsDialog : DialogFragment() {
                 putString(ARG_STOCK_DATA, stockDataToJson(stockData))
             }
             dialog.arguments = args
-            dialog.show(fragmentManager, "com.example.stockzilla.StockDetailsDialog")
+            dialog.show(fragmentManager, "com.example.stockzilla.stock.StockDetailsDialog")
         }
 
         private fun stockDataToJson(stockData: StockData): String {
-            return com.google.gson.Gson().toJson(stockData)
+            return Gson().toJson(stockData)
         }
     }
 
     override fun onCreateDialog(savedInstanceState: Bundle?): Dialog {
         val stockDataJson = arguments?.getString(ARG_STOCK_DATA)
         val stockData = stockDataJson?.let {
-            com.google.gson.Gson().fromJson(it, StockData::class.java)
+            Gson().fromJson(it, StockData::class.java)
         }
 
         val message = buildString {

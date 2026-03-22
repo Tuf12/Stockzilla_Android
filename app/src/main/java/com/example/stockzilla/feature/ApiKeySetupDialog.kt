@@ -1,14 +1,15 @@
-// ApiKeySetupDialog.kt - Dialog for API key input and setup
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.app.Dialog
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
 import android.widget.Toast
 import androidx.core.net.toUri
 import androidx.core.widget.addTextChangedListener
 import androidx.fragment.app.DialogFragment
 import androidx.lifecycle.lifecycleScope
+import com.example.stockzilla.data.StockRepository
 import com.example.stockzilla.databinding.DialogApiKeySetupBinding
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.launch
@@ -74,7 +75,7 @@ class ApiKeySetupDialog(
 
     private fun validateAndSaveApiKey(apiKey: String) {
         binding.btnSave.isEnabled = false
-        binding.progressBar.visibility = android.view.View.VISIBLE
+        binding.progressBar.visibility = View.VISIBLE
 
         lifecycleScope.launch {
             try {
@@ -104,7 +105,7 @@ class ApiKeySetupDialog(
                 binding.tilApiKey.error = "Network error: ${e.message}"
             } finally {
                 binding.btnSave.isEnabled = true
-                binding.progressBar.visibility = android.view.View.GONE
+                binding.progressBar.visibility = View.GONE
             }
         }
     }

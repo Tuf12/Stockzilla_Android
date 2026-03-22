@@ -19,56 +19,56 @@
         tools:targetApi="31">
 
         <activity
-            android:name=".HealthScoreDetailsActivity"
+            android:name=".feature.HealthScoreDetailsActivity"
             android:exported="false"
             android:label="@string/health_score_details_title"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".feature.MainActivity" />
 
         <activity
-            android:name=".FullAnalysisActivity"
+            android:name=".feature.FullAnalysisActivity"
             android:exported="false"
             android:label="@string/full_analysis_title"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".feature.MainActivity" />
 
         <activity
-            android:name=".IndustryStocksActivity"
+            android:name=".feature.IndustryStocksActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".feature.MainActivity" />
 
         <activity
-            android:name=".AddPeerActivity"
+            android:name=".feature.AddPeerActivity"
             android:exported="false"
             android:label="@string/add_peer_title"
-            android:parentActivityName=".IndustryStocksActivity" />
+            android:parentActivityName=".feature.IndustryStocksActivity" />
 
         <activity
-            android:name=".DiagnosticLogActivity"
+            android:name=".feature.DiagnosticLogActivity"
             android:exported="false"
             android:label="@string/diagnostic_log_title"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".feature.MainActivity" />
 
         <activity
-            android:name=".AiMemoryCacheActivity"
+            android:name=".ai.AiMemoryCacheActivity"
             android:exported="false"
             android:label="@string/ai_memory_menu_title"
-            android:parentActivityName=".AiAssistantActivity" />
+            android:parentActivityName=".ai.AiAssistantActivity" />
 
         <activity
-            android:name=".AiAssistantActivity"
+            android:name=".ai.AiAssistantActivity"
             android:exported="false"
             android:label="@string/ai_assistant_title"
-            android:parentActivityName=".MainActivity"
+            android:parentActivityName=".feature.MainActivity"
             android:windowSoftInputMode="adjustResize|stateHidden" />
 
         <activity
-            android:name=".PortfolioChartActivity"
+            android:name=".feature.PortfolioChartActivity"
             android:exported="false"
             android:label="@string/portfolio_chart_title"
-            android:parentActivityName=".MainActivity" />
+            android:parentActivityName=".feature.MainActivity" />
 
         <activity
-            android:name=".MainActivity"
+            android:name=".feature.MainActivity"
             android:exported="true"
             android:theme="@style/Theme.Stockzilla">
             <intent-filter>

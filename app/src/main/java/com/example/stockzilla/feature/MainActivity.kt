@@ -1,5 +1,4 @@
-// MainActivity.kt - Hosts ViewPager2 (Profile | Main | Viewed) and toolbar
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.content.Intent
 import android.os.Bundle
@@ -7,6 +6,10 @@ import android.view.Menu
 import android.view.MenuItem
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import com.example.stockzilla.R
+import com.example.stockzilla.stock.StockViewModel
+import com.example.stockzilla.ai.AiAssistantActivity
+import com.example.stockzilla.ai.AiAssistantViewModel
 import com.example.stockzilla.databinding.ActivityMainBinding
 import java.util.Locale
 
@@ -61,7 +64,7 @@ class MainActivity : AppCompatActivity() {
             R.id.action_ai_chat -> {
                 // Open the assistant without binding the conversation to the current stock.
                 // This lets the user keep a general or existing chat thread while analyzing stocks separately.
-                AiAssistantActivity.start(this, null)
+                AiAssistantActivity.Companion.start(this, null)
                 true
             }
             R.id.action_ai_assistant -> {
@@ -71,7 +74,7 @@ class MainActivity : AppCompatActivity() {
                 } else {
                     AiAssistantViewModel.OpenMode.LAST_CHAT
                 }
-                AiAssistantActivity.start(this, currentSymbol, openMode)
+                AiAssistantActivity.Companion.start(this, currentSymbol, openMode)
                 true
             }
             R.id.action_diagnostic_log -> {

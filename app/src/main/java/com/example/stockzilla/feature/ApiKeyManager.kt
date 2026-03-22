@@ -1,5 +1,4 @@
-// ApiKeyManager.kt - Handles API key storage and validation
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.content.Context
 import android.content.SharedPreferences

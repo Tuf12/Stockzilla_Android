@@ -7,6 +7,7 @@ import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
 import com.example.stockzilla.databinding.ItemFavoriteBinding
+import com.example.stockzilla.scoring.StockData
 
 class FavoritesAdapter(
     private val onItemClick: (StockData) -> Unit,

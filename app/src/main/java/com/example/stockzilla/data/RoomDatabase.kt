@@ -1,4 +1,4 @@
-package com.example.stockzilla
+package com.example.stockzilla.data
 
 import android.content.Context
 import androidx.room.ColumnInfo
@@ -17,8 +17,11 @@ import androidx.room.TypeConverter
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.stockzilla.scoring.HealthScore
+import com.example.stockzilla.scoring.StockData
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlin.math.abs
 
 class DoubleListConverter {
     private val gson = Gson()
@@ -298,7 +301,7 @@ data class FinancialDerivedMetricsEntity(
             val ebitdaDisplay = stockData.ebitdaDisplay
             val netMargin = if (netIncomeDisplay != null &&
                 revenueDisplay != null &&
-                kotlin.math.abs(revenueDisplay) > 1e-9
+                abs(revenueDisplay) > 1e-9
             ) {
                 netIncomeDisplay / revenueDisplay
             } else {
@@ -306,7 +309,7 @@ data class FinancialDerivedMetricsEntity(
             }
             val ebitdaMargin = if (ebitdaDisplay != null &&
                 revenueDisplay != null &&
-                kotlin.math.abs(revenueDisplay) > 1e-9
+                abs(revenueDisplay) > 1e-9
             ) {
                 ebitdaDisplay / revenueDisplay
             } else {
@@ -315,7 +318,7 @@ data class FinancialDerivedMetricsEntity(
             val grossProfitDisplay = stockData.grossProfitDisplay
             val grossMargin = if (grossProfitDisplay != null &&
                 revenueDisplay != null &&
-                kotlin.math.abs(revenueDisplay) > 1e-9
+                abs(revenueDisplay) > 1e-9
             ) {
                 grossProfitDisplay / revenueDisplay
             } else {

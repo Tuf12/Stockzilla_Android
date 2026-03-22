@@ -1,4 +1,4 @@
-package com.example.stockzilla
+package com.example.stockzilla.scoring
 
 import java.io.Serializable
 

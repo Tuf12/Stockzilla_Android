@@ -1,4 +1,4 @@
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.content.Intent
 import android.os.Bundle
@@ -8,12 +8,18 @@ import android.view.MenuItem
 import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.Toast
-import androidx.appcompat.app.AlertDialog
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.lifecycle.lifecycleScope
 import androidx.recyclerview.widget.LinearLayoutManager
+import com.example.stockzilla.data.IndustryPeer
+import com.example.stockzilla.R
+import com.example.stockzilla.data.StockRepository
+import com.example.stockzilla.ai.AiAssistantActivity
+import com.example.stockzilla.data.IndustryPeerRepository
+import com.example.stockzilla.data.StockzillaDatabase
 import com.example.stockzilla.databinding.ActivityIndustryStocksBinding
 import kotlinx.coroutines.launch
 import java.util.Locale
@@ -59,7 +65,7 @@ class IndustryStocksActivity : AppCompatActivity() {
         }
 
         apiKeyManager = ApiKeyManager(this)
-        val db = StockzillaDatabase.getDatabase(this)
+        val db = StockzillaDatabase.Companion.getDatabase(this)
         peerRepository = IndustryPeerRepository(db.stockIndustryPeerDao(), db.edgarRawFactsDao())
         val finnhubKey = apiKeyManager.getFinnhubApiKey()
         if (!finnhubKey.isNullOrBlank()) {
@@ -104,7 +110,11 @@ class IndustryStocksActivity : AppCompatActivity() {
             onAddToGroup = { peer ->
                 lifecycleScope.launch {
                     peerRepository.addPeer(ownerSymbol, peer.symbol, "discover")
-                    Toast.makeText(this@IndustryStocksActivity, getString(R.string.industry_added_to_my_group, peer.symbol), Toast.LENGTH_SHORT).show()
+                    Toast.makeText(
+                        this@IndustryStocksActivity,
+                        getString(R.string.industry_added_to_my_group, peer.symbol),
+                        Toast.LENGTH_SHORT
+                    ).show()
                     updateSavedPeerSymbolsInAdapter()
                 }
             }
@@ -158,7 +168,7 @@ class IndustryStocksActivity : AppCompatActivity() {
             }
             R.id.action_ai_chat -> {
                 // Open Eidos without changing the active conversation to this stock.
-                AiAssistantActivity.start(this, null)
+                AiAssistantActivity.Companion.start(this, null)
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -171,7 +181,7 @@ class IndustryStocksActivity : AppCompatActivity() {
             return
         }
         startActivity(Intent(this, MainActivity::class.java).apply {
-            putExtra(MainActivity.EXTRA_ANALYZE_SYMBOL, symbol.uppercase(Locale.US))
+            putExtra(MainActivity.Companion.EXTRA_ANALYZE_SYMBOL, symbol.uppercase(Locale.US))
         })
     }
 

@@ -1,20 +1,21 @@
-//app/src/main/java/com/example/stockzilla/HealthScoreDetailsActivity.kt
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
+import com.example.stockzilla.feature.HealthScoreExplanationDialogFragment
+import com.example.stockzilla.R
+import com.example.stockzilla.ai.AiAssistantActivity
 import com.example.stockzilla.databinding.ActivityHealthScoreDetailsBinding
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import retrofit2.Retrofit
-import retrofit2.converter.gson.GsonConverterFactory
-import kotlin.math.abs
+import com.example.stockzilla.scoring.HealthScore
+import com.example.stockzilla.scoring.HealthScoreDetail
+import com.example.stockzilla.scoring.MetricPerformance
+import com.example.stockzilla.scoring.StockData
+import com.example.stockzilla.sec.EdgarConcepts
 import java.util.Locale
+import kotlin.math.abs
 
 @Suppress("DEPRECATION")
 class HealthScoreDetailsActivity : AppCompatActivity() {
@@ -59,7 +60,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             }
             R.id.action_ai_chat -> {
                 // Open Eidos chat without rebinding the conversation to this stock.
-                AiAssistantActivity.start(this, null)
+                AiAssistantActivity.Companion.start(this, null)
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -136,7 +137,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         val revenueDisplay = stockData.revenueDisplay
         val grossMarginVal = if (grossProfitDisplay != null &&
             revenueDisplay != null &&
-            kotlin.math.abs(revenueDisplay) > 1e-9
+            abs(revenueDisplay) > 1e-9
         ) {
             grossProfitDisplay / revenueDisplay
         } else null
@@ -185,7 +186,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         if (currentRevenue == null || priorRevenue == null || currentGrossProfit == null || priorGrossProfit == null) {
             return null
         }
-        if (kotlin.math.abs(currentRevenue) <= 1e-9 || kotlin.math.abs(priorRevenue) <= 1e-9) return null
+        if (abs(currentRevenue) <= 1e-9 || abs(priorRevenue) <= 1e-9) return null
         val currentGrossMargin = currentGrossProfit / currentRevenue
         val priorGrossMargin = priorGrossProfit / priorRevenue
         return currentGrossMargin - priorGrossMargin
@@ -207,12 +208,12 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             HealthDetailSection.RESILIENCE -> buildResilienceSectionContent(stock, score)
         }
 
-        HealthScoreExplanationDialogFragment.newInstance(
+        HealthScoreExplanationDialogFragment.Companion.newInstance(
             title = content.title,
             summary = content.summary,
             details = content.details,
             emptyMessage = content.emptyMessage
-        ).show(supportFragmentManager, HealthScoreExplanationDialogFragment.TAG)
+        ).show(supportFragmentManager, HealthScoreExplanationDialogFragment.Companion.TAG)
     }
 
     private fun buildCoreSectionContent(healthScore: HealthScore): SectionDetailContent {
@@ -448,7 +449,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private fun formatPercentText(value: Double?): String? {
         val safeValue = value?.takeIf { it.isFinite() }
-        return safeValue?.let { String.format(Locale.US, "%.1f%%", it) }
+        return safeValue?.let { String.Companion.format(Locale.US, "%.1f%%", it) }
     }
 
     private fun formatPiotroskiOutcome(value: Double?): String {
@@ -497,7 +498,8 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             "outstanding_shares" -> getString(R.string.metric_outstanding_shares)
             "total_assets" -> getString(R.string.metric_total_assets)
             "total_liabilities" -> getString(R.string.metric_total_liabilities)
-            else -> metric.replace('_', ' ').replaceFirstChar { if (it.isLowerCase()) it.titlecase(Locale.getDefault()) else it.toString() }
+            else -> metric.replace('_', ' ').replaceFirstChar { if (it.isLowerCase()) it.titlecase(
+                Locale.getDefault()) else it.toString() }
         }
     }
 
@@ -548,7 +550,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             "revenue_growth", "roe", "net_margin", "ebitda_margin", "free_cash_flow_margin", "liability_to_asset_ratio", "working_capital_ratio" -> formatPercent(value)
             else -> {
                 val safeValue = value?.takeIf { it.isFinite() }
-                safeValue?.let { String.format(Locale.US, "%.2f", it) } ?: getString(R.string.not_available)
+                safeValue?.let { String.Companion.format(Locale.US, "%.2f", it) } ?: getString(R.string.not_available)
             }
         }
     }

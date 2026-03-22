@@ -1,5 +1,5 @@
 // BenchmarkData.kt - Industry and Sector PE/PS benchmark averages
-package com.example.stockzilla
+package com.example.stockzilla.scoring
 
 object BenchmarkData {
 

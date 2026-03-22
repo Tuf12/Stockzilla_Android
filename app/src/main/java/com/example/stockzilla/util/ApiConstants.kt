@@ -1,5 +1,4 @@
-// ApiConstants.kt - Now gets API key from user input
-package com.example.stockzilla
+package com.example.stockzilla.util
 
 object ApiConstants {
     // Default demo key - will be replaced by user's key

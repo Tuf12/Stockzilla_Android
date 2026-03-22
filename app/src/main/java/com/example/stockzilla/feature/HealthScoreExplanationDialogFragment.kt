@@ -1,14 +1,17 @@
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.app.Dialog
+import android.content.res.ColorStateList
 import android.os.Bundle
+import androidx.core.content.ContextCompat
 import androidx.core.view.isVisible
 import androidx.fragment.app.DialogFragment
+import com.example.stockzilla.R
 import com.example.stockzilla.databinding.DialogHealthScoreExplanationBinding
 import com.example.stockzilla.databinding.ItemHealthScoreDetailBinding
+import com.example.stockzilla.scoring.HealthScoreDetail
+import com.example.stockzilla.scoring.MetricPerformance
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import android.content.res.ColorStateList
-import androidx.core.content.ContextCompat
 
 @Suppress("DEPRECATION")
 class HealthScoreExplanationDialogFragment : DialogFragment() {

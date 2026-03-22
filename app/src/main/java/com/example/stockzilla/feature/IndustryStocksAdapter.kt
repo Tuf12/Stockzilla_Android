@@ -1,4 +1,4 @@
-package com.example.stockzilla
+package com.example.stockzilla.feature
 
 import android.view.LayoutInflater
 import android.view.ViewGroup
@@ -6,6 +6,8 @@ import androidx.core.view.isVisible
 import androidx.recyclerview.widget.DiffUtil
 import androidx.recyclerview.widget.ListAdapter
 import androidx.recyclerview.widget.RecyclerView
+import com.example.stockzilla.data.IndustryPeer
+import com.example.stockzilla.R
 import com.example.stockzilla.databinding.ItemIndustryStockBinding
 
 enum class IndustryPeersMode { Discover, MyGroup }

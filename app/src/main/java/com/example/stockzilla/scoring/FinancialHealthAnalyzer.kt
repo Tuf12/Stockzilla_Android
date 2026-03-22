@@ -1,6 +1,7 @@
 // FinancialHealthAnalyzer.kt - Core financial analysis logic ported to Kotlin
-package com.example.stockzilla
+package com.example.stockzilla.scoring
 
+import com.example.stockzilla.sec.EdgarConcepts
 import java.io.Serializable
 import kotlin.math.abs
 import kotlin.math.roundToInt

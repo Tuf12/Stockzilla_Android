@@ -1,5 +1,6 @@
-package com.example.stockzilla
+package com.example.stockzilla.data
 
+import com.example.stockzilla.scoring.StockData
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
