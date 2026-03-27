@@ -1,40 +1,52 @@
 # Stockzilla Android
 
-Stockzilla is an Android application that helps investors track market data, monitor watchlists, and stay informed with financial news. This repository contains the Android client, written in Kotlin and built with Jetpack Compose.
+Stockzilla is an Android app for looking up US-listed equities, pulling fundamentals from **SEC EDGAR**, live quotes (and light market metadata) from **Finnhub**, and surfacing composite **health / growth / resilience** scoring. It includes **Eidos**, an in-app Grok-powered assistant with tool calling against local Room data.
+
+The client is **Kotlin**, **Material Components**, **View Binding**, and **XML layouts** (not Jetpack Compose).
 
 ## Features
-- Real-time and historical stock price tracking
-- Personalized watchlists with alerting capabilities
-- Aggregated market and company news feeds
-- Modern material design interface optimized for phones and tablets
 
-## Getting Started
-1. **Clone the repository**
+- Ticker search and analysis: EDGAR fundamentals, TTM vs annual display rules, composite scoring
+- Favorites and a personal profile / portfolio area (`PersonalProfileFragment`)
+- Recently viewed symbols (`ViewedStocksFragment`)
+- Industry peer discovery and saved peer groups (`IndustryStocksActivity`, `IndustryPeerRepository`)
+- SEC “news” filings pipeline (8-K, ownership forms, etc.) with AI summaries (`NewsRepository`, `EightKNewsAnalyzer`)
+- Eidos AI assistant: conversations, memory cache, SEC filing discovery tools (`AiAssistantActivity`, `AiAssistantViewModel`)
+
+## Getting started
+
+1. **Clone the repository** (adjust URL to your remote).
    ```bash
-   git clone https://github.com/yourusername/Stockzilla_Android.git
-   cd Stockzilla_Android
+   git clone <your-remote-url>
+   cd Stockzilla
    ```
-2. **Open in Android Studio**
-   - Use Android Studio Giraffe or newer.
-   - Open the project using the *Open an Existing Project* option.
-3. **Configure APIs (if required)**
-   - Create a `local.properties` file if you need to add API keys or secrets.
+2. **Open in Android Studio** (recent stable channel recommended).
+3. **API keys** — Finnhub and Grok keys are managed in-app (`ApiKeyManager`, settings dialogs). Optional `local.properties` entries depend on how you wire secrets locally.
 
 ## Building
-- From Android Studio, select **Build > Make Project**.
-- To build from the command line, run:
+
+- Android Studio: **Build → Make Project**.
+- Command line:
   ```bash
   ./gradlew assembleDebug
   ```
 
 ## Testing
-The project currently does not ship with automated tests. When adding tests, run them with:
+
+Unit tests live under `app/src/test/`. Example:
+
 ```bash
 ./gradlew test
 ```
 
+## Documentation
+
+Architecture and scoring details are in the repo root `*.md` files (e.g. `APP_STRUCTURE.md`, `DATA_SOURCES.md`, `DATABASE_ARCHITECTURE.md`, `STOCKZILLA_AI.md`, `SEC_NEWS_SPEC.md`).
+
 ## Contributing
-Contributions are welcome! Please open an issue to discuss major changes before submitting a pull request.
+
+Contributions are welcome. Please open an issue to discuss major changes before submitting a pull request.
 
 ## License
+
 This project is licensed under the [PolyForm Noncommercial License 1.0.0](LICENSE), which allows personal and non-commercial use while prohibiting commercial exploitation without permission.

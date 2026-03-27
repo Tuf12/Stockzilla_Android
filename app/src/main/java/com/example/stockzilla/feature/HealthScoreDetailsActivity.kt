@@ -40,10 +40,11 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             finish()
             return
         }
-        currentStockData = stockData
+        // Ensure growth metrics derived from annual 10-K history are available in this screen.
+        currentStockData = stockData.withGrowthFromHistory()
         currentHealthScore = healthScore
         bindSummary(healthScore)
-        bindStockMetrics(stockData)
+        bindStockMetrics(currentStockData!!)
         setupSectionClickListeners()
     }
 
@@ -78,10 +79,10 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                 listOf(
                     getString(R.string.metric_piotroski_positive_roa),
                     getString(R.string.metric_piotroski_positive_cfo),
-                    getString(R.string.metric_piotroski_delta_roa_positive),
+                    getString(R.string.metric_piotroski_operating_income_sign_matches_net_income),
                     getString(R.string.metric_piotroski_accrual_quality),
-                    getString(R.string.metric_piotroski_leverage_improved),
-                    getString(R.string.metric_piotroski_current_ratio_improved),
+                    getString(R.string.metric_piotroski_ocf_to_net_income_gt_one),
+                    getString(R.string.metric_piotroski_non_operating_income_share_lt_50pct),
                     getString(R.string.metric_piotroski_no_dilution),
                     getString(R.string.metric_piotroski_margin_improved),
                     getString(R.string.metric_piotroski_asset_turnover_improved)
@@ -93,12 +94,11 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvForecastMetricsUsed.text = getString(
                 R.string.metrics_used_value,
                 listOf(
-                    getString(R.string.metric_average_revenue_growth),
-                    getString(R.string.metric_revenue_growth),
-                    getString(R.string.metric_average_net_income_growth),
-                    getString(R.string.metric_recent_net_income_growth),
-                    getString(R.string.metric_fcf_growth),
-                    getString(R.string.metric_average_fcf_growth)
+                    getString(R.string.metric_revenue_growth_combined),
+                    getString(R.string.metric_net_income_growth_combined),
+                    getString(R.string.metric_fcf_growth_combined),
+                    getString(R.string.metric_ocf_growth_combined),
+                    getString(R.string.metric_gross_profit_margin_growth)
                 ).joinToString(", ")
             )
 
@@ -173,6 +173,8 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
             tvAverageNetIncomeGrowthValue.text = formatPercent(stockData.averageNetIncomeGrowth) + yoyTag
             tvFcfGrowthValue.text = formatPercent(stockData.fcfGrowth) + yoyTag
             tvAverageFcfGrowthValue.text = formatPercent(stockData.averageFcfGrowth) + yoyTag
+            tvOcfGrowthValue.text = formatPercent(stockData.ocfGrowth) + yoyTag
+            tvAverageOcfGrowthValue.text = formatPercent(stockData.averageOcfGrowth) + yoyTag
             tvSectorValue.text = stockData.sector ?: getString(R.string.not_available)
             tvIndustryValue.text = stockData.industry ?: getString(R.string.not_available)
         }
@@ -218,7 +220,17 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private fun buildCoreSectionContent(healthScore: HealthScore): SectionDetailContent {
         val title = getString(R.string.health_sub_score_label)
-        val summary = getString(R.string.health_score_core_summary, healthScore.healthSubScore)
+        val missingCount = healthScore.breakdown.count { it.value == null }
+        val summary = if (missingCount > 0) {
+            getString(
+                R.string.health_score_core_summary_with_missing_as_fail,
+                healthScore.healthSubScore,
+                missingCount,
+                healthScore.breakdown.size
+            )
+        } else {
+            getString(R.string.health_score_core_summary, healthScore.healthSubScore)
+        }
 
         if (healthScore.breakdown.isEmpty()) {
             return SectionDetailContent(
@@ -232,6 +244,8 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         val details = healthScore.breakdown.map { metricScore ->
             val metricKey = metricScore.metric
             val isPiotroskiMetric = metricKey.startsWith("piotroski_")
+            val missingPiotroskiInput = isPiotroskiMetric && metricScore.value == null
+            val rationaleText = metricRationale(metricKey)
             HealthScoreDetail(
                 label = metricLabel(metricKey),
                 value = if (isPiotroskiMetric) {
@@ -240,13 +254,26 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
                     formatMetricValue(metricKey, metricScore.value)
                 },
                 weight = formatPercentText(metricScore.weightPercent),
-                normalized = formatPercentText(metricScore.weightedContributionPercent),
+                normalized = if (missingPiotroskiInput) {
+                    formatPercentText(metricScore.weightedContributionPercent)
+                } else {
+                    formatPercentText(metricScore.weightedContributionPercent)
+                },
                 performance = if (isPiotroskiMetric) {
-                    classifyPiotroskiPerformance(metricScore.value)
+                    if (missingPiotroskiInput) {
+                        MetricPerformance.POOR
+                    } else {
+                        classifyPiotroskiPerformance(metricScore.value)
+                    }
                 } else {
                     classifyPerformance(metricScore.weightedContributionPercent)
                 },
-                rationale = metricRationale(metricKey)
+                rationale = if (missingPiotroskiInput) {
+                    listOfNotNull(rationaleText, getString(R.string.health_score_missing_treated_as_fail))
+                        .joinToString(" ")
+                } else {
+                    rationaleText
+                }
             )
         }
 
@@ -263,44 +290,89 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         healthScore: HealthScore
     ): SectionDetailContent {
         val title = getString(R.string.forecast_sub_score_label)
-        val summary = getString(R.string.health_score_growth_summary, healthScore.forecastSubScore)
+        fun isFiniteValue(v: Double?): Boolean = v != null && v.isFinite()
+        fun combinedTierNormalized(avg: Double?, recent: Double?): Double? {
+            val norms = listOf(growthTierPercentLocal(avg), growthTierPercentLocal(recent)).filterNotNull()
+            return if (norms.isEmpty()) null else norms.average()
+        }
+        fun combinedDisplayValue(primaryAvg: Double?, primaryRecent: Double?): Double? = primaryAvg ?: primaryRecent
+
+        val revenueAvailable = isFiniteValue(stockData.revenueGrowth) || isFiniteValue(stockData.averageRevenueGrowth)
+        val netIncomeAvailable = isFiniteValue(stockData.netIncomeGrowth) || isFiniteValue(stockData.averageNetIncomeGrowth)
+        val fcfAvailable = isFiniteValue(stockData.fcfGrowth) || isFiniteValue(stockData.averageFcfGrowth)
+        val ocfAvailable = isFiniteValue(stockData.ocfGrowth) || isFiniteValue(stockData.averageOcfGrowth)
+        val grossMarginAvailable = isFiniteValue(stockData.grossMarginGrowth)
+
+        val metrics = listOf(
+            Pair(
+                getString(R.string.metric_revenue_growth_combined),
+                revenueAvailable to combinedDisplayValue(stockData.averageRevenueGrowth, stockData.revenueGrowth)
+            ),
+            Pair(
+                getString(R.string.metric_net_income_growth_combined),
+                netIncomeAvailable to combinedDisplayValue(stockData.averageNetIncomeGrowth, stockData.netIncomeGrowth)
+            ),
+            Pair(
+                getString(R.string.metric_fcf_growth_combined),
+                fcfAvailable to combinedDisplayValue(stockData.averageFcfGrowth, stockData.fcfGrowth)
+            ),
+            Pair(
+                getString(R.string.metric_ocf_growth_combined),
+                ocfAvailable to combinedDisplayValue(stockData.averageOcfGrowth, stockData.ocfGrowth)
+            ),
+            Pair(
+                getString(R.string.metric_gross_profit_margin_growth),
+                grossMarginAvailable to stockData.grossMarginGrowth
+            )
+        )
+
+        val missingMetricLabels = metrics
+            .filter { (_, availability) -> !availability.first }
+            .map { (label, _) -> label }
+
+        val summary = if (missingMetricLabels.isEmpty()) {
+            getString(R.string.health_score_growth_summary, healthScore.forecastSubScore)
+        } else {
+            val missingList = missingMetricLabels.joinToString(", ")
+            getString(
+                R.string.health_score_growth_summary_with_missing,
+                healthScore.forecastSubScore,
+                missingMetricLabels.size,
+                metrics.size,
+                missingList
+            )
+        }
 
         val details = listOf(
             buildGrowthDetail(
-                label = getString(R.string.metric_average_revenue_growth),
-                value = stockData.averageRevenueGrowth,
-                normalized = growthTierPercentLocal(stockData.averageRevenueGrowth),
-                rationale = getString(R.string.health_score_rationale_avg_revenue_growth)
+                label = getString(R.string.metric_revenue_growth_combined),
+                value = combinedDisplayValue(stockData.averageRevenueGrowth, stockData.revenueGrowth),
+                normalized = combinedTierNormalized(stockData.averageRevenueGrowth, stockData.revenueGrowth),
+                rationale = "${getString(R.string.health_score_rationale_avg_revenue_growth)} ${getString(R.string.health_score_rationale_recent_revenue_growth)}"
             ),
             buildGrowthDetail(
-                label = getString(R.string.metric_revenue_growth),
-                value = stockData.revenueGrowth,
-                normalized = growthTierPercentLocal(stockData.revenueGrowth),
-                rationale = getString(R.string.health_score_rationale_recent_revenue_growth)
+                label = getString(R.string.metric_net_income_growth_combined),
+                value = combinedDisplayValue(stockData.averageNetIncomeGrowth, stockData.netIncomeGrowth),
+                normalized = combinedTierNormalized(stockData.averageNetIncomeGrowth, stockData.netIncomeGrowth),
+                rationale = "${getString(R.string.health_score_rationale_avg_net_income_growth)} ${getString(R.string.health_score_rationale_recent_net_income_growth)}"
             ),
             buildGrowthDetail(
-                label = getString(R.string.metric_average_net_income_growth),
-                value = stockData.averageNetIncomeGrowth,
-                normalized = growthTierPercentLocal(stockData.averageNetIncomeGrowth),
-                rationale = getString(R.string.health_score_rationale_avg_net_income_growth)
+                label = getString(R.string.metric_fcf_growth_combined),
+                value = combinedDisplayValue(stockData.averageFcfGrowth, stockData.fcfGrowth),
+                normalized = combinedTierNormalized(stockData.averageFcfGrowth, stockData.fcfGrowth),
+                rationale = "${getString(R.string.health_score_rationale_avg_fcf_growth)} ${getString(R.string.health_score_rationale_fcf_growth)}"
             ),
             buildGrowthDetail(
-                label = getString(R.string.metric_recent_net_income_growth),
-                value = stockData.netIncomeGrowth,
-                normalized = growthTierPercentLocal(stockData.netIncomeGrowth),
-                rationale = getString(R.string.health_score_rationale_recent_net_income_growth)
+                label = getString(R.string.metric_ocf_growth_combined),
+                value = combinedDisplayValue(stockData.averageOcfGrowth, stockData.ocfGrowth),
+                normalized = combinedTierNormalized(stockData.averageOcfGrowth, stockData.ocfGrowth),
+                rationale = getString(R.string.health_score_rationale_ocf_growth_combined)
             ),
             buildGrowthDetail(
-                label = getString(R.string.metric_fcf_growth),
-                value = stockData.fcfGrowth,
-                normalized = growthTierPercentLocal(stockData.fcfGrowth),
-                rationale = getString(R.string.health_score_rationale_fcf_growth)
-            ),
-            buildGrowthDetail(
-                label = getString(R.string.metric_average_fcf_growth),
-                value = stockData.averageFcfGrowth,
-                normalized = growthTierPercentLocal(stockData.averageFcfGrowth),
-                rationale = getString(R.string.health_score_rationale_avg_fcf_growth)
+                label = getString(R.string.metric_gross_profit_margin_growth),
+                value = stockData.grossMarginGrowth,
+                normalized = growthTierPercentLocal(stockData.grossMarginGrowth),
+                rationale = getString(R.string.health_score_rationale_gross_profit_margin_growth)
             )
         )
 
@@ -454,7 +526,7 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
 
     private fun formatPiotroskiOutcome(value: Double?): String {
         return when {
-            value == null -> getString(R.string.not_available)
+            value == null -> getString(R.string.health_score_test_fail_missing_data)
             value >= 0.5 -> getString(R.string.health_score_test_pass)
             else -> getString(R.string.health_score_test_fail)
         }
@@ -469,10 +541,10 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         return when (metric) {
             "piotroski_positive_roa" -> getString(R.string.metric_piotroski_positive_roa)
             "piotroski_positive_cfo" -> getString(R.string.metric_piotroski_positive_cfo)
-            "piotroski_delta_roa_positive" -> getString(R.string.metric_piotroski_delta_roa_positive)
+            "piotroski_operating_income_sign_matches_net_income" -> getString(R.string.metric_piotroski_operating_income_sign_matches_net_income)
             "piotroski_accrual_quality" -> getString(R.string.metric_piotroski_accrual_quality)
-            "piotroski_leverage_improved" -> getString(R.string.metric_piotroski_leverage_improved)
-            "piotroski_current_ratio_improved" -> getString(R.string.metric_piotroski_current_ratio_improved)
+            "piotroski_ocf_to_net_income_gt_one" -> getString(R.string.metric_piotroski_ocf_to_net_income_gt_one)
+            "piotroski_non_operating_income_share_lt_50pct" -> getString(R.string.metric_piotroski_non_operating_income_share_lt_50pct)
             "piotroski_no_dilution" -> getString(R.string.metric_piotroski_no_dilution)
             "piotroski_margin_improved" -> getString(R.string.metric_piotroski_margin_improved)
             "piotroski_asset_turnover_improved" -> getString(R.string.metric_piotroski_asset_turnover_improved)
@@ -507,10 +579,10 @@ class HealthScoreDetailsActivity : AppCompatActivity() {
         return when (metric) {
             "piotroski_positive_roa" -> getString(R.string.health_score_rationale_piotroski_positive_roa)
             "piotroski_positive_cfo" -> getString(R.string.health_score_rationale_piotroski_positive_cfo)
-            "piotroski_delta_roa_positive" -> getString(R.string.health_score_rationale_piotroski_delta_roa_positive)
+            "piotroski_operating_income_sign_matches_net_income" -> getString(R.string.health_score_rationale_piotroski_operating_income_sign_matches_net_income)
             "piotroski_accrual_quality" -> getString(R.string.health_score_rationale_piotroski_accrual_quality)
-            "piotroski_leverage_improved" -> getString(R.string.health_score_rationale_piotroski_leverage_improved)
-            "piotroski_current_ratio_improved" -> getString(R.string.health_score_rationale_piotroski_current_ratio_improved)
+            "piotroski_ocf_to_net_income_gt_one" -> getString(R.string.health_score_rationale_piotroski_ocf_to_net_income_gt_one)
+            "piotroski_non_operating_income_share_lt_50pct" -> getString(R.string.health_score_rationale_piotroski_non_operating_income_share_lt_50pct)
             "piotroski_no_dilution" -> getString(R.string.health_score_rationale_piotroski_no_dilution)
             "piotroski_margin_improved" -> getString(R.string.health_score_rationale_piotroski_margin_improved)
             "piotroski_asset_turnover_improved" -> getString(R.string.health_score_rationale_piotroski_asset_turnover_improved)

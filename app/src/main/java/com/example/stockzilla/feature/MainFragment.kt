@@ -1,5 +1,6 @@
 package com.example.stockzilla.feature
 
+import android.app.Activity
 import android.content.Intent
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -7,6 +8,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.net.toUri
 import androidx.core.view.isVisible
 import androidx.core.widget.addTextChangedListener
@@ -46,6 +48,14 @@ class MainFragment : Fragment() {
     private var latestStockData: StockData? = null
     private var latestHealthScore: HealthScore? = null
     private var isLoadingStock: Boolean = false
+
+    private val fullAnalysisLauncher =
+        registerForActivityResult(ActivityResultContracts.StartActivityForResult()) { result ->
+            if (result.resultCode != Activity.RESULT_OK) return@registerForActivityResult
+            val updated = result.data?.getSerializableExtra(FullAnalysisActivity.EXTRA_STOCK_DATA) as? StockData
+                ?: return@registerForActivityResult
+            viewModel.applyStockDataFromFullAnalysis(updated)
+        }
 
     private val lastRefreshedFormatter: DateFormat =
         DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
@@ -327,6 +337,7 @@ class MainFragment : Fragment() {
             tvRevenue.text = stockData.revenueDisplay?.let { formatLargeNumber(it) } ?: "N/A"
             tvNetIncomeLabel.text = getString(R.string.net_income) + ttmSuffix
             tvNetIncome.text = stockData.netIncomeDisplay?.let { formatLargeNumber(it) } ?: "N/A"
+            tvFreeCashFlowLabel.text = getString(R.string.free_cash_flow) + ttmSuffix
             tvFreeCashFlow.text = stockData.freeCashFlowDisplay?.let { formatLargeNumber(it) } ?: getString(
                 R.string.placeholder_dash)
             tvRevenueGrowth.text = stockData.revenueGrowth?.let { "%.1f%%".format(it * 100) } ?: getString(
@@ -397,7 +408,7 @@ class MainFragment : Fragment() {
     }
 
     private fun openFullAnalysisScreen(stockData: StockData) {
-        startActivity(Intent(requireContext(), FullAnalysisActivity::class.java).apply {
+        fullAnalysisLauncher.launch(Intent(requireContext(), FullAnalysisActivity::class.java).apply {
             putExtra(FullAnalysisActivity.EXTRA_STOCK_DATA, stockData)
         })
     }

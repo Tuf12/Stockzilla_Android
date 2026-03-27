@@ -40,20 +40,20 @@ The assistant is displayed as **Eidos** throughout the app — in the chat inter
 ## Capabilities
 
 - Holds free-flowing research conversations about individual stocks, sectors, markets, and investing
-- Writes company descriptions in the About section for any stock
-- Suggests and updates Industry Peer groups based on actual business model similarity
-- Maintains a Memory Cache — saves important notes about stocks, groups, and the user across all conversations
-- Analyzes and adds stocks to the database that aren't there yet, when needed during peer grouping
-- Reads the user's watchlist, favorites, and portfolio holdings for context during conversations
+- **Planned:** writes company descriptions into `StockProfileEntity` (table `stock_profiles`) when the About pipeline is wired to stock load / UI — the entity and DAO exist in `RoomDatabase.kt`, but nothing in the analyze flow persists About text yet
+- Suggests and updates Industry Peer groups based on actual business model similarity (when those tools/flows are used)
+- Maintains a Memory Cache — saves important notes about stocks, groups, and the user across all conversations (`ai_memory_cache` / `AiMemoryCacheEntity`)
+- Analyzes and adds stocks to the database that aren't there yet via **`get_stock_data(fetch_if_missing: true)`** (same pipeline as Analyze Stock)
+- Reads the user's watchlist, favorites, and portfolio holdings via **tools** (`get_portfolio_overview`, `get_watchlist`, `get_favorites`, `list_analyzed_stocks`) — not only embedded in the base context packet
 
 ## What Eidos Writes To
 
 | What | Where |
 |---|---|
-| Company descriptions | `StockProfileEntity` |
-| Industry peer groups | `IndustryPeerRepository` |
-| Memory Cache notes | `AiMemoryCache` |
-| Conversation history | `AiConversationEntity` / `AiMessageEntity` |
+| Company descriptions (target) | `stock_profiles` / `StockProfileEntity` — schema ready; **no production write path from Eidos or stock load yet** |
+| Industry peer groups | `IndustryPeerRepository` → `stock_industry_peers` |
+| Memory Cache notes | `ai_memory_cache` / `AiMemoryCacheEntity` |
+| Conversation history | `ai_conversations` / `ai_messages` |
 
 When Eidos needs data for a stock that is not yet in the database, it calls the **get_stock_data** tool with `fetch_if_missing: true`. The app then runs the same search/analyze pipeline as the Analyze Stock button (EDGAR + Finnhub fetch, then app writes to DB). Eidos has no direct write access to financial tables — it only triggers that pipeline.
 
@@ -83,7 +83,7 @@ Every AI model connected to the app shares the same Memory Cache. If a different
 
 **User-level** — notes about the user's investment preferences and style. Loaded in every conversation. Examples: focus on small and mid cap stocks, preference for FCF quality, aversion to highly leveraged balance sheets.
 
-### AiMemoryCache Schema
+### Memory cache schema (`ai_memory_cache`)
 
 | Field | Type |
 |---|---|
@@ -101,7 +101,7 @@ Every AI model connected to the app shares the same Memory Cache. If a different
 Eidos does **not** hack around with hidden tags or scraped markers in chat text. Instead, it uses a single explicit tool inside the app:
 
 - **Tool name**: `write_memory_note`
-- **Where it writes**: directly into the `ai_memory_cache` Room table shown above
+- **Where it writes**: directly into the `ai_memory_cache` table (`AiMemoryCacheEntity`)
 
 **Tool arguments (conceptual schema):**
 
@@ -148,7 +148,7 @@ At runtime, the app:
 
 ## Eidos Tools
 
-Eidos has several tools exposed via the Grok API. The app executes them and returns results; Eidos never writes to the database directly (except by triggering the app’s own pipelines).
+Eidos has several tools exposed via the Grok API. The app executes them and returns results. Writes go through app-defined tools only (e.g. Memory Cache, `symbol_tag_overrides`, or pipelines such as EDGAR refresh triggered by `get_stock_data`).
 
 ### write_memory_note
 
@@ -169,7 +169,18 @@ Returns full stock context from the app database (raw facts, derived metrics, sc
 | symbol | string | Yes | Stock ticker (e.g. AAPL, MSFT) |
 | fetch_if_missing | boolean | No | Default **true**. If the symbol is not in the database and this is true, the **app** runs the same search/analyze pipeline as the Analyze Stock button (EDGAR + Finnhub fetch, then app writes to DB). Eidos does not write financial data — it only triggers that pipeline. The tool then returns the new data. |
 
-**Context behavior:** For the **current conversation’s stock** (when in a stock-specific chat), the initial context packet already includes that one stock’s full data. For **other symbols** or in **General chat**, Eidos calls **get_stock_data** to load data on demand. Calling get_stock_data does not change the selected conversation or switch the UI to another stock’s chat.
+**Context behavior:** For the **current conversation’s stock** (when in a stock-specific chat), the initial context packet already includes that one stock’s full data. For **other symbols** or in **General chat**, Eidos calls **get_stock_data** to fetch data on demand. Calling get_stock_data does not change the selected conversation or switch the UI to another stock’s chat.
+
+### set_symbol_tag_override
+
+Persists a **per-symbol XBRL tag mapping** when standard `EdgarConcepts` lists miss a metric (evolving tagging system). The app upserts `symbol_tag_overrides` and then runs **`getStockData(..., forceFromEdgar = true)`** plus the usual save/score pipeline. Invoked from the Full Analysis **Find tag (Eidos)** bootstrap or when the user asks Eidos to fix a missing EDGAR metric.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| symbol | string | Yes | Ticker |
+| metricKey | string | Yes | One of `EdgarMetricKey` enum names (e.g. `REVENUE`, `NET_INCOME`) |
+| taxonomy | string | Yes | `us-gaap`, `ifrs-full`, or `dei` (SEC companyfacts `facts` keys) |
+| tag | string | Yes | Local XBRL concept name in that taxonomy |
 
 ### get_portfolio_overview
 
@@ -253,13 +264,13 @@ Portfolio, watchlist, favorites, and the list of all analyzed stocks are **not**
 
 ---
 
-## About the Business
+## About the Business (target behavior)
 
-On every stock load the app checks whether a company description exists for that ticker. If the field is empty and the user has not manually edited it, Eidos automatically generates one in the background and writes it to `StockProfileEntity`. This happens without the user having to do anything.
+**Current code:** `StockProfileEntity` / `stock_profiles` and `StockProfileDao` are defined in `RoomDatabase.kt`, but **no screen or `StockViewModel` path yet loads or saves About text**, and Eidos does **not** auto-generate descriptions on analyze.
 
-Once the user manually edits the About field, `editedByUser` is set to true and Eidos will not overwrite it on future loads. The user is always in control of what stays in that field.
+**Intended behavior (when implemented):** On stock load, if About is empty and `editedByUser` is false, fire a background Eidos call and upsert `StockProfileEntity`. If the user edits About in the UI, set `editedByUser = true` so Eidos does not overwrite.
 
-### StockProfileEntity Schema
+### StockProfileEntity schema (Room)
 
 | Field | Type |
 |---|---|
@@ -274,11 +285,9 @@ Once the user manually edits the About field, `editedByUser` is set to true and 
 
 ## Industry Peer Grouping
 
-The current grouping system uses sector and SIC labels which are too broad and mix market cap sizes. Eidos fixes this by grouping stocks based on what they actually do and enforcing market cap tier as a hard boundary.
+**UI today:** `IndustryStocksActivity` offers discover vs “My group” flows, Finnhub/EDGAR-backed lists, and manual add (`AddPeerActivity`). The options menu can open **Eidos** for general chat (same as other screens) — there is **not** yet a dedicated “Ask Eidos to propose peers” button wired to a grouping tool flow as described below.
 
-When the user taps the "Ask Eidos" button in the Industry Peers section, Eidos reviews the current stock's About text, financial profile, and market cap tier alongside every stock already in the database. It proposes a peer list with a brief reason for each inclusion. The user reviews the proposal and approves or rejects each stock individually. Those decisions are saved to the Memory Cache as `PEER_RATIONALE` and `PEER_REJECTION` notes so Eidos learns the user's grouping preferences over time.
-
-If Eidos identifies a strong peer candidate that isn't in the database yet it calls **get_stock_data(symbol, fetch_if_missing: true)** for that ticker so the stock is added and its data is available. Only stocks that successfully resolve through EDGAR get added. Failed or invalid tickers are skipped silently.
+**Target:** Eidos reviews About text (once populated), financial profile, and market cap tier against symbols in `edgar_raw_facts`, proposes peers with rationale, and the user approves/rejects; decisions surface as Memory Cache notes (`PEER_RATIONALE`, `PEER_REJECTION`). Missing tickers use **`get_stock_data(..., fetch_if_missing: true)`** so EDGAR-backed rows exist before saving peers.
 
 ---
 
@@ -288,3 +297,14 @@ If Eidos identifies a strong peer candidate that isn't in the database yet it ca
 - Key: User-entered in app settings via `ApiKeyManager` — never hardcoded
 - OkHttp timeouts: connect 30s / write 30s / read 120s — required because reasoning models hold the full response until thinking is complete
 - Context JSON is appended inline into the single system message — never sent as a second system message, which causes models to narrow their responses
+
+## Related source files
+
+| Area | Path under `app/src/main/java/com/example/stockzilla/` |
+|------|--------------------------------------------------------|
+| Assistant UI | `ai/AiAssistantActivity.kt`, `ai/AiMessageAdapter.kt`, `ai/AiConversationAdapter.kt`, `ai/AiMemoryCacheActivity.kt`, `ai/AiMemoryCacheViewModel.kt`, `ai/AiMemoryCacheAdapter.kt` |
+| Model / tools | `ai/AiAssistantViewModel.kt` |
+| Grok HTTP | `data/GrokApiClient.kt` |
+| Persistence | `data/RoomDatabase.kt` (`ai_*` entities, `stock_profiles`, `stock_industry_peers`) |
+| Peer persistence API | `data/IndustryPeerRepository.kt` |
+| SEC discovery tools | `sec/SecFilingDiscoveryCard.kt` (UI), `data/SecEdgarService.kt` (fetch), `data/NewsRepository.kt` (metadata + summaries) |

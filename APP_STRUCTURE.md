@@ -2,16 +2,24 @@
 
 ## Overview
 
-Stockzilla's UI is built around a single stock lookup flow. The user searches for a ticker, sees a summary card with key metrics and scores, then can drill down into three detail views.
+The launcher activity is **`com.example.stockzilla.feature.MainActivity`**. It hosts a **ViewPager2** with three pages (see `MainPagerAdapter`):
+
+| Page | Fragment | Role |
+|------|-----------|------|
+| 0 | `PersonalProfileFragment` | User profile, portfolio-related entry points |
+| 1 | `MainFragment` | **Primary stock lookup** — search, summary card, favorites list, recent SEC news list |
+| 2 | `ViewedStocksFragment` | History of viewed tickers |
+
+The app opens on the center tab (stock lookup).
 
 ---
 
-## Main Screen: Stock Lookup (`MainActivity`)
+## Main Screen: Stock Lookup (`MainFragment` inside `MainActivity`)
 
 ### Search
 
 - Text input for ticker symbol (e.g., AAPL, MSFT)
-- Search triggers `viewModel.searchStock(ticker)` → fetches data from APIs → runs `FinancialHealthAnalyzer.calculateCompositeScore()`
+- Search runs `StockViewModel.searchStock(ticker)` (also exposed as `analyzeStock(ticker)`, which delegates to the same path) → resolves symbol → loads EDGAR + price → scoring via `FinancialHealthAnalyzer`
 
 ### Stock Summary Card
 
@@ -116,74 +124,91 @@ Based on normalized percentage:
 
 ## Full Analysis Page
 
-Accessed via the **"Full Analysis"** button.
+Accessed via the **"Full Analysis"** button (`FullAnalysisActivity`).
 
-Deep dive view showing:
-- All ratios and scores with historical context
-- Charts showing PE/PS trends vs industry averages over time
-- Growth trend charts (revenue, net income, FCF across quarters)
-- Narrative assessment of the stock's value position
+**Authoritative spec:** [FULL_ANALYSIS.md](FULL_ANALYSIS.md). **Formulas & planned metric rows:** [CALCULATIONS.md](CALCULATIONS.md).
 
----
+At a glance:
+- **Raw Financial Facts** (EDGAR) with **Find tag (Eidos)** when a metric is missing
+- **Standard Derived Metrics** (Domain B style ratios/margins)
+- **Multi-Year Financial History** with **Yearly / Quarterly** toggle, **TTM** column, quarterly SEC filing link when applicable
+- Business profile / about text; external “stock analysis” link
 
-## Similar Stocks Page
-
-Accessed via the **"Similar Stocks"** button.
-
-Shows stocks in the same industry/sector group:
-- Each stock displays: ticker, name, PE, PS, growth rates, composite health score
-- Sorted by valuation signal (most undervalued first)
-- Helps user discover other opportunities in the same space
-
-**Current implementation**: Based on sector/industry string matching
-**Future**: Dynamic peer discovery using SIC codes + market cap tiers from EDGAR
+*(PE/PS trend charts and narrative “value position” copy may evolve; the spec file tracks what the implementation actually binds to.)*
 
 ---
 
-## Favorites System
+## Industry peers (`IndustryStocksActivity`)
 
-- **"Add to Favorites"** / **"Update Favorite"** button on main card
-- Stores stock data + health score in local Room database
-- Favorites screen shows saved stocks with last-known scores
-- Button text changes based on whether stock is already favorited
+Accessed from the main flow as **industry / similar stocks** (peer discovery and “My group”).
+
+- Discover mode: candidates from sector/industry + Finnhub/EDGAR-backed lists (`StockRepository.getIndustryPeers`)
+- My group: persisted peers in `stock_industry_peers` via `IndustryPeerRepository`
+- Menu can open **Eidos** (`AiAssistantActivity`) without rebinding the current chat symbol
 
 ---
 
-## Navigation Map
+## Favorites
+
+- **Add to Favorites** on the summary card persists to Room table `favorites` (`FavoriteEntity`)
+- Favorites appear in a **RecyclerView on `MainFragment`**, not a separate activity
+
+---
+
+## SEC filing news (on `MainFragment`)
+
+- Recent filing summaries in a list; **See all** opens `AllNewsBottomSheet`
+- Row tap opens `NewsDetailBottomSheet`
+- **Analyze** (when present) runs `StockViewModel.analyzeRecentNews()` — Stage-2 fetch + AI summary pipeline (see `SEC_NEWS_SPEC.md`)
+
+---
+
+## Other activities (see `AndroidManifest.xml`)
+
+| Activity | Package / path |
+|----------|----------------|
+| `HealthScoreDetailsActivity` | `feature` |
+| `FullAnalysisActivity` | `feature` |
+| `IndustryStocksActivity` | `feature` |
+| `AddPeerActivity` | `feature` |
+| `PortfolioChartActivity` | `feature` |
+| `DiagnosticLogActivity` | `feature` |
+| `AiAssistantActivity` | `ai` |
+| `AiMemoryCacheActivity` | `ai` |
+
+Toolbar actions on `MainActivity` include Finnhub API key setup, Eidos entry points, and diagnostic log.
+
+---
+
+## Navigation Map (simplified)
 
 ```
-Main Screen (Stock Lookup)
-    │
-    ├─→ [View Health Score Details] → HealthScoreDetailsActivity
-    │       └─ Core Health breakdown
-    │       └─ Growth & Forecast breakdown
-    │       └─ Resilience breakdown
-    │
-    ├─→ [Full Analysis] → Stock Analysis Page
-    │       └─ Historical charts
-    │       └─ Detailed narrative
-    │
-    ├─→ [Similar Stocks] → Industry Comparison Page
-    │       └─ Peer list with scores
-    │
-    ├─→ [Add to Favorites] → Saves to Room DB
-    │
-    └─→ [Favorites tab] → FavoritesActivity
-            └─ Saved stocks with scores
+MainActivity (ViewPager2)
+    ├─ PersonalProfileFragment
+    ├─ MainFragment (search, card, favorites, news)
+    └─ ViewedStocksFragment
+
+From MainFragment / card actions:
+    ├─ HealthScoreDetailsActivity
+    ├─ FullAnalysisActivity
+    ├─ IndustryStocksActivity → AddPeerActivity
+    ├─ AiAssistantActivity (Eidos)
+    ├─ PortfolioChartActivity
+    └─ DiagnosticLogActivity
 ```
 
 ---
 
-## Key Architecture Components
+## Key source files (Kotlin)
 
-| Component | Role |
-|---|---|
-| `MainActivity` | Stock search, summary card display, navigation |
-| `StockViewModel` | Search logic, API calls, data management |
-| `FinancialHealthAnalyzer` | All scoring calculations |
-| `BenchmarkData` | Industry/sector benchmarks, fair value, display metrics |
-| `HealthScoreDetailsActivity` | Detailed score breakdown UI |
-| `StockData` (data class) | Core data model holding all financial fields |
-| `HealthScore` (data class) | Composite + sub-scores + breakdown list |
-| Room Database | Local caching of favorites and EDGAR data |
-| Retrofit | API integration (Finnhub, EDGAR) |
+| Type | Path under `app/src/main/java/com/example/stockzilla/` |
+|------|--------------------------------------------------------|
+| Main shell | `feature/MainActivity.kt`, `feature/MainFragment.kt`, `feature/MainPagerAdapter.kt` |
+| Stock logic | `stock/StockViewModel.kt`, `stock/StockDetailsDialog.kt`, `stock/QuoteDataSource.kt` |
+| Data / EDGAR | `data/SecEdgarService.kt`, `data/StockApiService.kt`, `data/StockCacheRepository.kt`, `data/RoomDatabase.kt`, `data/NewsRepository.kt` |
+| Scoring | `scoring/FinancialHealthAnalyzer.kt` (`StockData`, `HealthScore`), `scoring/BenchmarkData.kt`, `scoring/HealthScoreDetail.kt` |
+| News UI | `news/NewsAdapter.kt`, `news/AllNewsBottomSheet.kt`, `news/NewsDetailBottomSheet.kt` |
+| SEC news analysis | `sec/EightKNewsAnalyzer.kt`, `sec/EightKModels.kt`, `sec/SecXmlExtraction.kt` |
+| AI | `ai/AiAssistantActivity.kt`, `ai/AiAssistantViewModel.kt`, `data/GrokApiClient.kt` |
+| Favorites list UI | `FavoritesAdapter.kt` (package root) |
+| HTTP | Retrofit services in `data/` (e.g. `FinnhubApiService.kt`) |

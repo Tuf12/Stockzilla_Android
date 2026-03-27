@@ -59,4 +59,7 @@
     <!-- Support colors -->
     <color name="colorOnSurfaceVariant">#E0E0E0</color>
 
+    <!-- Diagnostic log: Eidos / evolving tag lines -->
+    <color name="eidosDiagnosticLog">#6A1B9A</color>
+
 </resources>

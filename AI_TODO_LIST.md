@@ -1,96 +1,84 @@
 # Eidos — Implementation Tracker
 
-Work through one item at a time. Reference STOCKZILLA_AI.md before starting each item.
+Work through one item at a time. Reference `STOCKZILLA_AI.md` before starting each item.
 
 ---
 
 ## BUILT ✅
 
-- AI Assistant screen with Navigation Drawer conversation sidebar
-- Conversation list — saved and persists across sessions
-- Per-conversation message history — persists across sessions
-- Grok API connected and responding
+- AI Assistant screen with navigation drawer conversation list (`AiAssistantActivity`, `AiConversationAdapter`)
+- Per-conversation message history — persists in `ai_conversations` / `ai_messages`
+- Grok API + tool-calling loop (`GrokApiClient`, `AiAssistantViewModel`)
 - BYOK API key management via `ApiKeyManager`
-- Editable About/description field — saves per stock to DB
 - OkHttp timeouts — connect 30s / write 30s / read 120s
-- System prompt — single combined message, general knowledge leads
-- **Memory Cache** — `AiMemoryCacheEntity` + DAO; `write_memory_note` tool exposed to Grok; tool-call loop (memory before or after reply); notes loaded into context (USER + STOCK); Memory screen to view and delete notes
+- System prompt — single combined message; context from `buildContextPacket()` + tools
+- **Memory Cache** — `AiMemoryCacheEntity` / `ai_memory_cache`; `write_memory_note` tool; USER + STOCK notes in context; **GROUP notes stubbed** (`groupNotes = emptyList()` in `buildContextPacket`); Memory Cache screen (`AiMemoryCacheActivity`)
+- **Portfolio / watchlist / favorites** — exposed as **`get_portfolio_overview`**, **`get_watchlist`**, **`get_favorites`** tools (not inlined into every context packet by design)
+- **`list_analyzed_stocks`** — symbols from `edgar_raw_facts`
+- **`get_stock_data`** — full join context + optional `fetch_if_missing` analyze pipeline
+- **Per-symbol + General conversations** — `AiAssistantViewModel` + `AiAssistantActivity.start(..., openMode)`; General conversation pinned / non-rename rules in UI
+- **SEC filing discovery (chat)** — `sec_search_filings` tool + discovery card UI; `saveAndAnalyzeFilings` persists metadata and runs analysis (`AiAssistantViewModel`)
 
 ---
 
 ## TO BUILD 🔲
 
-### 1. AI Auto-Writes the About Section
-Eidos generates a company description when the About field is empty.
+### 1. AI auto-writes the About section
 
-- [ ] Confirm `StockProfileEntity` exists in Room — create if not
+`StockProfileEntity` / `stock_profiles` exists in `RoomDatabase.kt`, but **no** stock-load or UI path reads/writes About yet.
+
+- [x] Confirm `StockProfileEntity` exists in Room
 - [ ] On stock load: if About is empty and `editedByUser` is false, fire background AI call
-- [ ] Write result into existing editable About field
-- [ ] If API unavailable: leave empty, show "Generate with Eidos" button as fallback
-- [ ] `editedByUser` = true when user edits manually — Eidos never overwrites this
+- [ ] Write result into an About field on the stock detail / profile UI
+- [ ] If API unavailable: leave empty or show “Generate with Eidos” fallback
+- [ ] Set `editedByUser = true` when the user edits manually
 
 ---
 
-### 2. Watchlist / Favorites / Portfolio into Context
-Eidos knows what the user owns and watches.
+### 2. (Optional) Inline portfolio snapshot in context
 
-- [ ] Identify DAOs for watchlist, favorites, and portfolio
-- [ ] Add compact list to `buildContextPacket()` in `AiAssistantViewModel`
-- [ ] Format: symbol + shares if portfolio, symbol only if watchlist/favorites
-- [ ] Only include when a stock is in context — keep general conversations lean
+**Done** via tools. If product wants **zero-tool** access for common cases, add a compact holdings block to `buildContextPacket()` when `symbol != null` (keep General chat lean).
 
 ---
 
-### 3. Per-Stock Conversations
-One dedicated conversation per ticker, auto-created or reopened from the stock page.
+### 3. (Done) Per-stock conversations
 
-- [ ] On launch with a symbol: query for existing conversation with that symbol
-- [ ] If found: open it — if not: auto-create named after the ticker
-- [ ] One persistent General conversation — symbol = null, title = "General"
-- [ ] Drawer order: stock conversations by recent activity, General pinned at bottom
+Implemented — reopen item only if regression testing fails.
 
 ---
 
-### 4. Memory Cache Core is done; follow-ups once grouping system is fully implemented.
-Eidos saves important notes per stock, group, and user — not summaries, just what matters.
+### 4. Group-scope memory
 
-- [ ] Wire GROUP-scope notes when peer groups are available (currently stubbed in context)
-- [ ] Optional: seed a few default USER notes on first run; optional: edit UI for notes (view/delete exist)
-
----
-
-### 5. Suggested Question Chips
-Tappable prompts shown at the start of a stock conversation.
-
-- [ ] Horizontal scrollable chip row above the message input
-- [ ] Show when conversation has fewer than 3 messages
-- [ ] Default chips: "What does this company do?", "What metrics stand out?", "Biggest risks?", "How does it compare to peers?", "Anything concerning?"
-- [ ] Tap sends the message automatically
-- [ ] Hide once conversation has enough history
+- [ ] Wire GROUP-scope notes when stable peer **group IDs** exist in DB/context (replace stub in `buildContextPacket`)
+- [ ] Optional: seed default USER notes; optional: edit UI for notes (view/delete exist)
 
 ---
 
-### 6. AI Peer Grouping
-Eidos proposes better peer matches using business model and market cap similarity.
+### 5. Suggested question chips
 
-- [ ] Add "Ask Eidos" button to Industry Peers section
-- [ ] Build grouping prompt: stock context + existing peers + DB stock list + market cap tier
-- [ ] Eidos returns proposed list with brief rationale per ticker
-- [ ] Show proposal UI: tickers + rationale, approve/reject per stock
-- [ ] On approve: write peers via `IndustryPeerRepository`
-- [ ] On approve/reject: write `PEER_RATIONALE` or `PEER_REJECTION` note to cache
-- [ ] Unknown tickers: trigger `analyzeStock()` → add only if EDGAR resolves successfully
-- [ ] Failed tickers: skip silently, log internally
+- [ ] Horizontal chip row above input when message count is under 3
+- [ ] Default prompts; tap sends message; hide when thread is long enough
 
 ---
 
-### 7. Ticker Search Inside Eidos
-Search a stock directly from the AI Assistant screen.
+### 6. AI peer grouping (dedicated UX)
 
-- [ ] Add search bar to AI Assistant screen
-- [ ] If stock in DB: open or create its conversation
-- [ ] If not in DB: trigger `analyzeStock()`, open conversation once complete
-- [ ] Show loading state while analysis runs
+Industry peers screen exists (`IndustryStocksActivity`) with discover / my group — **no** dedicated “Eidos proposes peers” flow yet.
+
+- [ ] Entry point (e.g. “Ask Eidos” on industry peers screen)
+- [ ] Grouping prompt: context + DB symbol list + cap tier
+- [ ] Proposal UI with approve/reject per ticker
+- [ ] On approve: `IndustryPeerRepository.replacePeers` / `addPeer`
+- [ ] On decision: memory notes `PEER_RATIONALE` / `PEER_REJECTION`
+- [ ] Unknown tickers: `get_stock_data(..., fetch_if_missing: true)` or `StockViewModel.analyzeStock`
+
+---
+
+### 7. Ticker search inside Eidos
+
+- [ ] Search bar on `AiAssistantActivity`
+- [ ] Resolve symbol → open or create conversation; if missing from DB, run analyze then open
+- [ ] Loading state
 
 ---
 

@@ -4,6 +4,7 @@ import android.app.Dialog
 import android.os.Bundle
 import androidx.fragment.app.DialogFragment
 import androidx.fragment.app.FragmentManager
+import com.example.stockzilla.R
 import com.example.stockzilla.feature.MainActivity
 import com.example.stockzilla.scoring.StockData
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
@@ -56,7 +57,7 @@ class StockDetailsDialog : DialogFragment() {
                 appendLine("• Free Cash Flow: ${stock.freeCashFlow?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Operating Cash Flow: ${stock.netCashProvidedByOperatingActivities?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Price/Book: ${stock.pbRatio?.let { "%.2f".format(it) } ?: "N/A"}")
-                appendLine("• EBITDA: ${stock.ebitda?.let { formatLargeNumber(it) } ?: "N/A"}")
+                appendLine("• EBITDA: ${stock.ebitdaDisplay?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Outstanding Shares: ${stock.outstandingShares?.let { formatShareCount(it) } ?: "N/A"}")
                 appendLine("• Total Assets: ${stock.totalAssets?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Total Liabilities: ${stock.totalLiabilities?.let { formatLargeNumber(it) } ?: "N/A"}")
@@ -64,6 +65,7 @@ class StockDetailsDialog : DialogFragment() {
                 appendLine("• Current Liabilities: ${stock.totalCurrentLiabilities?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Working Capital: ${stock.workingCapital?.let { formatLargeNumber(it) } ?: "N/A"}")
                 appendLine("• Retained Earnings: ${stock.retainedEarnings?.let { formatLargeNumber(it) } ?: "N/A"}")
+                append(getString(R.string.stock_details_note_ebitda_fcf))
             } ?: append("No stock data available")
         }
 

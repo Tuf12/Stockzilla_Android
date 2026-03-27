@@ -2,8 +2,8 @@
 
 ## Overview
 
-Stockzilla uses a hybrid data architecture with two sources:
-- **Finnhub** — Real-time market price data only and buisness profile summary
+Stockzilla uses a hybrid data architecture with two primary sources:
+- **Finnhub** — Live **quote** data plus **company profile2** and **symbol search** (and optional **stock/peers** for discovery UX). Fundamentals for ratios and scoring still come from EDGAR, not Finnhub financial statements.
 - **SEC EDGAR** — All fundamental financial data from official SEC filings
 
 This separation minimizes API costs (EDGAR is free) while still providing live pricing.
@@ -17,13 +17,16 @@ Scoring outputs are not a data source and must not be treated as financial facts
 
 ---
 
-## Finnhub (Live Data)
+## Finnhub (Live & discovery)
 
-Finnhub provides **only the current stock price**. All other values are either pulled from EDGAR or calculated mathematically.
+Finnhub is **not** used for income-statement or balance-sheet fundamentals. Those come from EDGAR. Finnhub supplies price, light company metadata, search, and optional peer tickers.
 
 | Data Point | Endpoint | Notes |
 |---|---|---|
 | **Stock Price** | `/quote` | Current price, open, high, low, previous close |
+| **Company profile** | `/stock/profile2` | Name, industry label, market cap / shares (display & discovery only — EDGAR remains source of truth for filings-based fundamentals) |
+| **Symbol search** | `/search` | Broader ticker resolution / disambiguation |
+| **Peer tickers** | `/stock/peers` | Optional seed list for industry UI (not authoritative for fundamentals) |
 
 **API Details:**
 - Base URL: `https://finnhub.io/api/v1`
@@ -31,7 +34,7 @@ Finnhub provides **only the current stock price**. All other values are either p
 - Free tier rate limit: 60 calls/minute
 - Caching strategy: Cache prices for short periods (e.g., 1–5 minutes) to avoid hitting limits
 
-**Why only price?** Every other metric can be calculated more accurately from EDGAR fundamentals + live price. Pre-computed ratios from third-party APIs often use stale or differently-calculated figures.
+**Why EDGAR for fundamentals?** Statement facts and histories are authoritative from filings. Third-party summaries often lag or use different definitions. Price (and optional Finnhub metadata) layers on top for market ratios and UX.
 
 ---
 
@@ -45,7 +48,7 @@ EDGAR provides all financial statement data from official SEC filings (10-K annu
 ```
 https://data.sec.gov/api/xbrl/companyfacts/CIK{cik_number_zero_padded}.json
 ```
-Returns all XBRL-tagged financial data for a company across all filings.
+Returns all XBRL-tagged financial data for a company across all filings. Quarterly facts persisted in-app may store an **`accessionNumber`** from companyfacts when present; **symbol tag overrides** support an optional **`scopeKey`** (`FYyyyy:Qn`) for quarter-specific XBRL mappings, with **`""`** meaning all periods. For **Full Analysis** filing links, the app may match **submissions** `filings.recent` (form, accession, **reportDate**) to the fiscal column when no fact-level accession exists.
 
 **Company Search:**
 ```
@@ -74,7 +77,7 @@ https://www.sec.gov/files/company_tickers.json
 | Net Income | `NetIncomeLoss`, `ProfitLoss` | PE ratio, net income growth, ROE |
 | Operating Income (EBIT) | `OperatingIncomeLoss` | Altman-Z, operating efficiency |
 | Gross Profit | `GrossProfit` | Gross margin calculations |
-| EBITDA | `EarningsBeforeInterestTaxesDepreciationAndAmortization` (rare — often must be calculated: Operating Income + Depreciation & Amortization) | EBITDA margin, core health score |
+| EBITDA (in app) | **Calculated:** Operating Income + Depreciation & Amortization (not read from a standalone EBITDA tag) | EBITDA margin, Altman-style ratios, core health score |
 | EPS | `EarningsPerShareBasic`, `EarningsPerShareDiluted` | Core health score |
 | Cost of Revenue | `CostOfRevenue`, `CostOfGoodsAndServicesSold` | Gross profit calculation if not directly available |
 
@@ -110,12 +113,21 @@ https://www.sec.gov/files/company_tickers.json
 
 ### XBRL Tag Mapping Notes
 
-Different companies may use slightly different XBRL tags for the same data. The app tries multiple tag variants in priority order (see `EdgarConcepts.REVENUE` in code). Revenue is resolved using **consolidated facts only** (no segment dimensions).
+Different companies file the same economic idea under different XBRL concept names. Stockzilla uses a **two-tier** resolver (see `EVOLVING_TAGGING_SYS.md`):
+
+1. **Bare standard tags** — short ordered lists in `EdgarConcepts` (`EdgarModels.kt`), tried under `us-gaap` then `ifrs-full` (and `dei` for EPS where applicable).
+2. **Per-symbol overrides** — Room table `symbol_tag_overrides` (`SymbolTagOverrideEntity`); applied only after standards miss. Overrides store `taxonomy` (`us-gaap`, `ifrs-full`, or `dei`) plus local `tag` and `metricKey` (`EdgarMetricKey`).
+
+`SecEdgarService` loads overrides when `StockRepository` fetches from EDGAR. Full Analysis shows **Find tag (Eidos)** on missing raw metrics; Eidos can call `set_symbol_tag_override` to persist a mapping and trigger a refresh.
+
+All resolution uses **consolidated facts only** (no segment dimensions).
 
 **Data-source priority (post-refactor):**
 
 - **Annual (10-K)**: The primary and authoritative source for all fundamentals. Stored in `revenue`, `netIncome`, `eps`, etc. in `StockData`. Used exclusively for YoY growth calculations.
-- **TTM (Trailing Twelve Months)**: Computed by summing exactly 4 standalone 10-Q quarters (duration 60–140 days each). Stored in `revenueTtm`, `netIncomeTtm`, `epsTtm`, etc. Used for PE/PS ratios, margins, and display values when available. If fewer than 4 standalone quarters exist, TTM is **not computed** — no partial-quarter annualization.
+- **TTM (Trailing Twelve Months)**: Computed only when the **latest reported fiscal quarter** and the **three immediately preceding fiscal quarters** (same `fy`/`fp` chain, e.g. …Q2→Q3→Q4→Q1) all have a suitable **quarterly** filing fact (10-Q / 10-Q/A / 6-K / 6-K/A), consolidated, with duration ~one quarter (60–140 days). **10-K / annual facts are not used** for TTM. Values are summed over those four periods. If any quarter in the chain is missing, TTM is **null** (no fallback to “any four quarter rows”). Stored in `revenueTtm`, `netIncomeTtm`, `epsTtm`, etc.
+- **EBITDA**: Stored as **operating income + depreciation and amortization** when both are available for that period (annual / TTM / history). No direct XBRL EBITDA tag is used.
+- **Free cash flow**: **Operating cash flow − |capex|** only when **both** inputs exist for that period (annual / TTM / history row). **Never** substitutes operating cash flow alone when capex is missing.
 - **Finnhub**: Used **only** for current stock price. No fundamentals (shares, marketCap, revenue, etc.) are sourced from Finnhub. When EDGAR lacks shares outstanding, price-dependent ratios (PE, PS, PB) are left as N/A rather than backfilled.
 - **Display logic**: The UI prefers TTM when available, falls back to annual 10-K, and labels each metric accordingly (`(TTM)` or `(Annual)`).
 
@@ -138,7 +150,7 @@ EDGAR data serves two purposes: **immediate display** AND **long-term accumulati
 **Refresh triggers:**
 - EDGAR fundamental data only changes when new filings are published (quarterly)
 - Check for new filings via `https://data.sec.gov/submissions/CIK{cik_number}.json`
-- Compare the most recent filing date against `lastFilingDate` stored in `analyzed_stocks`
+- Compare the most recent filing date against `lastFilingDate` stored in **`edgar_raw_facts`** (per symbol)
 - If a newer filing exists, pull fresh data from EDGAR and update the record
 - Favorited stocks get periodic background checks; other stocks refresh on next user access
 
@@ -147,7 +159,7 @@ EDGAR data serves two purposes: **immediate display** AND **long-term accumulati
 - On cache hit for fundamentals, price is still refreshed separately from Finnhub
 - Price-dependent ratios (PE, PS, market cap) are recalculated at display time using latest price + stored fundamentals
 
-See `DATABASE_ARCHITECTURE.md` for full schema details on the `analyzed_stocks`, `favorites`, and `stock_cache` tables.
+See `DATABASE_ARCHITECTURE.md` for schema details on `edgar_raw_facts`, `financial_derived_metrics`, `score_snapshots`, `favorites`, `stock_cache`, and related tables.
 
 ---
 

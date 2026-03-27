@@ -21,6 +21,7 @@ data class StockData(
     val debtToEquity: Double?,
     val freeCashFlow: Double?,
     val pbRatio: Double?,
+    /** Operating income plus depreciation and amortization when both exist (annual 10-K); see [ebitdaTtm]. */
     val ebitda: Double?,
     val costOfGoodsSold: Double? = null,
     val grossProfit: Double? = null,
@@ -37,6 +38,8 @@ data class StockData(
     val netIncomeGrowth: Double? = null,
     val fcfGrowth: Double? = null,
     val averageFcfGrowth: Double? = null,
+    val ocfGrowth: Double? = null,
+    val averageOcfGrowth: Double? = null,
     val totalCurrentAssets: Double? = null,
     val totalCurrentLiabilities: Double? = null,
     val totalAssetsHistory: List<Double?> = emptyList(),
@@ -55,15 +58,32 @@ data class StockData(
     val costOfGoodsSoldHistory: List<Double?> = emptyList(),
     val grossProfitHistory: List<Double?> = emptyList(),
     val operatingCashFlowHistory: List<Double?>? = null,
+    /** Annual 10-K capex (cash flow statement); TTM via [capexTtm]. */
+    val capex: Double? = null,
+    val capexTtm: Double? = null,
+    val capexHistory: List<Double?>? = null,
+    /** D&amp;A from income or cash flow tags; TTM via [depreciationAmortizationTtm]. */
+    val depreciationAmortization: Double? = null,
+    val depreciationAmortizationTtm: Double? = null,
+    val depreciationAmortizationHistory: List<Double?>? = null,
     val freeCashFlowHistory: List<Double?>? = null,
     val sharesOutstandingHistory: List<Double?>? = null,
+    /** Fiscal years aligned with other annual series (10-K); summed debt tags or TOTAL_DEBT override. */
+    val totalDebtHistory: List<Double?> = emptyList(),
     val revenueTtm: Double? = null,
     val netIncomeTtm: Double? = null,
     val epsTtm: Double? = null,
     val ebitdaTtm: Double? = null,
     val costOfGoodsSoldTtm: Double? = null,
     val freeCashFlowTtm: Double? = null,
-    val operatingCashFlowTtm: Double? = null
+    val operatingCashFlowTtm: Double? = null,
+    /** Latest balance-sheet total debt (summed standard tags or override). */
+    val totalDebt: Double? = null,
+    val cashAndEquivalents: Double? = null,
+    val accountsReceivable: Double? = null,
+    /** Same fact as EBIT ([OperatingIncomeLoss]); tag fix uses [com.example.stockzilla.sec.EdgarMetricKey.EBIT]. */
+    val operatingIncome: Double? = null,
+    val operatingIncomeTtm: Double? = null
 ): Serializable {
 
     /** TTM-preferred value for display and ratio calculations; falls back to annual 10-K. */
@@ -74,6 +94,9 @@ data class StockData(
     val costOfGoodsSoldDisplay: Double? get() = costOfGoodsSoldTtm ?: costOfGoodsSold
     val freeCashFlowDisplay: Double? get() = freeCashFlowTtm ?: freeCashFlow
     val operatingCashFlowDisplay: Double? get() = operatingCashFlowTtm ?: netCashProvidedByOperatingActivities
+    val capexDisplay: Double? get() = capexTtm ?: capex
+    val depreciationAmortizationDisplay: Double? get() = depreciationAmortizationTtm ?: depreciationAmortization
+    val operatingIncomeDisplay: Double? get() = operatingIncomeTtm ?: operatingIncome
     val grossProfitDisplay: Double?
         get() = when {
             revenueDisplay != null && costOfGoodsSoldDisplay != null -> revenueDisplay!! - costOfGoodsSoldDisplay!!
@@ -98,6 +121,8 @@ data class StockData(
         val netIncomeGrowth = computeLatestYoYGrowth(ni)
         val fcfGrowth = computeLatestYoYGrowth(freeCashFlowHistory.orEmpty())
         val averageFcfGrowth = computeAverageYoYGrowth(freeCashFlowHistory.orEmpty()) ?: fcfGrowth
+        val ocfGrowth = computeLatestYoYGrowth(operatingCashFlowHistory.orEmpty())
+        val averageOcfGrowth = computeAverageYoYGrowth(operatingCashFlowHistory.orEmpty()) ?: ocfGrowth
 
         val effectiveRevenue = revenueDisplay
         val effectiveFcf = freeCashFlowDisplay
@@ -139,6 +164,8 @@ data class StockData(
             netIncomeGrowth = netIncomeGrowth ?: this.netIncomeGrowth,
             fcfGrowth = fcfGrowth ?: this.fcfGrowth,
             averageFcfGrowth = averageFcfGrowth ?: this.averageFcfGrowth,
+            ocfGrowth = ocfGrowth ?: this.ocfGrowth,
+            averageOcfGrowth = averageOcfGrowth ?: this.averageOcfGrowth,
             freeCashFlowMargin = freeCashFlowMargin ?: this.freeCashFlowMargin,
             ebitdaMarginGrowth = ebitdaMarginGrowth ?: this.ebitdaMarginGrowth,
             grossMarginGrowth = grossMarginGrowth ?: this.grossMarginGrowth
@@ -209,7 +236,13 @@ object ScoringInputFactory {
             "current_assets" to stockData.totalCurrentAssets,
             "current_liabilities" to stockData.totalCurrentLiabilities,
             "retained_earnings" to stockData.retainedEarnings,
-            "outstanding_shares" to stockData.outstandingShares
+            "outstanding_shares" to stockData.outstandingShares,
+            "total_debt" to stockData.totalDebt,
+            "cash_and_equivalents" to stockData.cashAndEquivalents,
+            "accounts_receivable" to stockData.accountsReceivable,
+            "operating_income" to stockData.operatingIncomeDisplay,
+            "capex" to stockData.capexDisplay,
+            "depreciation_amortization" to stockData.depreciationAmortizationDisplay
         )
         val derived = linkedMapOf(
             "pe_ratio" to stockData.peRatio,
@@ -246,9 +279,11 @@ class FinancialHealthAnalyzer {
         val growthScoreRaw = calculateGrowthScore(stockData)
         val resilienceScoreRaw = calculateResilienceScore(stockData)
 
-        val coreHealthScore = coreHealthScoreRaw ?: DEFAULT_NEUTRAL_SCORE
-        val growthScore = growthScoreRaw ?: DEFAULT_NEUTRAL_SCORE
-        val resilienceLevel = resilienceScoreRaw ?: DEFAULT_RESILIENCE_NEUTRAL_LEVEL
+        // Do not invent neutral scores when data is missing.
+        // If a pillar cannot be scored, it contributes 0 and the UI should explain why.
+        val coreHealthScore = coreHealthScoreRaw ?: 0.0
+        val growthScore = growthScoreRaw ?: 0.0
+        val resilienceLevel = resilienceScoreRaw ?: 0.0
         val resilienceScore = ((resilienceLevel / RESILIENCE_LEVEL_MAX)
             .coerceIn(0.0, 1.0)) * 10.0
 
@@ -267,18 +302,24 @@ class FinancialHealthAnalyzer {
 
     private fun computeCoreHealthScore(stockData: StockData): Pair<Double?, List<MetricScore>> {
         val tests = evaluatePiotroskiTests(stockData)
-        if (tests.any { it.pass == null }) {
-            return null to emptyList()
-        }
 
         val testSharePercent = 100.0 / tests.size.toDouble()
         val contributionPoints = CORE_HEALTH_SCORE_MAX / tests.size.toDouble()
         val breakdown = tests.map { test ->
             val passed = test.pass == true
+            val missing = test.pass == null
             MetricScore(
                 metric = test.metric,
-                value = if (passed) 1.0 else 0.0,
-                normalizedPercent = if (passed) 100.0 else 0.0,
+                value = when {
+                    missing -> null
+                    passed -> 1.0
+                    else -> 0.0
+                },
+                normalizedPercent = when {
+                    missing -> 0.0
+                    passed -> 100.0
+                    else -> 0.0
+                },
                 weight = testSharePercent / 100.0,
                 score = if (passed) contributionPoints else 0.0,
                 weightPercent = testSharePercent,
@@ -300,17 +341,12 @@ class FinancialHealthAnalyzer {
         val currentRoa = ratio(currentNetIncome, currentAssets)
         val priorRoa = ratio(priorNetIncome, priorAssets)
 
-        val currentLongTermDebt = stockData.longTermDebtHistory.getOrNull(0)?.nonNegativeFiniteOrNull()
-        val priorLongTermDebt = stockData.longTermDebtHistory.getOrNull(1)?.nonNegativeFiniteOrNull()
-        val currentLeverage = ratio(currentLongTermDebt, currentAssets)
-        val priorLeverage = ratio(priorLongTermDebt, priorAssets)
-
-        val currentCurrentAssets = stockData.totalCurrentAssetsHistory.getOrNull(0)?.finiteOrNull()
-        val priorCurrentAssets = stockData.totalCurrentAssetsHistory.getOrNull(1)?.finiteOrNull()
-        val currentCurrentLiabilities = stockData.totalCurrentLiabilitiesHistory.getOrNull(0)?.positiveFiniteOrNull()
-        val priorCurrentLiabilities = stockData.totalCurrentLiabilitiesHistory.getOrNull(1)?.positiveFiniteOrNull()
-        val currentRatio = ratio(currentCurrentAssets, currentCurrentLiabilities)
-        val priorCurrentRatio = ratio(priorCurrentAssets, priorCurrentLiabilities)
+        val currentOperatingIncome = stockData.operatingIncomeDisplay?.finiteOrNull()
+        val nonOperatingIncome = if (currentNetIncome != null && currentOperatingIncome != null) {
+            currentNetIncome - currentOperatingIncome
+        } else {
+            null
+        }
 
         val currentShares = stockData.sharesOutstandingHistory?.getOrNull(0)?.positiveFiniteOrNull()
         val priorShares = stockData.sharesOutstandingHistory?.getOrNull(1)?.positiveFiniteOrNull()
@@ -336,8 +372,14 @@ class FinancialHealthAnalyzer {
                 pass = currentOperatingCashFlow?.let { it > 0.0 }
             ),
             PiotroskiTestResult(
-                metric = "piotroski_delta_roa_positive",
-                pass = if (currentRoa != null && priorRoa != null) currentRoa > priorRoa else null
+                metric = "piotroski_operating_income_sign_matches_net_income",
+                pass = if (currentOperatingIncome != null && currentNetIncome != null) {
+                    (currentOperatingIncome > 0.0 && currentNetIncome > 0.0) ||
+                            (currentOperatingIncome < 0.0 && currentNetIncome < 0.0) ||
+                            (currentOperatingIncome == 0.0 && currentNetIncome == 0.0)
+                } else {
+                    null
+                }
             ),
             PiotroskiTestResult(
                 metric = "piotroski_accrual_quality",
@@ -348,17 +390,19 @@ class FinancialHealthAnalyzer {
                 }
             ),
             PiotroskiTestResult(
-                metric = "piotroski_leverage_improved",
-                pass = if (currentLeverage != null && priorLeverage != null) {
-                    currentLeverage < priorLeverage
+                metric = "piotroski_ocf_to_net_income_gt_one",
+                pass = if (currentOperatingCashFlow != null && currentNetIncome != null &&
+                    currentOperatingCashFlow > 0.0 && currentNetIncome > 0.0
+                ) {
+                    (currentOperatingCashFlow / currentNetIncome) > 1.0
                 } else {
                     null
                 }
             ),
             PiotroskiTestResult(
-                metric = "piotroski_current_ratio_improved",
-                pass = if (currentRatio != null && priorCurrentRatio != null) {
-                    currentRatio > priorCurrentRatio
+                metric = "piotroski_non_operating_income_share_lt_50pct",
+                pass = if (nonOperatingIncome != null && currentNetIncome != null && currentNetIncome > 0.0) {
+                    nonOperatingIncome < (0.5 * currentNetIncome)
                 } else {
                     null
                 }
@@ -391,20 +435,34 @@ class FinancialHealthAnalyzer {
     }
 
     private fun calculateGrowthScore(stockData: StockData): Double? {
-        val recentRevenueGrowth = stockData.revenueGrowth
-        val components = listOf(
-            tierScoreForGrowth(stockData.averageRevenueGrowth),
-            tierScoreForGrowth(recentRevenueGrowth),
-            tierScoreForGrowth(stockData.averageNetIncomeGrowth),
-            tierScoreForGrowth(stockData.netIncomeGrowth),
-            tierScoreForGrowth(stockData.fcfGrowth),
-            tierScoreForGrowth(stockData.averageFcfGrowth)
-        )
+        fun combinedTierScore(values: List<Double?>): Double? {
+            val scores = values
+                .mapNotNull { tierScoreForGrowth(it) }
+                .filter { it.isFinite() }
+            return if (scores.isEmpty()) null else scores.average()
+        }
 
-        val presentScores = components.mapNotNull { score -> score?.takeIf { it.isFinite() } }
+        // 5 Growth metrics, each metric blends YoY + average when applicable.
+        val revenueMetricScore = combinedTierScore(listOf(stockData.revenueGrowth, stockData.averageRevenueGrowth))
+        val netIncomeMetricScore = combinedTierScore(listOf(stockData.netIncomeGrowth, stockData.averageNetIncomeGrowth))
+        val fcfMetricScore = combinedTierScore(listOf(stockData.fcfGrowth, stockData.averageFcfGrowth))
+        val ocfMetricScore = combinedTierScore(listOf(stockData.ocfGrowth, stockData.averageOcfGrowth))
+        val grossProfitMarginMetricScore = tierScoreForGrowth(stockData.grossMarginGrowth)
+
+        val presentScores = listOf(
+            revenueMetricScore,
+            netIncomeMetricScore,
+            fcfMetricScore,
+            ocfMetricScore,
+            grossProfitMarginMetricScore
+        ).mapNotNull { score -> score?.takeIf { it.isFinite() } }
+
         if (presentScores.isEmpty()) return null
 
         var base = presentScores.average()
+
+        // Acceleration adjustment: reward revenue trajectory if latest YoY beats the multi-year average.
+        val recentRevenueGrowth = stockData.revenueGrowth
         val avgRevenueGrowth = stockData.averageRevenueGrowth
         if (recentRevenueGrowth != null && avgRevenueGrowth != null) {
             base += when {
@@ -413,6 +471,7 @@ class FinancialHealthAnalyzer {
                 else -> 0.0
             }
         }
+
         return base.coerceIn(0.0, 10.0)
     }
 

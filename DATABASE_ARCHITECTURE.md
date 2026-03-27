@@ -48,27 +48,28 @@ Rule: Domain C should never be used as source-of-truth financial data in Full An
 
 ---
 
-## Current Reality (v7)
+## Current Reality (Room)
 
-Current implementation stores mixed data in `analyzed_stocks`:
+The legacy `analyzed_stocks` table has been **removed**. Financial persistence follows the A/B/C split in **`app/src/main/java/com/example/stockzilla/data/RoomDatabase.kt`**:
 
-- Domain A fields
-- Domain B fields
-- Domain C fields
+| Table / entity | Domain |
+|----------------|--------|
+| `edgar_raw_facts` / `EdgarRawFactsEntity` | A — raw SEC facts + histories + TTM fields |
+| `financial_derived_metrics` / `FinancialDerivedMetricsEntity` | B — deterministic ratios, growth, benchmarks used for display/peers |
+| `score_snapshots` / `ScoreSnapshotEntity` | C — serialized scoring outputs (versioned by model id in row) |
+| `symbol_tag_overrides` / `SymbolTagOverrideEntity` | A-adjunct — per-symbol XBRL tag overrides for EDGAR parsing (`symbol`, `metricKey`, `taxonomy`, `tag`, `updatedAt`, `source`). PK `(symbol, metricKey)`. |
 
-This mixed table works operationally, but it blurs provenance and can cause confusion. The docs now treat this as transitional and recommend explicit separation.
+Additional tables (same file): `favorites`, `stock_cache`, `stock_industry_peers`, `user_stock_list`, `company_profiles`, `stock_profiles`, `ai_memory_cache`, `ai_conversations`, `ai_messages`, `news_metadata`, `news_summaries`, portfolio tables, etc.
+
+At runtime, **`StockData`** is often assembled by joining raw + derived (+ latest score) for the UI and scoring pipeline — but storage remains separated at the entity level.
 
 ---
 
-## Target Storage Contract
+## Target refinements (ongoing)
 
-Use explicit separation at the schema level (or, at minimum, strict field-level boundaries):
-
-1. `edgar_raw_facts` (Domain A only)
-2. `financial_derived_metrics` (Domain B only, with formula provenance)
-3. `score_snapshots` (Domain C only, versioned by model/algorithm version)
-
-If full table split is deferred, enforce separation in one table using clear naming and strict DAO/read-model boundaries.
+- Tighten DAO/read-model boundaries so Full Analysis reads only A+B.
+- Optional: explicit formula provenance on derived fields.
+- Versioned score snapshots already live in `score_snapshots`; extend model versioning as scoring evolves.
 
 ---
 
@@ -98,31 +99,20 @@ This keeps the page as a financial facts workspace, not a scoring UI.
 
 ---
 
-## Migration Sequence (Documentation Plan)
+## Migration note (historical)
 
-1. **Phase 1 (now):** enforce documentation and UI boundaries (Full Analysis = Domain A + B only).
-2. **Phase 2:** split persistence layer for A/B/C domains and add provenance labels for derived metrics.
-3. **Phase 2.5:** move benchmark/peer read paths to separated domains.
-4. **Phase 2.6:** remove runtime fallback reads from `analyzed_stocks`.
-5. **Phase 2.7:** stop dual-write to `analyzed_stocks`; retire legacy DAO read access.
-6. **Phase 2.8 (completed):** remove legacy table from Room entities and add migration (`9 -> 10`) to drop `analyzed_stocks`.
-7. **Phase 3:** rebuild scoring model using separated inputs, then version and persist scoring snapshots independently.
-
-### Legacy Table Drop Plan (Implemented in v10)
-
-- **Version N+1:** keep legacy table physically present but unused at runtime (completed in phase 2.7).
-- **Version N+2:** run migration:
-  - `DROP TABLE IF EXISTS analyzed_stocks`
-  - remove `AnalyzedStockEntity` from Room entities
-- **Post-drop (completed):** obsolete stepwise migration chain was removed; only current migration support remains.
+Older builds used a single `analyzed_stocks` table. Migrations now **`DROP TABLE IF EXISTS analyzed_stocks`** during upgrade; the app’s canonical schema is the split above. See `RoomDatabase.kt` for the current `version` and `MIGRATION_*` constants.
 
 ---
 
-## Key Files
+## Key files (paths)
 
 | File | Role |
 |---|---|
-| `RoomDatabase.kt` | Current Room entities/DAOs (mixed model today) |
-| `SecEdgarService.kt` | EDGAR extraction and raw fact assembly |
-| `StockApiService.kt` | Derived metrics and data orchestration |
-| `FinancialHealthAnalyzer.kt` | Scoring domain logic (Domain C) |
+| `app/src/main/java/com/example/stockzilla/data/RoomDatabase.kt` | Entities, DAOs, migrations |
+| `app/src/main/java/com/example/stockzilla/data/SecEdgarService.kt` | EDGAR extraction and raw fact assembly |
+| `app/src/main/java/com/example/stockzilla/data/StockApiService.kt` | Orchestration, derived metrics, API glue |
+| `app/src/main/java/com/example/stockzilla/scoring/FinancialHealthAnalyzer.kt` | Scoring / Domain C logic |
+| `app/src/main/java/com/example/stockzilla/data/StockCacheRepository.kt` | Short-lived `stock_cache` usage |
+| `app/src/main/java/com/example/stockzilla/data/IndustryPeerRepository.kt` | `stock_industry_peers` |
+| `app/src/main/java/com/example/stockzilla/data/NewsRepository.kt` | `news_metadata` / `news_summaries` |

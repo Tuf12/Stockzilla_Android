@@ -9,11 +9,13 @@ import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
 import com.example.stockzilla.util.ApiConstants
 import com.example.stockzilla.feature.ApiKeyManager
+import com.example.stockzilla.feature.DiagnosticsLogger
 import com.example.stockzilla.data.DEFAULT_GROK_MODEL
 import com.example.stockzilla.scoring.FinancialHealthAnalyzer
 import com.example.stockzilla.data.GrokApiClient
 import com.example.stockzilla.data.GrokChatChoiceMessage
 import com.example.stockzilla.data.GrokChatMessage
+import com.example.stockzilla.data.GrokChatResponse
 import com.example.stockzilla.data.GrokChatRequest
 import com.example.stockzilla.data.GrokTool
 import com.example.stockzilla.data.GrokToolCall
@@ -32,10 +34,15 @@ import com.example.stockzilla.data.EdgarRawFactsEntity
 import com.example.stockzilla.data.FinancialDerivedMetricsEntity
 import com.example.stockzilla.data.NewsSummaryWithFormTypeRow
 import com.example.stockzilla.data.ScoreSnapshotEntity
+import com.example.stockzilla.data.SymbolTagOverrideEntity
 import com.example.stockzilla.data.StockzillaDatabase
+import com.example.stockzilla.sec.EdgarMetricKey
+import com.example.stockzilla.sec.TagOverrideResolver
+import com.example.stockzilla.sec.EdgarTaxonomy
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import kotlin.collections.get
 import kotlin.math.abs
@@ -56,6 +63,7 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     private val userStockListDao = database.userStockListDao()
     private val newsSummariesDao = database.newsSummariesDao()
     private val newsMetadataDao = database.newsMetadataDao()
+    private val symbolTagOverrideDao = database.symbolTagOverrideDao()
 
     private val apiKeyManager = ApiKeyManager(application)
     private val secEdgarService = SecEdgarService.Companion.getInstance()
@@ -73,12 +81,21 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
 
     private val stockRepository: StockRepository by lazy {
         StockRepository(
-            ApiConstants.DEFAULT_DEMO_KEY,
-            apiKeyManager.getFinnhubApiKey(),
-            rawFactsDao,
-            derivedDao,
-            scoreSnapshotDao
+            apiKey = ApiConstants.DEFAULT_DEMO_KEY,
+            finnhubApiKey = apiKeyManager.getFinnhubApiKey(),
+            rawFactsDao = rawFactsDao,
+            derivedMetricsDao = derivedDao,
+            scoreSnapshotDao = scoreSnapshotDao,
+            symbolTagOverrideDao = symbolTagOverrideDao,
+            quarterlyFinancialFactDao = database.quarterlyFinancialFactDao()
         )
+    }
+
+    private val _tagFixCompletedStock = MutableLiveData<StockData?>()
+    val tagFixCompletedStock: LiveData<StockData?> = _tagFixCompletedStock
+
+    fun clearTagFixCompletedStock() {
+        _tagFixCompletedStock.value = null
     }
 
     private val _conversations = MutableLiveData<List<AiConversationEntity>>(emptyList())
@@ -186,6 +203,14 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         }
     }
 
+    fun deleteMessage(messageId: Long) {
+        viewModelScope.launch {
+            val conversationId = _selectedConversationId.value ?: return@launch
+            aiMessageDao.deleteById(messageId)
+            _messages.value = aiMessageDao.getMessagesForConversation(conversationId)
+        }
+    }
+
     fun deleteConversation(id: Long) {
         viewModelScope.launch {
             aiConversationDao.deleteById(id)
@@ -245,6 +270,118 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         draftsPrefs.edit().putLong(keyLastSelectedConversationId, id).apply()
     }
 
+    /**
+     * Auto-prompt Eidos to call [set_symbol_tag_override] after Full Analysis "Find tag" flow.
+     * Does not read or write [AiMessageEntity] rows — no chat spam; Grok runs as a standalone tool round-trip.
+     */
+    fun runTagFixBootstrap(
+        symbol: String,
+        metricKey: String,
+        factsIndexJson: String,
+        fiscalYear: Int? = null,
+        fiscalPeriod: String? = null,
+        periodEnd: String? = null,
+        accessionNumber: String? = null,
+        filingViewerUrl: String? = null,
+        cik: String? = null,
+        suggestedScopeKey: String? = null
+    ) {
+        if (!_requiresApiKey.value.isNullOrFalse()) {
+            DiagnosticsLogger.log(
+                symbol.trim().uppercase(),
+                "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_BOOTSTRAP_SKIP",
+                "API key missing — Eidos tag fix not started"
+            )
+            _error.value = "Add an AI API key in settings to use the assistant."
+            return
+        }
+        val symU = symbol.trim().uppercase()
+        DiagnosticsLogger.log(
+            symU,
+            "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_BOOTSTRAP_START",
+            "metricKey=$metricKey — sending auto-prompt to Eidos (set_symbol_tag_override)",
+            buildString {
+                append("fy=").append(fiscalYear?.toString() ?: "null")
+                append(" fp=").append(fiscalPeriod ?: "null")
+                append(" periodEnd=").append(periodEnd ?: "null")
+                append(" scopeKey=").append(suggestedScopeKey ?: "")
+                append(" accession=").append(accessionNumber ?: "")
+                append(" cik=").append(cik ?: "")
+                append(" factsIndexChars=").append(factsIndexJson.length)
+            }
+        )
+        val prompt = buildString {
+            append("Stockzilla could not extract metric ")
+            append(metricKey)
+            append(" for ")
+            append(symbol)
+            append(" using standard XBRL tags. ")
+            append("You MUST call set_symbol_tag_override with: symbol=\"")
+            append(symbol)
+            append("\", metricKey=\"")
+            append(metricKey)
+            append("\", taxonomy= one of us-gaap | ifrs-full | dei, tag= the local XBRL concept name. ")
+            append("If the same tag works for all quarters, omit scopeKey or use scopeKey=\"\". ")
+            append("If only one fiscal quarter needs a different tag, set scopeKey to FYyyyy:Qn (e.g. FY2024:Q2).\n")
+            if (fiscalYear != null || fiscalPeriod != null || periodEnd != null) {
+                append("Context: fiscalYear=")
+                append(fiscalYear?.toString() ?: "null")
+                append(", fiscalPeriod=")
+                append(fiscalPeriod ?: "null")
+                append(", periodEnd=")
+                append(periodEnd ?: "null")
+                append('\n')
+            }
+            val filingParts = buildList {
+                if (!cik.isNullOrBlank()) add("cik=$cik")
+                if (!accessionNumber.isNullOrBlank()) add("accession=$accessionNumber")
+                if (!filingViewerUrl.isNullOrBlank()) add("filingViewer=$filingViewerUrl")
+            }
+            if (filingParts.isNotEmpty()) {
+                append("Filing (single SEC filing reference, not tag lists): ")
+                append(filingParts.joinToString(", "))
+                append('\n')
+            }
+            if (!suggestedScopeKey.isNullOrBlank()) {
+                append("Suggested scopeKey for this cell: ")
+                append(suggestedScopeKey)
+                append('\n')
+            }
+            append("Pick the consolidated filing total for that metric, not a segment.\n")
+        }
+        val fullUserContentForApi = buildString {
+            append(prompt)
+            append("\nCompanyfacts local tag names:\n")
+            append(factsIndexJson)
+        }
+        runTagFixGrokWithoutChat(fullUserContentForApi, symbol.trim().uppercase())
+    }
+
+    /**
+     * Runs Grok + tools for tag override only. Does not read or write chat messages.
+     */
+    private fun runTagFixGrokWithoutChat(fullUserContent: String, contextSymbol: String) {
+        viewModelScope.launch {
+            if (!_requiresApiKey.value.isNullOrFalse()) {
+                _error.value = "Add an AI API key in settings to use the assistant."
+                return@launch
+            }
+            _loading.value = true
+            _error.value = null
+            try {
+                val contextJson = buildContextPacket(contextSymbol)
+                val grokMessages = buildStandaloneGrokMessages(contextJson, fullUserContent)
+                val outcome = runGrokToolLoop(grokMessages, contextSymbol)
+                outcome.chatResult.fold(
+                    onSuccess = { },
+                    onFailure = { e -> _error.value = e.message ?: "AI request failed." }
+                )
+            } finally {
+                _loading.value = false
+            }
+        }
+    }
+
     fun sendMessage(text: String) {
         if (!_requiresApiKey.value.isNullOrFalse()) {
             _error.value = "Add an AI API key in settings to use the assistant."
@@ -275,92 +412,11 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
 
             val contextJson = buildContextPacket(contextSymbol)
             val history = aiMessageDao.getMessagesForConversation(conversationId)
-            var grokMessages = buildGrokMessages(history, contextJson)
-
-            var request = GrokChatRequest(
-                model = DEFAULT_GROK_MODEL,
-                messages = grokMessages,
-                temperature = 0.5,       // more conversational
-                max_tokens = 5096,       // room to breathe
-                tools = buildEidosTools(),
-                tool_choice = "auto"
-            )
-
-            var lastResponse: GrokChatChoiceMessage? = null
-            var chatResult = grokClient.sendChat(request)
-            var loopCount = 0
-            val maxToolRounds = 5
-            var lastDiscoveryResult: String? = null  // Track discovery results for UI rendering
-
-            // Tool-call loop: if the model returns tool_calls, run them, send results back, and get the next reply.
-            while (chatResult.isSuccess && loopCount < maxToolRounds) {
-                loopCount++
-                val response = chatResult.getOrNull() ?: break
-                val choice = response.choices?.firstOrNull()
-                val message = choice?.message ?: break
-                lastResponse = message
-
-                val toolCalls = message.tool_calls.orEmpty()
-                val hasContent = !message.content.isNullOrBlank()
-
-                if (toolCalls.isEmpty()) {
-                    // Final reply with content only; exit loop.
-                    break
-                }
-
-                // Check if this is a sec_search_filings call to track for UI rendering
-                val hasDiscoveryCall = toolCalls.any { it.function?.name == "sec_search_filings" }
-
-                // Run tool calls (e.g. write_memory_note) so notes are persisted.
-                val toolResults = handleToolCalls(toolCalls, contextSymbol)
-
-                // If there was a discovery call, find and save the result with markers
-                if (hasDiscoveryCall) {
-                    toolResults.find { (callId, result) ->
-                        toolCalls.any { it.id == callId && it.function?.name == "sec_search_filings" }
-                    }?.let { (_, result) ->
-                        // Only save if there are actual candidates (markers present)
-                        if (result.contains(AiMessageAdapter.Companion.DISCOVERY_MARKER_START)) {
-                            lastDiscoveryResult = result
-                        }
-                    }
-                }
-
-                // If the model sent both content and tool_calls in one message, use this as the final reply.
-                // No need for another API round — we already have the response and tools are done.
-                if (hasContent) {
-                    break
-                }
-
-                // No content yet: model replied with only tool_calls. Send tool results and get the next reply.
-                grokMessages = grokMessages.toMutableList().apply {
-                    add(
-                        GrokChatMessage(
-                            role = "assistant",
-                            content = message.content,
-                            tool_calls = toolCalls
-                        )
-                    )
-                    for ((callId, resultContent) in toolResults) {
-                        add(
-                            GrokChatMessage(
-                                role = "tool",
-                                content = resultContent,
-                                tool_call_id = callId
-                            )
-                        )
-                    }
-                }
-                request = GrokChatRequest(
-                    model = DEFAULT_GROK_MODEL,
-                    messages = grokMessages,
-                    temperature = 0.3,
-                    max_tokens = 4096,
-                    tools = buildEidosTools(),
-                    tool_choice = "auto"
-                )
-                chatResult = grokClient.sendChat(request)
-            }
+            val initialGrokMessages = buildGrokMessages(history, contextJson)
+            val outcome = runGrokToolLoop(initialGrokMessages, contextSymbol)
+            val chatResult = outcome.chatResult
+            val lastResponse = outcome.lastResponse
+            val lastDiscoveryResult = outcome.lastDiscoveryResult
 
             chatResult.fold(
                 onSuccess = {
@@ -710,6 +766,33 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             parameters = secAnalyzeFilingsParams
         )
 
+        val setTagOverrideParams: Map<String, Any?> = mapOf(
+            "type" to "object",
+            "properties" to mapOf(
+                "symbol" to mapOf("type" to "string", "description" to "Ticker symbol, e.g. AAPL"),
+                "metricKey" to mapOf(
+                    "type" to "string",
+                    "description" to "One of: ${EdgarMetricKey.entries.joinToString { it.name }}"
+                ),
+                "taxonomy" to mapOf(
+                    "type" to "string",
+                    "description" to "facts subtree key: us-gaap, ifrs-full, or dei",
+                    "enum" to listOf(EdgarTaxonomy.US_GAAP, EdgarTaxonomy.IFRS_FULL, EdgarTaxonomy.DEI)
+                ),
+                "tag" to mapOf("type" to "string", "description" to "Local XBRL concept name in that taxonomy"),
+                "scopeKey" to mapOf(
+                    "type" to "string",
+                    "description" to "Empty string = all periods. Quarterly scope: FY2024:Q2 (fiscal year + quarter). Use when the tag differs by quarter."
+                )
+            ),
+            "required" to listOf("symbol", "metricKey", "taxonomy", "tag")
+        )
+        val setTagOverrideFn = GrokToolFunction(
+            name = "set_symbol_tag_override",
+            description = "Save a per-symbol XBRL tag mapping when standard tags failed (evolving tagging). Optional scopeKey for quarter-specific tags. Persists to Room and refreshes fundamentals from SEC.",
+            parameters = setTagOverrideParams
+        )
+
         return listOf(
             GrokTool(function = writeMemoryFn),
             GrokTool(function = getStockDataFn),
@@ -719,7 +802,8 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             GrokTool(function = listAnalyzedStocksFn),
             GrokTool(function = secSearchFilingsFn),
             GrokTool(function = secSaveFilingsFn),
-            GrokTool(function = secAnalyzeFilingsFn)
+            GrokTool(function = secAnalyzeFilingsFn),
+            GrokTool(function = setTagOverrideFn)
         )
     }
 
@@ -918,6 +1002,121 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                     results.add(callId to resultJson)
                     continue
                 }
+                "set_symbol_tag_override" -> {
+                    val rawArgsTrunc = fn.arguments?.take(900)?.replace("\n", " ") ?: ""
+                    DiagnosticsLogger.log(
+                        symbol,
+                        "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_TOOL_CALL",
+                        "Eidos invoked set_symbol_tag_override",
+                        rawArgsTrunc
+                    )
+                    val args = try {
+                        gson.fromJson(fn.arguments, SetSymbolTagOverrideArgs::class.java)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val sym = args?.symbol?.trim()?.uppercase()
+                    val mk = args?.metricKey?.trim()
+                    val tax = args?.taxonomy?.trim()
+                    val tag = args?.tag?.trim()
+                    if (sym.isNullOrBlank() || mk.isNullOrBlank() || tax.isNullOrBlank() || tag.isNullOrBlank()) {
+                        DiagnosticsLogger.log(
+                            sym,
+                            "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_OVERRIDE_REJECT",
+                            "Missing symbol, metricKey, taxonomy, or tag in tool args",
+                            rawArgsTrunc.take(400)
+                        )
+                        results.add(callId to """{"ok":false,"error":"Missing symbol, metricKey, taxonomy, or tag"}""")
+                        continue
+                    }
+                    val key = EdgarMetricKey.fromStorage(mk)
+                    if (key == null) {
+                        DiagnosticsLogger.log(
+                            sym,
+                            "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_OVERRIDE_REJECT",
+                            "Unknown metricKey from Eidos: $mk",
+                            "valid=${EdgarMetricKey.entries.joinToString { it.name }}"
+                        )
+                        results.add(
+                            callId to """{"ok":false,"error":"Unknown metricKey. Use: ${EdgarMetricKey.entries.joinToString { it.name }}"}"""
+                        )
+                        continue
+                    }
+                    if (tax !in setOf(EdgarTaxonomy.US_GAAP, EdgarTaxonomy.IFRS_FULL, EdgarTaxonomy.DEI)) {
+                        DiagnosticsLogger.log(
+                            sym,
+                            "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_OVERRIDE_REJECT",
+                            "Invalid taxonomy from Eidos: $tax",
+                            "must be us-gaap, ifrs-full, or dei"
+                        )
+                        results.add(callId to """{"ok":false,"error":"taxonomy must be us-gaap, ifrs-full, or dei"}""")
+                        continue
+                    }
+                    val scopeKey = args?.scopeKey?.trim().orEmpty()
+                    if (!TagOverrideResolver.isValidScopeKey(scopeKey)) {
+                        DiagnosticsLogger.log(
+                            sym,
+                            "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_OVERRIDE_REJECT",
+                            "Invalid scopeKey from Eidos: \"$scopeKey\"",
+                            "use empty or FYyyyy:Qn"
+                        )
+                        results.add(
+                            callId to """{"ok":false,"error":"scopeKey must be empty or like FY2024:Q2"}"""
+                        )
+                        continue
+                    }
+                    symbolTagOverrideDao.upsert(
+                        SymbolTagOverrideEntity(
+                            symbol = sym,
+                            metricKey = key.name,
+                            scopeKey = scopeKey,
+                            taxonomy = tax,
+                            tag = tag,
+                            updatedAt = System.currentTimeMillis(),
+                            source = "eidos"
+                        )
+                    )
+                    DiagnosticsLogger.log(
+                        symbol = sym,
+                        category = "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_OVERRIDE_OK",
+                        message = "Room upsert done; refreshing fundamentals from EDGAR",
+                        detail = "metricKey=$mk scopeKey=$scopeKey taxonomy=$tax tag=$tag"
+                    )
+                    val refresh = stockRepository.getStockData(sym, forceFromEdgar = true)
+                    val payload = refresh.fold(
+                        onSuccess = { stockData ->
+                            val dataForScoring = stockData.withGrowthFromHistory()
+                            val score = financialHealthAnalyzer.calculateCompositeScore(dataForScoring)
+                            stockRepository.saveScoreSnapshot(sym, score)
+                            val sicCode = stockRepository.getSicCode(sym)
+                            val naicsCode = stockRepository.getNaicsCode(sym)
+                            val lastFilingDate = stockRepository.getLatestFilingDate(sym)
+                            stockRepository.saveAnalyzedStock(dataForScoring, sicCode, naicsCode, lastFilingDate)
+                            DiagnosticsLogger.log(
+                                sym,
+                                "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_REFRESH_OK",
+                                "Fundamentals refreshed after tag override",
+                                "revenue=${stockData.revenue} revenueTtm=${stockData.revenueTtm}"
+                            )
+                            // Main thread so Full Analysis observers run before sendMessage clears loading.
+                            withContext(Dispatchers.Main.immediate) {
+                                _tagFixCompletedStock.value = stockData
+                            }
+                            """{"ok":true,"message":"Override saved and fundamentals refreshed."}"""
+                        },
+                        onFailure = { e ->
+                            DiagnosticsLogger.log(
+                                sym,
+                                "${DiagnosticsLogger.CATEGORY_EIDOS_TAG_PREFIX}_REFRESH_FAIL",
+                                "EDGAR refresh failed after override saved",
+                                e.message ?: "unknown"
+                            )
+                            """{"ok":false,"error":"${e.message?.replace("\"", "'")}"}"""
+                        }
+                    )
+                    results.add(callId to payload)
+                    continue
+                }
                 "write_memory_note" -> { /* fall through to existing logic */ }
                 else -> {
                     results.add(callId to "Unknown tool.")
@@ -989,12 +1188,13 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         return results
     }
 
-    private fun buildGrokMessages(
-        history: List<AiMessageEntity>,
-        contextJson: String?
-    ): List<GrokChatMessage> {
-        val result = mutableListOf<GrokChatMessage>()
-        val systemPrompt = """
+    private data class GrokToolLoopOutcome(
+        val lastResponse: GrokChatChoiceMessage?,
+        val lastDiscoveryResult: String?,
+        val chatResult: Result<GrokChatResponse>
+    )
+
+    private fun eidosSystemPrompt(): String = """
             You are Eidos, the stock research assistant inside Stockzilla.
                         
             Formatting rules: 
@@ -1025,8 +1225,114 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             To propose SEC filing candidates for the current symbol, call sec_search_filings(symbol, formTypes?, lookbackDays?, limit?);
             if omitted, use the tool defaults (~90 days, up to ~20 candidates).
             User approves or declines the forms presented. 
-        """.trimIndent()
-        result.add(GrokChatMessage(role = "system", content = systemPrompt))
+    """.trimIndent()
+
+    /**
+     * Single-turn Grok payload (system + optional stock context + one user message). Used for tag-fix only.
+     */
+    private fun buildStandaloneGrokMessages(contextJson: String?, userContent: String): List<GrokChatMessage> {
+        val result = mutableListOf<GrokChatMessage>()
+        result.add(GrokChatMessage(role = "system", content = eidosSystemPrompt()))
+        if (!contextJson.isNullOrBlank()) {
+            result.add(
+                GrokChatMessage(
+                    role = "system",
+                    content = "Current stock context (JSON):\n$contextJson"
+                )
+            )
+        }
+        result.add(GrokChatMessage(role = "user", content = userContent))
+        return result
+    }
+
+    private suspend fun runGrokToolLoop(
+        initialGrokMessages: List<GrokChatMessage>,
+        contextSymbol: String?
+    ): GrokToolLoopOutcome {
+        var grokMessages = initialGrokMessages.toMutableList()
+        var request = GrokChatRequest(
+            model = DEFAULT_GROK_MODEL,
+            messages = grokMessages,
+            temperature = 0.5,
+            max_tokens = 5096,
+            tools = buildEidosTools(),
+            tool_choice = "auto"
+        )
+        var lastResponse: GrokChatChoiceMessage? = null
+        var chatResult = grokClient.sendChat(request)
+        var loopCount = 0
+        val maxToolRounds = 5
+        var lastDiscoveryResult: String? = null
+
+        while (chatResult.isSuccess && loopCount < maxToolRounds) {
+            loopCount++
+            val response = chatResult.getOrNull() ?: break
+            val choice = response.choices?.firstOrNull()
+            val message = choice?.message ?: break
+            lastResponse = message
+
+            val toolCalls = message.tool_calls.orEmpty()
+            val hasContent = !message.content.isNullOrBlank()
+
+            if (toolCalls.isEmpty()) {
+                break
+            }
+
+            val hasDiscoveryCall = toolCalls.any { it.function?.name == "sec_search_filings" }
+            val toolResults = handleToolCalls(toolCalls, contextSymbol)
+
+            if (hasDiscoveryCall) {
+                toolResults.find { (callId, result) ->
+                    toolCalls.any { it.id == callId && it.function?.name == "sec_search_filings" }
+                }?.let { (_, result) ->
+                    if (result.contains(AiMessageAdapter.Companion.DISCOVERY_MARKER_START)) {
+                        lastDiscoveryResult = result
+                    }
+                }
+            }
+
+            if (hasContent) {
+                break
+            }
+
+            grokMessages = grokMessages.toMutableList().apply {
+                add(
+                    GrokChatMessage(
+                        role = "assistant",
+                        content = message.content,
+                        tool_calls = toolCalls
+                    )
+                )
+                for ((callId, resultContent) in toolResults) {
+                    add(
+                        GrokChatMessage(
+                            role = "tool",
+                            content = resultContent,
+                            tool_call_id = callId
+                        )
+                    )
+                }
+            }
+            request = GrokChatRequest(
+                model = DEFAULT_GROK_MODEL,
+                messages = grokMessages,
+                temperature = 0.3,
+                max_tokens = 4096,
+                tools = buildEidosTools(),
+                tool_choice = "auto"
+            )
+            chatResult = grokClient.sendChat(request)
+        }
+
+        return GrokToolLoopOutcome(lastResponse, lastDiscoveryResult, chatResult)
+    }
+
+    private fun buildGrokMessages(
+        history: List<AiMessageEntity>,
+        contextJson: String?
+    ): List<GrokChatMessage> {
+        val result = mutableListOf<GrokChatMessage>()
+        result.add(GrokChatMessage(role = "system", content = eidosSystemPrompt()))
 
         if (!contextJson.isNullOrBlank()) {
             result.add(
@@ -1075,6 +1381,14 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     private data class GetStockDataArgs(
         val symbol: String?,
         val fetch_if_missing: Boolean?
+    )
+
+    private data class SetSymbolTagOverrideArgs(
+        val symbol: String?,
+        val metricKey: String?,
+        val taxonomy: String?,
+        val tag: String?,
+        val scopeKey: String? = null
     )
 
     private data class SecSearchFilingsArgs(

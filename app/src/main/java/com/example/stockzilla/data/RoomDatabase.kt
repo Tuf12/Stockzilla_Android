@@ -131,14 +131,26 @@ data class EdgarRawFactsEntity(
     val costOfGoodsSoldTtm: Double?,
     val freeCashFlowTtm: Double?,
     val operatingCashFlowTtm: Double?,
+    val capex: Double?,
+    val capexTtm: Double?,
+    val depreciationAmortization: Double?,
+    val depreciationAmortizationTtm: Double?,
+    val totalDebt: Double?,
+    val cashAndEquivalents: Double?,
+    val accountsReceivable: Double?,
+    val operatingIncome: Double?,
+    val operatingIncomeTtm: Double?,
     val revenueHistoryJson: List<Double?>?,
     val netIncomeHistoryJson: List<Double?>?,
     val ebitdaHistoryJson: List<Double?>?,
     val costOfGoodsSoldHistoryJson: List<Double?>?,
     val grossProfitHistoryJson: List<Double?>?,
     val operatingCashFlowHistoryJson: List<Double?>?,
+    val capexHistoryJson: List<Double?>?,
+    val depreciationAmortizationHistoryJson: List<Double?>?,
     val freeCashFlowHistoryJson: List<Double?>?,
     val sharesOutstandingHistoryJson: List<Double?>?,
+    val totalDebtHistoryJson: List<Double?>?,
     val lastFilingDate: String?,
     val analyzedAt: Long,
     val lastUpdated: Long
@@ -185,14 +197,26 @@ data class EdgarRawFactsEntity(
                 costOfGoodsSoldTtm = stockData.costOfGoodsSoldTtm,
                 freeCashFlowTtm = stockData.freeCashFlowTtm,
                 operatingCashFlowTtm = stockData.operatingCashFlowTtm,
+                capex = stockData.capex,
+                capexTtm = stockData.capexTtm,
+                depreciationAmortization = stockData.depreciationAmortization,
+                depreciationAmortizationTtm = stockData.depreciationAmortizationTtm,
+                totalDebt = stockData.totalDebt,
+                cashAndEquivalents = stockData.cashAndEquivalents,
+                accountsReceivable = stockData.accountsReceivable,
+                operatingIncome = stockData.operatingIncome,
+                operatingIncomeTtm = stockData.operatingIncomeTtm,
                 revenueHistoryJson = stockData.revenueHistory.takeIf { it.isNotEmpty() },
                 netIncomeHistoryJson = stockData.netIncomeHistory.takeIf { it.isNotEmpty() },
                 ebitdaHistoryJson = stockData.ebitdaHistory.takeIf { it.isNotEmpty() },
                 costOfGoodsSoldHistoryJson = stockData.costOfGoodsSoldHistory.takeIf { it.isNotEmpty() },
                 grossProfitHistoryJson = stockData.grossProfitHistory.takeIf { it.isNotEmpty() },
                 operatingCashFlowHistoryJson = stockData.operatingCashFlowHistory?.takeIf { it.isNotEmpty() },
+                capexHistoryJson = stockData.capexHistory?.takeIf { it.isNotEmpty() },
+                depreciationAmortizationHistoryJson = stockData.depreciationAmortizationHistory?.takeIf { it.isNotEmpty() },
                 freeCashFlowHistoryJson = stockData.freeCashFlowHistory?.takeIf { it.isNotEmpty() },
                 sharesOutstandingHistoryJson = stockData.sharesOutstandingHistory?.takeIf { it.isNotEmpty() },
+                totalDebtHistoryJson = stockData.totalDebtHistory.takeIf { it.isNotEmpty() },
                 lastFilingDate = lastFilingDate,
                 analyzedAt = now,
                 lastUpdated = now
@@ -248,6 +272,8 @@ data class EdgarRawFactsEntity(
             costOfGoodsSoldHistory = costOfGoodsSoldHistoryJson ?: emptyList(),
             grossProfitHistory = grossProfitHistoryJson ?: emptyList(),
             operatingCashFlowHistory = operatingCashFlowHistoryJson,
+            capexHistory = capexHistoryJson,
+            depreciationAmortizationHistory = depreciationAmortizationHistoryJson,
             freeCashFlowHistory = freeCashFlowHistoryJson,
             sharesOutstandingHistory = sharesOutstandingHistoryJson,
             revenueTtm = revenueTtm,
@@ -256,10 +282,46 @@ data class EdgarRawFactsEntity(
             ebitdaTtm = ebitdaTtm,
             costOfGoodsSoldTtm = costOfGoodsSoldTtm,
             freeCashFlowTtm = freeCashFlowTtm,
-            operatingCashFlowTtm = operatingCashFlowTtm
+            operatingCashFlowTtm = operatingCashFlowTtm,
+            capex = capex,
+            capexTtm = capexTtm,
+            depreciationAmortization = depreciationAmortization,
+            depreciationAmortizationTtm = depreciationAmortizationTtm,
+            totalDebt = totalDebt,
+            cashAndEquivalents = cashAndEquivalents,
+            accountsReceivable = accountsReceivable,
+            operatingIncome = operatingIncome,
+            operatingIncomeTtm = operatingIncomeTtm,
+            totalDebtHistory = totalDebtHistoryJson ?: emptyList()
         )
     }
 }
+
+@Entity(
+    tableName = "quarterly_financial_facts",
+    primaryKeys = ["symbol", "metricKey", "periodEnd"],
+    indices = [
+        Index(value = ["symbol"]),
+        Index(value = ["symbol", "periodEnd"])
+    ]
+)
+data class QuarterlyFinancialFactEntity(
+    val symbol: String,
+    val metricKey: String,
+    val periodStart: String?,
+    val periodEnd: String,
+    val fiscalYear: Int?,
+    val fiscalPeriod: String?,
+    val form: String?,
+    val unit: String,
+    val taxonomy: String,
+    val tag: String,
+    val value: Double,
+    val filedDate: String?,
+    /** SEC companyfacts `accn` when present — for filing deep links. */
+    val accessionNumber: String? = null,
+    val lastUpdated: Long
+)
 
 @Entity(
     tableName = "financial_derived_metrics",
@@ -434,6 +496,26 @@ data class CompanyProfileEntity(
     @PrimaryKey val symbol: String,
     val about: String?,
     val updatedAt: Long
+)
+
+/**
+ * Per-symbol XBRL tag override when [com.example.stockzilla.sec.EdgarConcepts] standard lists miss.
+ * Taxonomy: `us-gaap`, `ifrs-full`, or `dei` (must match SEC companyfacts JSON keys under `facts`).
+ */
+@Entity(
+    tableName = "symbol_tag_overrides",
+    primaryKeys = ["symbol", "metricKey", "scopeKey"],
+    indices = [Index(value = ["symbol"])]
+)
+data class SymbolTagOverrideEntity(
+    val symbol: String,
+    val metricKey: String,
+    /** Empty = global; quarterly example: FY2024:Q2 */
+    val scopeKey: String = "",
+    val taxonomy: String,
+    val tag: String,
+    val updatedAt: Long,
+    val source: String
 )
 
 /** AI-generated + user-editable business profile for a company. */
@@ -620,6 +702,24 @@ interface EdgarRawFactsDao {
 }
 
 @Dao
+interface QuarterlyFinancialFactDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertAll(rows: List<QuarterlyFinancialFactEntity>)
+
+    @Query("DELETE FROM quarterly_financial_facts WHERE symbol = :symbol")
+    suspend fun deleteBySymbol(symbol: String)
+
+    @Query(
+        """
+        SELECT * FROM quarterly_financial_facts
+        WHERE symbol = :symbol
+        ORDER BY periodEnd DESC, metricKey ASC
+        """
+    )
+    suspend fun getBySymbol(symbol: String): List<QuarterlyFinancialFactEntity>
+}
+
+@Dao
 interface FinancialDerivedMetricsDao {
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(derived: FinancialDerivedMetricsEntity)
@@ -787,6 +887,18 @@ interface CompanyProfileDao {
 }
 
 @Dao
+interface SymbolTagOverrideDao {
+    @Query("SELECT * FROM symbol_tag_overrides WHERE symbol = :symbol")
+    suspend fun getAllForSymbol(symbol: String): List<SymbolTagOverrideEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(row: SymbolTagOverrideEntity)
+
+    @Query("DELETE FROM symbol_tag_overrides WHERE symbol = :symbol AND metricKey = :metricKey AND scopeKey = :scopeKey")
+    suspend fun delete(symbol: String, metricKey: String, scopeKey: String)
+}
+
+@Dao
 interface StockProfileDao {
     @Query("SELECT * FROM stock_profiles WHERE symbol = :symbol")
     suspend fun getBySymbol(symbol: String): StockProfileEntity?
@@ -878,6 +990,9 @@ interface AiMessageDao {
 
     @Query("DELETE FROM ai_messages WHERE conversationId = :conversationId")
     suspend fun deleteForConversation(conversationId: Long)
+
+    @Query("DELETE FROM ai_messages WHERE id = :id")
+    suspend fun deleteById(id: Long)
 }
 
 // ==================== News Metadata Entity (Stage 1 — no AI data) ====================
@@ -1063,6 +1178,7 @@ interface NewsSummariesDao {
         StockCacheEntity::class,
         StockIndustryPeerEntity::class,
         EdgarRawFactsEntity::class,
+        QuarterlyFinancialFactEntity::class,
         FinancialDerivedMetricsEntity::class,
         ScoreSnapshotEntity::class,
         UserStockListItemEntity::class,
@@ -1074,9 +1190,10 @@ interface NewsSummariesDao {
         PortfolioValueSnapshotEntity::class,
         PortfolioCashFlowEntity::class,
         NewsMetadataEntity::class,
-        NewsSummaryEntity::class
+        NewsSummaryEntity::class,
+        SymbolTagOverrideEntity::class
     ],
-    version = 23,
+    version = 29,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -1085,11 +1202,13 @@ abstract class StockzillaDatabase : RoomDatabase() {
     abstract fun stockCacheDao(): StockCacheDao
     abstract fun stockIndustryPeerDao(): StockIndustryPeerDao
     abstract fun edgarRawFactsDao(): EdgarRawFactsDao
+    abstract fun quarterlyFinancialFactDao(): QuarterlyFinancialFactDao
     abstract fun financialDerivedMetricsDao(): FinancialDerivedMetricsDao
     abstract fun scoreSnapshotDao(): ScoreSnapshotDao
     abstract fun userStockListDao(): UserStockListDao
     abstract fun companyProfileDao(): CompanyProfileDao
-        abstract fun stockProfileDao(): StockProfileDao
+    abstract fun symbolTagOverrideDao(): SymbolTagOverrideDao
+    abstract fun stockProfileDao(): StockProfileDao
         abstract fun aiMemoryCacheDao(): AiMemoryCacheDao
         abstract fun aiConversationDao(): AiConversationDao
         abstract fun aiMessageDao(): AiMessageDao
@@ -1252,6 +1371,116 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_23_24 = object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS symbol_tag_overrides (
+                        symbol TEXT NOT NULL,
+                        metricKey TEXT NOT NULL,
+                        taxonomy TEXT NOT NULL,
+                        tag TEXT NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        source TEXT NOT NULL,
+                        PRIMARY KEY(symbol, metricKey)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_symbol_tag_overrides_symbol ON symbol_tag_overrides(symbol)"
+                )
+            }
+        }
+
+        private val MIGRATION_25_26 = object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN totalDebt REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN cashAndEquivalents REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN accountsReceivable REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN operatingIncome REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN operatingIncomeTtm REAL")
+            }
+        }
+
+        private val MIGRATION_26_27 = object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN totalDebtHistoryJson TEXT")
+            }
+        }
+
+        private val MIGRATION_27_28 = object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN capex REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN capexTtm REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN depreciationAmortization REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN depreciationAmortizationTtm REAL")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN capexHistoryJson TEXT")
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN depreciationAmortizationHistoryJson TEXT")
+            }
+        }
+
+        private val MIGRATION_28_29 = object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS symbol_tag_overrides_new (
+                        symbol TEXT NOT NULL,
+                        metricKey TEXT NOT NULL,
+                        scopeKey TEXT NOT NULL DEFAULT '',
+                        taxonomy TEXT NOT NULL,
+                        tag TEXT NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        source TEXT NOT NULL,
+                        PRIMARY KEY(symbol, metricKey, scopeKey)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    INSERT INTO symbol_tag_overrides_new (symbol, metricKey, scopeKey, taxonomy, tag, updatedAt, source)
+                    SELECT symbol, metricKey, '', taxonomy, tag, updatedAt, source FROM symbol_tag_overrides
+                    """.trimIndent()
+                )
+                db.execSQL("DROP TABLE symbol_tag_overrides")
+                db.execSQL("ALTER TABLE symbol_tag_overrides_new RENAME TO symbol_tag_overrides")
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_symbol_tag_overrides_symbol ON symbol_tag_overrides(symbol)"
+                )
+                db.execSQL("ALTER TABLE quarterly_financial_facts ADD COLUMN accessionNumber TEXT")
+            }
+        }
+
+        private val MIGRATION_24_25 = object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS quarterly_financial_facts (
+                        symbol TEXT NOT NULL,
+                        metricKey TEXT NOT NULL,
+                        periodStart TEXT,
+                        periodEnd TEXT NOT NULL,
+                        fiscalYear INTEGER,
+                        fiscalPeriod TEXT,
+                        form TEXT,
+                        unit TEXT NOT NULL,
+                        taxonomy TEXT NOT NULL,
+                        tag TEXT NOT NULL,
+                        value REAL NOT NULL,
+                        filedDate TEXT,
+                        lastUpdated INTEGER NOT NULL,
+                        PRIMARY KEY(symbol, metricKey, periodEnd)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_quarterly_financial_facts_symbol ON quarterly_financial_facts(symbol)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_quarterly_financial_facts_symbol_periodEnd ON quarterly_financial_facts(symbol, periodEnd)"
+                )
+            }
+        }
+
         private val MIGRATION_20_21 = object : Migration(20, 21) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -1388,7 +1617,13 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_19_20,
                         MIGRATION_20_21,
                         MIGRATION_21_22,
-                        MIGRATION_22_23
+                        MIGRATION_22_23,
+                        MIGRATION_23_24,
+                        MIGRATION_24_25,
+                        MIGRATION_25_26,
+                        MIGRATION_26_27,
+                        MIGRATION_27_28,
+                        MIGRATION_28_29
                     )
                     .build()
                 INSTANCE = instance

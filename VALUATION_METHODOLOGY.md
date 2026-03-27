@@ -2,44 +2,26 @@
 
 ## Overview
 
-Stockzilla determines whether a stock is undervalued, fairly valued, or overvalued by comparing its current PE or PS ratio against industry/sector benchmark averages. Growth signals are then used to confirm or deny the valuation signal.
+The app **displays** valuation context by comparing the stock’s **P/E or P/S** (chosen from profitability) to **industry or sector benchmark averages**, and by showing an **implied fair value** at the peer multiple. That logic lives in `BenchmarkData` (`getDisplayMetrics`, `calculateFairValue`) and is wired from `StockViewModel` / `MainFragment`.
+
+**Important:** There is **no** standalone `assessValuation()` function and **no** valuation deviation baked into the **Growth** pillar anymore — see `GROWTH_SCORE_SPEC.md` (“Valuation assessment removed from scoring model”). The composite recommendation text comes from **health / growth / resilience scores**, not from an UNDERVALUED/OVERVALUED enum.
 
 ---
 
-## Valuation Assessment (`assessValuation()`)
+## Conceptual read (not a separate code path)
 
-### Ratio Selection
+Analysts often bucket “cheap vs rich vs fair” using deviation from peer multiples. You can still reason that way from the numbers on the card (stock multiple vs benchmark), but the codebase does **not** persist an `UNDERVALUED` / `OVERVALUED` label from fixed ±15% thresholds.
 
-The system automatically selects the appropriate ratio based on profitability:
-- **Net Income > 0** → Use **PE Ratio** vs industry average PE
-- **Net Income ≤ 0** → Use **PS Ratio** vs industry average PS
+### Ratio selection (implemented)
 
-### Deviation Calculation
+- **Net Income > 0** → primary display metric is **P/E** vs benchmark P/E  
+- **Net Income ≤ 0** → primary display metric is **P/S** vs benchmark P/S  
 
-```
-deviation = (stock's ratio − benchmark ratio) ÷ benchmark ratio
-```
+(`BenchmarkData.getDisplayMetrics`)
 
-### Classification Thresholds
+### Fair value (implemented)
 
-| Deviation | Classification |
-|---|---|
-| ≤ -15% | **UNDERVALUED** — stock trades at a meaningful discount to peers |
-| -15% to +15% | **FAIRLY_VALUED** — stock trades near peer average |
-| ≥ +15% | **OVERVALUED** — stock trades at a premium to peers |
-| Data unavailable | **UNKNOWN** |
-
-### Normalized Valuation Score
-
-The deviation is also converted to a 0-to-1 normalized score for use in the Growth & Forecast pillar (5% weight):
-
-```
-clamped_deviation = clamp(deviation, -1.0, 1.0)
-fraction = (-clamped_deviation + 1.0) / 2.0
-normalized_score = sigmoid(fraction)
-```
-
-This means: lower ratio relative to benchmark → higher score (more undervalued = better).
+`calculateFairValue` answers: “At the industry/sector average multiple, what price would this company have?” using the same PE-vs-PS rule as display.
 
 ---
 
@@ -119,9 +101,9 @@ Every SEC filing includes a **SIC (Standard Industrial Classification) code**. T
 
 **Example:** A $5B software company (SIC 7372) gets compared against other SIC 7372 companies in the Mid Cap tier.
 
-### Current Implementation
+### Current implementation
 
-The current app uses the `industry` and `sector` strings from the data source to look up hardcoded benchmarks in `BenchmarkData.kt`. The "Similar Stocks" button conceptually uses the same grouping but the dynamic peer discovery from EDGAR SIC codes is not yet implemented.
+The app uses `industry` and `sector` strings on `StockData` for hardcoded benchmarks in `BenchmarkData.kt`, with an optional **`DynamicBenchmarkRepository`** override when peer stats exist in the database. **Industry peers UI** is `IndustryStocksActivity` (discover + saved group), backed by `IndustryPeerRepository` and EDGAR/Finnhub data — not the same code path as the static tables, but the same idea (compare to something peer-like).
 
 ### Future: NAICS Codes
 
@@ -145,14 +127,25 @@ A low PE or PS alone doesn't make a stock a good value — it might be cheap for
 - Below-average PE/PS BUT declining net income
 - Below-average PE/PS BUT negative or shrinking free cash flow
 
-These growth signals are formally captured in the Growth & Forecast pillar of the composite score (see `FINANCIAL_HEALTH_SCORE.md`), but conceptually they serve as the "is this value real or a trap?" check.
+These growth signals are formally captured in the **Growth** pillar of the composite score (`GROWTH_SCORE_SPEC.md`, `FinancialHealthAnalyzer.calculateGrowthScore`). Conceptually they are the “cheap for a reason?” check alongside multiples on the card.
 
 ---
 
-## User-Facing Valuation Display
+## User-facing display
 
-On the main stock card:
-- Show the stock's PE (or PS if unprofitable) alongside the industry average
-- Arrow indicator: ▼ if below average (potentially undervalued), ▲ if above
-- Fair Value Price estimate: what the stock would cost at the industry average multiple
-- Recommendation text derived from composite score (7-10 = Strong Buy, 4-6 = Hold/Consider, 0-3 = Caution)
+On the main stock card (`MainFragment`):
+
+- Primary multiple and benchmark from `BenchmarkData.getDisplayMetrics` (with dynamic benchmark when provided)
+- Fair value line from `calculateFairValue` when inputs exist
+- Recommendation text from **composite score bands** (see `APP_STRUCTURE.md`), not from a valuation enum
+
+---
+
+## Related implementation files
+
+| Role | Path |
+|------|------|
+| Benchmarks & fair value | `app/src/main/java/com/example/stockzilla/scoring/BenchmarkData.kt` |
+| Dynamic peer averages | `app/src/main/java/com/example/stockzilla/data/DynamicBenchmarkRepository.kt` |
+| Card UI | `app/src/main/java/com/example/stockzilla/feature/MainFragment.kt` |
+| Stock state | `app/src/main/java/com/example/stockzilla/stock/StockViewModel.kt` |

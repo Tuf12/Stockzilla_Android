@@ -69,7 +69,8 @@ class PersonalProfileFragment : Fragment() {
                 finnhubKey,
                 db.edgarRawFactsDao(),
                 db.financialDerivedMetricsDao(),
-                db.scoreSnapshotDao()
+                db.scoreSnapshotDao(),
+                db.symbolTagOverrideDao()
             )
         }
 

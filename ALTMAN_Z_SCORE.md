@@ -15,7 +15,7 @@ The Altman Z-Score predicts bankruptcy probability using 5 weighted financial ra
 | **A** | Working Capital / Total Assets | `(Current Assets − Current Liabilities) ÷ Total Assets` | EDGAR | Short-term liquidity relative to company size |
 | **B** | Retained Earnings / Total Assets | `Retained Earnings ÷ Total Assets` | EDGAR | How much of assets are funded by cumulative profits |
 | **C** | EBIT / Total Assets | `EBITDA ÷ Total Assets` (EBITDA used as proxy) | EDGAR | Asset productivity — how well assets generate earnings |
-| **D** | Market Value / Total Liabilities | `Market Cap ÷ Total Liabilities` (log-normalized) | Finnhub + EDGAR | Equity cushion — how far market value exceeds obligations |
+| **D** | Market Value / Total Liabilities | `Market Cap ÷ Total Liabilities` (from `StockData.marketCap` — live price × EDGAR shares when both exist) | EDGAR + live price | Equity cushion — how far market value exceeds obligations |
 | **E** | Revenue / Total Assets | `Revenue ÷ Total Assets` | EDGAR | Asset turnover — business efficiency |
 
 ---
@@ -31,25 +31,17 @@ The Altman Z-Score predicts bankruptcy probability using 5 weighted financial ra
 
 ---
 
-## Stockzilla-Specific Modifications
+## Stockzilla-specific behavior
 
-### 1. Log-Normalized Market Cap to Liabilities (Variable D)
+### 1. Market value to liabilities (Variable D)
 
-Standard Altman-Z uses raw `Market Cap ÷ Total Liabilities`, but this can produce extreme values for highly-valued growth companies (e.g., a tech company with $100B market cap and $5B liabilities = ratio of 20, which would dominate the entire Z-score).
+The implementation uses the **direct ratio** `marketCap / totalLiabilities` with the standard formula coefficients — **no** log transform. `marketCap` on `StockData` is built from **live price × shares outstanding** (price from Finnhub; shares from EDGAR when available). See `buildResilienceInputs()` in `FinancialHealthAnalyzer.kt`.
 
-Stockzilla applies a **logarithmic transformation**:
-```
-raw_ratio = market_cap / total_liabilities
-transformed = ln(raw_ratio), clamped to [ln(0.1), ln(10.0)]
-scaled = ((transformed - ln(0.1)) / (ln(10.0) - ln(0.1))) × 10.0
-```
-This scales the ratio to 0–10, preventing any single variable from overwhelming the score.
-
-### 2. EBITDA as EBIT Proxy (Variable C)
+### 2. EBITDA as EBIT proxy (Variable C)
 
 The code uses EBITDA rather than EBIT for variable C. EBITDA is more commonly available in standardized reporting and provides a reasonable approximation.
 
-### 3. Two-Year Consecutive Loss Penalty
+### 3. Two-year consecutive loss penalty
 
 After calculating the base Z-level (0–3), the system checks if the company had **net losses in both of the most recent two reporting periods**. If yes, the level is reduced by 1 (minimum 0).
 
@@ -60,32 +52,19 @@ if company had losses in year N AND year N-1:
 
 This catches cases where balance sheet ratios still look acceptable but the company is actively burning money.
 
-### 4. Conversion to Composite
+### 4. Manufacturing vs non-manufacturing (implemented)
 
-The 0–3 level is converted to a 0–10 scale for inclusion in the composite:
-```
-resilience_score = (level / 3.0) × 10.0
-```
+`FinancialHealthAnalyzer` selects the **classic Z** (with revenue/assets term **E**) when `EdgarConcepts.isManufacturingSic(sicCode)` is true; otherwise it uses **Z''** (no **E** term) with the coefficients shown in `ALTMAN_Z_SCORE_SPEC.md`.
 
-Then weighted at 20% in the final composite.
+### 5. Conversion into the composite
 
----
-
-## Notes for Future Development
-
-**Modified Z''-Score for Non-Manufacturing:**
-
-The original Altman Z-Score was calibrated for manufacturing companies. A modified version (Z''-Score) exists for service/non-manufacturing companies that drops variable E (asset turnover, which is less meaningful for asset-light businesses) and adjusts coefficients:
+The discrete **level 0–3** is stored on `HealthScore` as `zSubScore`. For the weighted composite, that level is mapped to a 0–10 scale:
 
 ```
-Z'' = 6.56×A + 3.26×B + 6.72×C + 1.05×D
+resilienceScoreForComposite = (level / 3.0) × 10.0
 ```
-altmanZPrime < 1.10 -> 0
-altmanZPrime < 1.85 -> 1
-altmanZPrime < 2.60 -> 2
-else -> 3
 
-Consider implementing both versions and selecting based on the company's SIC code (manufacturing vs service).
+then multiplied by the **20%** resilience weight with core and growth pillars.
 
 ---
 

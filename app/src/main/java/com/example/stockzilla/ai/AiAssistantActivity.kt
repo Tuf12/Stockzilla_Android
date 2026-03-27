@@ -12,6 +12,7 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.viewModels
+import com.example.stockzilla.feature.FullAnalysisActivity
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
@@ -66,6 +67,27 @@ class AiAssistantActivity : AppCompatActivity() {
         observeViewModel()
 
         viewModel.loadConversations()
+
+        if (intent.getBooleanExtra(EXTRA_LAUNCHED_FOR_TAG_FIX, false)) {
+            viewModel.tagFixCompletedStock.observe(this) { stock ->
+                if (stock != null) {
+                    viewModel.tagFixCompletedStock.removeObservers(this)
+                    setResult(
+                        RESULT_OK,
+                        Intent().putExtra(FullAnalysisActivity.EXTRA_STOCK_DATA, stock as java.io.Serializable)
+                    )
+                    finish()
+                }
+            }
+            val sym = intent.getStringExtra(EXTRA_SYMBOL)?.trim()?.uppercase()
+            val mk = intent.getStringExtra(EXTRA_TAG_FIX_METRIC_KEY)?.trim()
+            val fj = intent.getStringExtra(EXTRA_TAG_FIX_FACTS_INDEX_JSON).orEmpty()
+            if (!sym.isNullOrBlank() && !mk.isNullOrBlank()) {
+                binding.root.postDelayed({
+                    viewModel.runTagFixBootstrap(sym, mk, fj)
+                }, 500)
+            }
+        }
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -106,6 +128,9 @@ class AiAssistantActivity : AppCompatActivity() {
         val messagesAdapter = AiMessageAdapter(
             onDiscoveryConfirm = { symbol, accessions ->
                 handleDiscoveryConfirm(symbol, accessions)
+            },
+            onDeleteMessage = { message ->
+                viewModel.deleteMessage(message.id)
             }
         )
         binding.rvMessages.layoutManager = LinearLayoutManager(this).apply {
@@ -313,6 +338,22 @@ class AiAssistantActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_SYMBOL = "extra_symbol"
         private const val EXTRA_OPEN_MODE = "extra_open_mode"
+        const val EXTRA_LAUNCHED_FOR_TAG_FIX = "extra_launched_for_tag_fix"
+        const val EXTRA_TAG_FIX_METRIC_KEY = "extra_tag_fix_metric_key"
+        const val EXTRA_TAG_FIX_FACTS_INDEX_JSON = "extra_tag_fix_facts_index_json"
+
+        fun createTagFixIntent(
+            context: Context,
+            symbol: String,
+            metricKey: String,
+            factsIndexJson: String
+        ): Intent = Intent(context, AiAssistantActivity::class.java).apply {
+            putExtra(EXTRA_SYMBOL, symbol.trim().uppercase())
+            putExtra(EXTRA_LAUNCHED_FOR_TAG_FIX, true)
+            putExtra(EXTRA_TAG_FIX_METRIC_KEY, metricKey)
+            putExtra(EXTRA_TAG_FIX_FACTS_INDEX_JSON, factsIndexJson)
+            putExtra(EXTRA_OPEN_MODE, AiAssistantViewModel.OpenMode.LAST_CHAT.name)
+        }
 
         fun start(context: Context, symbol: String?) {
             start(context, symbol, AiAssistantViewModel.OpenMode.LAST_CHAT)

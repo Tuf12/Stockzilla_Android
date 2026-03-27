@@ -758,6 +758,55 @@
                         tools:text="14.3%" />
                 </LinearLayout>
 
+                <!-- OCF Growth Group -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="4dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/metric_ocf_growth"
+                        android:textColor="@color/textSecondary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvOcfGrowthValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="16sp"
+                        tools:text="19.7%" />
+                </LinearLayout>
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginBottom="12dp"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="@string/metric_average_ocf_growth"
+                        android:textColor="@color/textSecondary"
+                        android:textSize="14sp"
+                        android:textStyle="bold" />
+
+                    <TextView
+                        android:id="@+id/tvAverageOcfGrowthValue"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/textPrimary"
+                        android:textSize="16sp"
+                        tools:text="12.9%" />
+                </LinearLayout>
+
                 <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -898,7 +947,7 @@
                     android:layout_marginTop="4dp"
                     android:textColor="@color/textSecondary"
                     android:textSize="14sp"
-                    tools:text="Revenue, Net Income, EPS, ROE, EBITDA" />
+                    tools:text="Revenue, Net Income, EPS, ROE, EBITDA (calculated)" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -1028,7 +1077,7 @@
                     android:layout_marginTop="4dp"
                     android:textColor="@color/textSecondary"
                     android:textSize="14sp"
-                    tools:text="Net Income, Debt-to-Equity, Free Cash Flow, Assets vs. Liabilities" />
+                    tools:text="Net Income, Debt-to-Equity, FCF (when OCF &amp; capex), Assets vs. Liabilities" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

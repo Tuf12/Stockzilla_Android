@@ -33,7 +33,9 @@ class StockRepository(
     private val finnhubApiKey: String? = null,
     private val rawFactsDao: EdgarRawFactsDao? = null,
     private val derivedMetricsDao: FinancialDerivedMetricsDao? = null,
-    private val scoreSnapshotDao: ScoreSnapshotDao? = null
+    private val scoreSnapshotDao: ScoreSnapshotDao? = null,
+    private val symbolTagOverrideDao: SymbolTagOverrideDao? = null,
+    private val quarterlyFinancialFactDao: QuarterlyFinancialFactDao? = null
 ) {
     private val finnhubRetrofit = Retrofit.Builder()
         .baseUrl("https://finnhub.io/api/v1/")
@@ -114,10 +116,23 @@ class StockRepository(
             DiagnosticsLogger.log(symbol, "EDGAR_REFRESH", "User requested refresh, fetching latest from SEC EDGAR")
         }
 
+        val tagOverrides: List<SymbolTagOverrideEntity> =
+            symbolTagOverrideDao?.getAllForSymbol(symbol).orEmpty()
+
         // Fetch from EDGAR
-        val edgarResult = edgarService.loadFundamentalsForTicker(symbol)
+        val edgarResult = edgarService.loadFundamentalsForTicker(symbol, tagOverrides)
         edgarResult.fold(
             onSuccess = { edgarData ->
+                try {
+                    val quarterlyRows = edgarService.loadQuarterlyFactsForTicker(symbol, tagOverrides).getOrNull().orEmpty()
+                    quarterlyFinancialFactDao?.deleteBySymbol(symbol)
+                    if (quarterlyRows.isNotEmpty()) {
+                        quarterlyFinancialFactDao?.upsertAll(quarterlyRows)
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "Failed to persist quarterly facts for $symbol", e)
+                    DiagnosticsLogger.log(symbol, "QUARTERLY_SAVE_FAIL", e.message ?: "unknown")
+                }
                 DiagnosticsLogger.log(symbol, "DATA_SOURCE_EDGAR", "Saved to separated raw/derived tables")
                 val withPrice = mergeWithLivePrice(edgarData)
                 return@withContext Result.success(withPrice)

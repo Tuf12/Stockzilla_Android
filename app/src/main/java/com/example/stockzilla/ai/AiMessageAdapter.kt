@@ -20,7 +20,8 @@ import io.noties.markwon.Markwon
 import io.noties.markwon.html.HtmlPlugin
 
 class AiMessageAdapter(
-    private val onDiscoveryConfirm: ((symbol: String, accessions: List<String>) -> Unit)? = null
+    private val onDiscoveryConfirm: ((symbol: String, accessions: List<String>) -> Unit)? = null,
+    private val onDeleteMessage: (AiMessageEntity) -> Unit
 ) : ListAdapter<AiMessageEntity, RecyclerView.ViewHolder>(DiffCallback) {
 
     private val gson = Gson()
@@ -55,9 +56,9 @@ class AiMessageAdapter(
     override fun onBindViewHolder(holder: RecyclerView.ViewHolder, position: Int) {
         val item = getItem(position)
         when (holder) {
-            is UserViewHolder -> holder.bind(item)
-            is AssistantViewHolder -> holder.bind(item)
-            is DiscoveryViewHolder -> holder.bind(item, gson)
+            is UserViewHolder -> holder.bind(item, onDeleteMessage)
+            is AssistantViewHolder -> holder.bind(item, onDeleteMessage)
+            is DiscoveryViewHolder -> holder.bind(item, gson, onDeleteMessage)
         }
     }
 
@@ -71,27 +72,35 @@ class AiMessageAdapter(
 
     class UserViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val messageView: TextView = itemView.findViewById(R.id.messageText)
+        private val copyButton: View = itemView.findViewById(R.id.btnCopyMessage)
+        private val deleteButton: View = itemView.findViewById(R.id.btnDeleteMessage)
         private val markwon: Markwon = Markwon.builder(itemView.context)
             .usePlugin(HtmlPlugin.create())
             .build()
 
-        fun bind(item: AiMessageEntity) {
+        fun bind(item: AiMessageEntity, onDelete: (AiMessageEntity) -> Unit) {
             markwon.setMarkdown(messageView, item.content)
+            copyButton.setOnClickListener {
+                copyAssistantReplyToClipboard(itemView.context, item.content)
+            }
+            deleteButton.setOnClickListener { onDelete(item) }
         }
     }
 
     class AssistantViewHolder(itemView: View) : RecyclerView.ViewHolder(itemView) {
         private val messageView: TextView = itemView.findViewById(R.id.messageText)
         private val copyButton: View = itemView.findViewById(R.id.btnCopyMessage)
+        private val deleteButton: View = itemView.findViewById(R.id.btnDeleteMessage)
         private val markwon: Markwon = Markwon.builder(itemView.context)
             .usePlugin(HtmlPlugin.create())
             .build()
 
-        fun bind(item: AiMessageEntity) {
+        fun bind(item: AiMessageEntity, onDelete: (AiMessageEntity) -> Unit) {
             markwon.setMarkdown(messageView, item.content)
             copyButton.setOnClickListener {
                 copyAssistantReplyToClipboard(itemView.context, item.content)
             }
+            deleteButton.setOnClickListener { onDelete(item) }
         }
     }
 
@@ -106,13 +115,15 @@ class AiMessageAdapter(
 
         private val discoveryCard: SecFilingDiscoveryCard = itemView.findViewById(R.id.discoveryCard)
         private val copyButton: View = itemView.findViewById(R.id.btnCopyMessage)
+        private val deleteButton: View = itemView.findViewById(R.id.btnDeleteMessage)
 
-        fun bind(item: AiMessageEntity, gson: Gson) {
+        fun bind(item: AiMessageEntity, gson: Gson, onDelete: (AiMessageEntity) -> Unit) {
             copyButton.setOnClickListener {
                 val text = textForDiscoveryCopy(itemView.context, item.content)
                 copyAssistantReplyToClipboard(itemView.context, text)
             }
-            // Extract JSON from marker-wrapped content
+            deleteButton.setOnClickListener { onDelete(item) }
+
             val content = item.content
             val startIdx = content.indexOf(DISCOVERY_MARKER_START)
             val endIdx = content.indexOf(DISCOVERY_MARKER_END)
