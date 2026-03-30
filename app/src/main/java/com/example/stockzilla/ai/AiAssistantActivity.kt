@@ -12,18 +12,15 @@ import android.view.inputmethod.EditorInfo
 import android.widget.EditText
 import android.widget.Toast
 import androidx.activity.viewModels
-import com.example.stockzilla.feature.FullAnalysisActivity
 import androidx.appcompat.app.ActionBarDrawerToggle
 import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.isVisible
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.stockzilla.ai.AiConversationAdapter
-import com.example.stockzilla.ai.AiMemoryCacheActivity
-import com.example.stockzilla.ai.AiMessageAdapter
 import com.example.stockzilla.R
 import com.example.stockzilla.data.AiConversationEntity
 import com.example.stockzilla.databinding.ActivityAiAssistantBinding
+import com.example.stockzilla.feature.FullAnalysisActivity
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
 
@@ -104,7 +101,6 @@ class AiAssistantActivity : AppCompatActivity() {
                 // Launch Memory Cache viewer for the current stock symbol, if any.
                 val currentSymbol = viewModel.selectedConversationId.value
                     ?.let { id -> viewModel.conversations.value?.firstOrNull { it.id == id }?.symbol }
-                    ?: null
                 AiMemoryCacheActivity.Companion.start(this, currentSymbol)
                 true
             }

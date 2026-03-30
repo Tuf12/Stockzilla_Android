@@ -584,6 +584,25 @@ data class AiMessageEntity(
     val timestamp: Long
 )
 
+/**
+ * Eidos-as-analyst chat: one thread per symbol, persisted separately from [AiMessageEntity] /
+ * [AiConversationEntity] (see EIDOS_AS_ANALYST.md).
+ */
+@Entity(
+    tableName = "eidos_analyst_chat_messages",
+    indices = [
+        Index(value = ["symbol"]),
+        Index(value = ["symbol", "timestampMs"])
+    ]
+)
+data class EidosAnalystChatMessageEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String,
+    val role: String,
+    val content: String,
+    val timestampMs: Long
+)
+
 @Dao
 interface FavoritesDao {
     @Query("SELECT * FROM favorites ORDER BY addedDate DESC")
@@ -995,6 +1014,24 @@ interface AiMessageDao {
     suspend fun deleteById(id: Long)
 }
 
+@Dao
+interface EidosAnalystChatDao {
+    @Insert
+    suspend fun insert(message: EidosAnalystChatMessageEntity): Long
+
+    @Query(
+        """
+        SELECT * FROM eidos_analyst_chat_messages
+        WHERE symbol = :symbol
+        ORDER BY timestampMs ASC, id ASC
+        """
+    )
+    suspend fun getMessagesForSymbol(symbol: String): List<EidosAnalystChatMessageEntity>
+
+    @Query("DELETE FROM eidos_analyst_chat_messages WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
 // ==================== News Metadata Entity (Stage 1 — no AI data) ====================
 
 @Entity(
@@ -1187,13 +1224,14 @@ interface NewsSummariesDao {
         AiMemoryCacheEntity::class,
         AiConversationEntity::class,
         AiMessageEntity::class,
+        EidosAnalystChatMessageEntity::class,
         PortfolioValueSnapshotEntity::class,
         PortfolioCashFlowEntity::class,
         NewsMetadataEntity::class,
         NewsSummaryEntity::class,
         SymbolTagOverrideEntity::class
     ],
-    version = 29,
+    version = 32,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -1212,6 +1250,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
         abstract fun aiMemoryCacheDao(): AiMemoryCacheDao
         abstract fun aiConversationDao(): AiConversationDao
         abstract fun aiMessageDao(): AiMessageDao
+        abstract fun eidosAnalystChatDao(): EidosAnalystChatDao
         abstract fun portfolioValueSnapshotDao(): PortfolioValueSnapshotDao
         abstract fun portfolioCashFlowDao(): PortfolioCashFlowDao
         abstract fun newsMetadataDao(): NewsMetadataDao
@@ -1450,6 +1489,61 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * Keeps installs working after a brief v30 build shipped (e.g. experimental tables since removed).
+         * Forward path 29→30: no SQL required for the current entity set.
+         */
+        val MIGRATION_29_30 = object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // Drop legacy analyst tables if present (harmless no-op when upgrading from 29).
+                dropLegacyAnalystTables(db)
+            }
+        }
+
+        /**
+         * v30 DBs from the reverted "Eidos analyst" Room schema stored a different identity hash than
+         * the current entity list; re-opening at v30 failed integrity checks. Bumping to 31 and
+         * dropping any leftover analyst tables realigns the file with the shipped schema.
+         */
+        val MIGRATION_30_31 = object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                dropLegacyAnalystTables(db)
+            }
+        }
+
+        val MIGRATION_31_32 = object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS eidos_analyst_chat_messages (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        role TEXT NOT NULL,
+                        content TEXT NOT NULL,
+                        timestampMs INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_chat_messages_symbol ON eidos_analyst_chat_messages(symbol)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_chat_messages_symbol_timestampMs ON eidos_analyst_chat_messages(symbol, timestampMs)"
+                )
+            }
+        }
+
+        private fun dropLegacyAnalystTables(db: SupportSQLiteDatabase) {
+            // snake_case names (hand-authored SQL / docs)
+            db.execSQL("DROP TABLE IF EXISTS analyst_messages")
+            db.execSQL("DROP TABLE IF EXISTS analyst_confirmed_facts")
+            db.execSQL("DROP TABLE IF EXISTS analyst_conversations")
+            // Default Room table names when @Entity had no tableName
+            db.execSQL("DROP TABLE IF EXISTS AnalystMessageEntity")
+            db.execSQL("DROP TABLE IF EXISTS AnalystConversationEntity")
+            db.execSQL("DROP TABLE IF EXISTS AnalystConfirmedFactEntity")
+        }
+
         private val MIGRATION_24_25 = object : Migration(24, 25) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -1623,7 +1717,10 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_25_26,
                         MIGRATION_26_27,
                         MIGRATION_27_28,
-                        MIGRATION_28_29
+                        MIGRATION_28_29,
+                        MIGRATION_29_30,
+                        MIGRATION_30_31,
+                        MIGRATION_31_32
                     )
                     .build()
                 INSTANCE = instance

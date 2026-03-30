@@ -31,6 +31,13 @@
             android:parentActivityName=".feature.MainActivity" />
 
         <activity
+            android:name=".analyst.EidosAnalystActivity"
+            android:exported="false"
+            android:label="@string/eidos_analyst"
+            android:parentActivityName=".feature.FullAnalysisActivity"
+            android:windowSoftInputMode="adjustResize|stateHidden" />
+
+        <activity
             android:name=".feature.IndustryStocksActivity"
             android:exported="false"
             android:windowSoftInputMode="adjustResize"

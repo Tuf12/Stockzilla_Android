@@ -24,6 +24,7 @@ import androidx.lifecycle.lifecycleScope
 import com.example.stockzilla.R
 import com.example.stockzilla.ai.AiAssistantActivity
 import com.example.stockzilla.ai.AiAssistantViewModel
+import com.example.stockzilla.analyst.EidosAnalystActivity
 import com.example.stockzilla.data.CompanyProfileEntity
 import com.example.stockzilla.data.QuarterlyFinancialFactEntity
 import com.example.stockzilla.data.SecEdgarService
@@ -209,6 +210,15 @@ class FullAnalysisActivity : AppCompatActivity() {
         binding.btnOpenOnStockAnalysis.setOnClickListener {
             val url = STOCK_ANALYSIS_BASE + symbol.lowercase() + "/"
             startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+        }
+
+        binding.btnEidosAnalyst.setOnClickListener {
+            startActivity(
+                Intent(this, EidosAnalystActivity::class.java).putExtra(
+                    EXTRA_STOCK_DATA,
+                    latestStockData as java.io.Serializable
+                )
+            )
         }
     }
 

@@ -329,6 +329,10 @@
     <string name="business_profile_about_hint">Your "About" summary or notes for this company</string>
     <string name="business_profile_save_about">Save About</string>
     <string name="business_profile_edit_about">Edit</string>
+    <string name="eidos_analyst">Eidos Analyst</string>
+    <string name="eidos_analyst_title_symbol">Eidos Analyst · %1$s</string>
+    <string name="eidos_analyst_messages_empty">No messages yet. Ask about missing metrics, filing context, or how to interpret numbers for this symbol.</string>
+    <string name="eidos_analyst_message_hint">Message Eidos (analyst)…</string>
     <string name="raw_financial_facts_heading">Raw Financial Facts (EDGAR)</string>
     <string name="standard_derived_metrics_heading">Standard Derived Metrics (from facts)</string>
     <string name="metric_column_name">Metric</string>
