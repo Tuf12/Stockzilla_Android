@@ -1012,6 +1012,16 @@ interface AiMessageDao {
 
     @Query("DELETE FROM ai_messages WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query(
+        """
+        DELETE FROM ai_messages WHERE id = (
+            SELECT id FROM ai_messages WHERE conversationId = :conversationId AND role = 'assistant'
+            ORDER BY timestamp DESC, id DESC LIMIT 1
+        )
+        """
+    )
+    suspend fun deleteLastAssistantForConversation(conversationId: Long): Int
 }
 
 @Dao
@@ -1030,6 +1040,88 @@ interface EidosAnalystChatDao {
 
     @Query("DELETE FROM eidos_analyst_chat_messages WHERE id = :id")
     suspend fun deleteById(id: Long)
+
+    @Query(
+        """
+        DELETE FROM eidos_analyst_chat_messages WHERE id = (
+            SELECT id FROM eidos_analyst_chat_messages WHERE symbol = :symbol AND role = 'assistant'
+            ORDER BY timestampMs DESC, id DESC LIMIT 1
+        )
+        """
+    )
+    suspend fun deleteLastAssistantForSymbol(symbol: String): Int
+}
+
+/**
+ * User-accepted numeric (or display) values from the Eidos analyst proposal flow.
+ * Isolated from EDGAR/XBRL refresh tables; automated refresh must never delete these rows.
+ */
+@Entity(
+    tableName = "eidos_analyst_confirmed_facts",
+    primaryKeys = ["symbol", "metricKey", "periodLabel"],
+    indices = [Index(value = ["symbol"])]
+)
+data class EidosAnalystConfirmedFactEntity(
+    val symbol: String,
+    /** Prefer [com.example.stockzilla.sec.EdgarMetricKey.name]. */
+    val metricKey: String,
+    /** Empty = primary Full Analysis scalar row; non-empty scopes history / proposal period. */
+    val periodLabel: String,
+    val valueText: String,
+    val filingFormType: String?,
+    val accessionNumber: String?,
+    val filedDate: String?,
+    val viewerUrl: String?,
+    val primaryDocumentUrl: String?,
+    val sourceSnippet: String?,
+    val proposalId: String,
+    val candidateId: String,
+    val candidateLabel: String?,
+    val confirmedAtMs: Long,
+)
+
+@Dao
+interface EidosAnalystConfirmedFactDao {
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(fact: EidosAnalystConfirmedFactEntity)
+
+    @Query("SELECT * FROM eidos_analyst_confirmed_facts WHERE symbol = :symbol")
+    suspend fun getAllForSymbol(symbol: String): List<EidosAnalystConfirmedFactEntity>
+}
+
+/**
+ * Append-only audit trail for analyst proposal actions (accept / decline).
+ */
+@Entity(
+    tableName = "eidos_analyst_audit_events",
+    indices = [Index(value = ["symbol"]), Index(value = ["symbol", "createdAtMs"])]
+)
+data class EidosAnalystAuditEventEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String,
+    /** e.g. PROPOSAL_ACCEPTED, PROPOSAL_DECLINED */
+    val eventType: String,
+    val proposalId: String?,
+    val metricKey: String?,
+    val candidateId: String?,
+    val detail: String?,
+    val createdAtMs: Long,
+)
+
+@Dao
+interface EidosAnalystAuditDao {
+    @Insert
+    suspend fun insert(event: EidosAnalystAuditEventEntity): Long
+
+    @Query(
+        """
+        SELECT * FROM eidos_analyst_audit_events
+        WHERE symbol = :symbol
+        ORDER BY createdAtMs DESC, id DESC
+        LIMIT :limit
+        """
+    )
+    suspend fun getRecentForSymbol(symbol: String, limit: Int = 200): List<EidosAnalystAuditEventEntity>
 }
 
 // ==================== News Metadata Entity (Stage 1 — no AI data) ====================
@@ -1225,13 +1317,15 @@ interface NewsSummariesDao {
         AiConversationEntity::class,
         AiMessageEntity::class,
         EidosAnalystChatMessageEntity::class,
+        EidosAnalystConfirmedFactEntity::class,
+        EidosAnalystAuditEventEntity::class,
         PortfolioValueSnapshotEntity::class,
         PortfolioCashFlowEntity::class,
         NewsMetadataEntity::class,
         NewsSummaryEntity::class,
         SymbolTagOverrideEntity::class
     ],
-    version = 32,
+    version = 33,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -1251,6 +1345,8 @@ abstract class StockzillaDatabase : RoomDatabase() {
         abstract fun aiConversationDao(): AiConversationDao
         abstract fun aiMessageDao(): AiMessageDao
         abstract fun eidosAnalystChatDao(): EidosAnalystChatDao
+        abstract fun eidosAnalystConfirmedFactDao(): EidosAnalystConfirmedFactDao
+        abstract fun eidosAnalystAuditDao(): EidosAnalystAuditDao
         abstract fun portfolioValueSnapshotDao(): PortfolioValueSnapshotDao
         abstract fun portfolioCashFlowDao(): PortfolioCashFlowDao
         abstract fun newsMetadataDao(): NewsMetadataDao
@@ -1533,6 +1629,55 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_32_33 = object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS eidos_analyst_confirmed_facts (
+                        symbol TEXT NOT NULL,
+                        metricKey TEXT NOT NULL,
+                        periodLabel TEXT NOT NULL,
+                        valueText TEXT NOT NULL,
+                        filingFormType TEXT,
+                        accessionNumber TEXT,
+                        filedDate TEXT,
+                        viewerUrl TEXT,
+                        primaryDocumentUrl TEXT,
+                        sourceSnippet TEXT,
+                        proposalId TEXT NOT NULL,
+                        candidateId TEXT NOT NULL,
+                        candidateLabel TEXT,
+                        confirmedAtMs INTEGER NOT NULL,
+                        PRIMARY KEY(symbol, metricKey, periodLabel)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_confirmed_facts_symbol ON eidos_analyst_confirmed_facts(symbol)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS eidos_analyst_audit_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        eventType TEXT NOT NULL,
+                        proposalId TEXT,
+                        metricKey TEXT,
+                        candidateId TEXT,
+                        detail TEXT,
+                        createdAtMs INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_audit_events_symbol ON eidos_analyst_audit_events(symbol)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_audit_events_symbol_createdAtMs ON eidos_analyst_audit_events(symbol, createdAtMs)"
+                )
+            }
+        }
+
         private fun dropLegacyAnalystTables(db: SupportSQLiteDatabase) {
             // snake_case names (hand-authored SQL / docs)
             db.execSQL("DROP TABLE IF EXISTS analyst_messages")
@@ -1720,7 +1865,8 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_28_29,
                         MIGRATION_29_30,
                         MIGRATION_30_31,
-                        MIGRATION_31_32
+                        MIGRATION_31_32,
+                        MIGRATION_32_33
                     )
                     .build()
                 INSTANCE = instance

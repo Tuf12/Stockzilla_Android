@@ -1,9 +1,9 @@
 package com.example.stockzilla.analyst
 
 import android.os.Bundle
-import android.view.MenuItem
 import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
+import androidx.appcompat.app.AlertDialog
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowCompat
@@ -24,6 +24,8 @@ class EidosAnalystActivity : AppCompatActivity() {
 
     private lateinit var binding: ActivityEidosAnalystBinding
     private val viewModel: EidosAnalystViewModel by viewModels()
+    /** Shown when Eidos calls [analyst_present_metric_proposal] (numeric value confirmation). */
+    private var proposalDialog: AlertDialog? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -99,6 +101,30 @@ class EidosAnalystActivity : AppCompatActivity() {
             binding.apiKeyHint.isVisible = needs == true
         }
 
+        viewModel.secFilingConsentRequested.observe(this) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.sec_filing_extraction_consent_title)
+                .setMessage(R.string.sec_filing_extraction_consent_message)
+                .setPositiveButton(R.string.sec_filing_extraction_allow) { _, _ ->
+                    viewModel.onSecFilingConsentGranted()
+                }
+                .setNegativeButton(R.string.sec_filing_extraction_not_now, null)
+                .show()
+        }
+
+        viewModel.proposal.observe(this) { p ->
+            proposalDialog?.dismiss()
+            proposalDialog = null
+            if (p == null) return@observe
+            proposalDialog = EidosAnalystProposalSheetUi.show(
+                this,
+                p,
+                onAccept = { selections -> viewModel.acceptProposal(selections) },
+                onDecline = { viewModel.declineProposal() },
+                onClosed = { viewModel.onProposalDialogClosed() }
+            )
+        }
+
         binding.btnSend.setOnClickListener { sendFromInput() }
         binding.editMessage.setOnEditorActionListener { _, actionId, _ ->
             if (actionId == EditorInfo.IME_ACTION_SEND) {
@@ -123,7 +149,7 @@ class EidosAnalystActivity : AppCompatActivity() {
         viewModel.sendMessage(text)
     }
 
-    override fun onOptionsItemSelected(item: MenuItem): Boolean {
+    override fun onOptionsItemSelected(item: android.view.MenuItem): Boolean {
         return when (item.itemId) {
             android.R.id.home -> {
                 onBackPressedDispatcher.onBackPressed()

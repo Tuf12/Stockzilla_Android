@@ -13,6 +13,8 @@ class ApiKeyManager(context: Context) {
         private const val FINNHUB_API_KEY_PREF = "finnhub_api_key"
         private const val FINNHUB_API_KEY_VALIDATED_PREF = "finnhub_api_key_validated"
         private const val AI_API_KEY_PREF = "ai_api_key"
+        /** User opted in to letting Eidos download/read SEC filing document text (forms, not just XBRL API). */
+        private const val SEC_FILING_EXTRACTION_CONSENT_PREF = "sec_filing_extraction_consent"
     }
 
     // --- Finnhub API key only (FMP removed) ---
@@ -48,4 +50,12 @@ class ApiKeyManager(context: Context) {
     fun getAiApiKey(): String? = sharedPreferences.getString(AI_API_KEY_PREF, null)
 
     fun hasAiApiKey(): Boolean = !getAiApiKey().isNullOrBlank()
+
+    /** Whether the user allowed Eidos to fetch SEC EDGAR filing documents (HTML/text) for analysis. Default false. */
+    fun hasSecFilingExtractionConsent(): Boolean =
+        sharedPreferences.getBoolean(SEC_FILING_EXTRACTION_CONSENT_PREF, false)
+
+    fun setSecFilingExtractionConsent(allowed: Boolean) {
+        sharedPreferences.edit { putBoolean(SEC_FILING_EXTRACTION_CONSENT_PREF, allowed) }
+    }
 }

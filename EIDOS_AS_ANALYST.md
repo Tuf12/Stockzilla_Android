@@ -34,12 +34,15 @@ It is **not** a replacement for the XBRL parsing or evolving tagging system it i
 
 **1. Use the SEC EDGAR Raw Filing Documents**  
 All data retrieved must come from a SEC EDGAR form if not present no numerical value should be provided.
-Eidos fetches the raw filing document the company uses(10-k,10-q, 20-f, 40-f, ect..) (as opposed to pulling structured XBRL data)
+Eidos uses the raw filing document the company files (10-K, 10-Q, 20-F, 40-F, etc.)—not structured XBRL/companyfacts—as the basis for proposed numbers.
+
+**1a. Search-first navigation, then financial statements (not generic “whole filing” preview)**  
+Analyst mode must offer a **search tool** over the **full normalized primary** periodic filing so Eidos can locate headings, Item lines, table titles, or note labels **before** pulling large windows. Search returns **character offsets** and short snippets; Eidos then calls **chunk** at those offsets (possibly **multiple** chunk calls in sequence) to read the exact region. Separately, a **dedicated financial-statement tool** (and backing `SecEdgarService` API) can retrieve a best-effort **Item/Part slice** (US 10-K/10-Q; equivalents for 20-F/40-F) when a full FS block is useful. Both paths are **separate from** any generic “fetch periodic filing” or news-style path that truncates the primary document (e.g. first N characters) or skips exhibits. The **Grok tool loop** must allow **back-to-back** tool rounds (search → chunk → chunk → … → proposal) until the model finishes—not stop after a single tool batch when the model also emitted short assistant text alongside tool calls.
 
 **2. Human-in-the-loop by design**  
 User and Eidos discuss issues with missing or questionable metrics via chat on the Full Analysis screen (“Eidos as analyst”).
-Eidos fetches Raw SEC EDGAR forms (10-k,10-q, 20-f, 40-f, ect), and locates and extracts the missing or questionable metric. utilize existing fetchAndNormalizeDocument() found in SecEdgarService.kt
-Eidos provides a proposal for the user. a pop up window that has selectable options for the provided metrics, and accept or decline buttons.
+Eidos calls **search** on the primary filing text, then **chunk** (or the **financial-statement extraction tool**) as needed to locate and extract the missing or questionable metric from filing text.
+Eidos provides a proposal for the user: a sheet with selectable options for the provided metrics, and **Accept** and **Decline** buttons.
 User: **Accept** → Eidos saves the value to its own table in the database, keeping it safe from being overwritten when the symbol refreshes.  
 **Decline** → Data does not get added to the database. Eidos and user discuss the decline and repeat the process.
 
@@ -64,45 +67,53 @@ Use this as a working list while building the feature. Items reflect `EIDOS_AS_A
 
 - [x] **Full Analysis entry point** — A dedicated way to open “Eidos as analyst” from the Full Analysis screen (distinct from the existing **Find tag (Eidos)** flow, which is companyfacts / override–oriented). *Implemented: “Eidos Analyst” outlined button between business profile (Save About) and Raw Financial Facts (EDGAR); opens `EidosAnalystActivity`.*
 - [x] **Scoped chat UI** — Chat surface tied to the symbol under analysis (symbol anchor + free-form discussion), not the generic main-app Eidos list. **Persist** conversation history here, **not** in the main assistant’s chat tables (`Persistence` below). *Implemented: `EidosAnalystActivity` + `EidosAnalystViewModel`, Grok chat with analyst system prompt; history in `eidos_analyst_chat_messages` (Room v32).*
-- [ ] **Proposal UI** — Dialog or bottom sheet: Eidos presents **one or more candidate metric values** (selectable options), plus **Accept** and **Decline** (and room to show source snippet / filing reference where possible).
-- [ ] **Decline loop** — After decline, conversation continues; user can iterate until accept or abandon (no silent DB write).
+- [x] **Proposal UI** — Scrollable **dialog** when Eidos calls `analyst_present_metric_proposal`: **one or more candidate metric values** (radio options), **Accept** / **Decline**, source snippet and filing reference. *Implemented: `EidosAnalystMetricProposal` + `bottom_sheet_eidos_analyst_proposal.xml` + `EidosAnalystProposalSheetUi` (AlertDialog); `EidosAnalystViewModel.presentProposal` from tool executor / `acceptProposal` / `declineProposal`.*
+- [x] **Decline loop** — After decline, conversation continues; user can iterate until accept or abandon (no silent DB write of *metric values*). *Implemented: Decline clears the sheet, posts an assistant line, and appends an audit event (`PROPOSAL_DECLINED`). Accept upserts `eidos_analyst_confirmed_facts`, logs `PROPOSAL_ACCEPTED` audit, and posts the chat acknowledgment.*
 
 ### Data ground rules (per spec)
 
-- [ ] **Raw filing as source for numbers** — For proposed numerical values, the model path must use **SEC EDGAR raw filing documents** (e.g. 10-K, 10-Q, 20-F, 40-F) via app fetch/normalize, not structured XBRL/companyfacts alone. If the filing text cannot support a number, **do not invent** a value—surface uncertainty in chat.
-- [ ] **Expose filing fetch for analyst** — Today `fetchAndNormalizeDocument()` in `SecEdgarService` is **private** and used inside news/8-K-style flows. Add a **supported API** for analyst (e.g. public/suspend method) that resolves the right document URL(s) for a symbol + form/period, downloads, strips HTML, and returns text capped safely for the model.
+- [x] **Raw filing as source for numbers** — For proposed numerical values, the model path must use **SEC EDGAR raw filing documents** (e.g. 10-K, 10-Q, 20-F, 40-F), not structured XBRL/companyfacts. If the filing text cannot support a number, **do not invent** a value—surface uncertainty in chat. *Implemented: analyst system prompt + tools that load primary filing text; model must use `analyst_fetch_financial_statements` before numeric proposals.*
+
+- [x] **Dedicated tool: financial statement text for analyst** — Implement a **separate** analyst tool + `SecEdgarService` API whose contract is to return text sufficient to ground **financial statement line items** (full statements and material notes as needed), **not** a truncated preview of the whole filing. Do **not** rely on news/long-document heuristics that take only a prefix of the primary document or omit exhibits by default. Options in the contract: (a) **search** over normalized primary text (phrases → offsets + snippets) so Eidos navigates before chunking, (b) section-scoped extraction (Item/Part for 10-K/10-Q; analogous anchors for 20-F/40-F), (c) optional **chunked** full primary document (`offset`/`max_chars`) when the metric spans or sits outside the default FS block—**multiple** chunk calls in one turn must be supported by the tool loop. *Implemented: `SecEdgarService.searchPrimaryDocumentForAnalyst` (`AnalystFilingTextSearch`), `fetchFinancialStatementsTextForAnalyst`, `fetchPrimaryDocumentChunkForAnalyst`; Grok tools `analyst_search_filing_text`, `analyst_fetch_financial_statements`, `analyst_fetch_filing_chunk`; `EidosAnalystViewModel.runAnalystGrokToolLoop` runs tool calls whenever present (no early exit on assistant text + tools), up to 12 rounds.*
+
+- [ ] **Supplementary: generic periodic filing fetch (optional)** — A separate “overview” or “full form chunk” tool may exist for narrative context; it does **not** replace the financial-statement tool for numeric proposals.
 
 ### Persistence (survives refresh)
 
 **Two kinds of data**
 
-- **Standard data** — What the app loads the usual way (SEC pipelines, evolving tag overrides, refresh). This is what gets updated when you pull fundamentals again.
-- **Eidos-as-analyst data** — Numbers the user **explicitly accepted** after Eidos proposed them from filings. This must stay clearly separate so a refresh never wipes user-approved values.
+- **Standard data (SEC / XBRL pipeline)** — What the app loads the usual way: companyfacts → `StockData`, persisted in **`edgar_raw_facts`** (`EdgarRawFactsEntity`) on refresh, plus evolving tag overrides (`SymbolTagOverrideEntity`) where applicable. This layer is **mechanical**: it updates when you pull fundamentals again.
+- **Eidos-as-analyst data** — Numbers the user **explicitly accepted** after Eidos proposed them from **filing text** (not from silent XBRL substitution). Stored only in **`eidos_analyst_confirmed_facts`** (`EidosAnalystConfirmedFactEntity`). This table is **never** written by the automated refresh job and is **not** merged into `edgar_raw_facts`—separation is by design.
+
+**Same app experience, two sources**
+
+- On **Full Analysis**, raw facts and the financial history grid are the **same screens** users already use for EDGAR-backed numbers. Analyst-approved values **appear on those rows and period columns** so the flow feels like “the metric is filled in,” but the **origin** is always visible: **XBRL** vs **Analyst** are shown on **separate lines** in the value cell (distinct colors—theme primary / accent for the pipeline line, `eidos_analyst_confirmed_value` for the analyst line). That mirrors the mental model: *same UI, separate DB rows; no silent overwrite of one store by the other.*
 
 **Checklist**
 
-- [ ] **Separate storage for analyst-approved numbers** — Keep accepted values in **their own tables** (not only mixed into rows that refresh overwrites). Implementation: Room entities/DAOs/migrations registered on the app database like other features.
-- [ ] **Confirmed facts** — For each accepted value, store at least: stock, metric (and period if needed), the value, and **where it came from** (e.g. filing link or accession) so you can always tell “user + analyst path” from “automatic extraction alone.” Normal EDGAR refresh must **not** delete these rows; the UI merges them when showing metrics or scores.
+- [x] **Separate storage for analyst-confirmed values** — Accepted values live in a dedicated Room table, isolated from the XBRL pipeline tables that the automated refresh cycle writes to. The refresh cycle must never touch this table. *Implemented: `eidos_analyst_confirmed_facts` (`EidosAnalystConfirmedFactEntity`), Room v33 / `MIGRATION_32_33`; no code path in mechanical refresh deletes this table.*
+- [x] **Confirmed fact schema** — Each row stores: symbol, metric key, period (`periodLabel`: empty = primary scalar row; non-empty = scoped FY/quarter/TTM), display `valueText`, filing provenance (`filingFormType`, `accessionNumber`, `filedDate`, `viewerUrl`, `primaryDocumentUrl`, `sourceSnippet`), proposal metadata (`proposalId`, `candidateId`, `candidateLabel`), `confirmedAtMs`. These rows are the authoritative **analyst** source for that `(symbol, metricKey, periodLabel)`; they do **not** duplicate into `EdgarRawFactsEntity`.
 - [x] **Analyst chat memory (required)** — Persist Eidos-as-analyst **conversation history** in storage that is **fully separate** from the main **Eidos Assistant** (do not reuse `ai_conversations` / `ai_messages` or `AiMemoryCache` for this). Same app, different tables or scopes so analyst chat and assistant chat never mix. *Implemented: `eidos_analyst_chat_messages` + `EidosAnalystChatDao` (Room v32).*
 
 ### Application logic
 
-- [ ] **Merge rules** — When rendering Full Analysis / raw facts / derived metrics, apply **analyst-confirmed overrides** in a deterministic order (e.g. after mechanical extraction, or only where mechanical value is null/suspect—product decision documented in code).
-- [ ] **ViewModel(s)** — Analyst-specific ViewModel(s) for chat, proposal state, and DB writes; keep concerns separate from `AiAssistantViewModel` if that class is already crowded with tag-fix and general tools.
-- [ ] **Grok / tools contract** — Define tools or structured prompts so Eidos can: request normalized filing text for a CIK/accession/form, return **candidates** (not silent DB writes), and only persist via **user Accept** (tool call or app-side confirmation step).
+- [x] **Merge rules (display-only)** — Mechanical `StockData` / history series are computed first from the XBRL path. Then `EidosAnalystConfirmedFactMerge` and `EidosAnalystPeriodScope` join in rows from `eidos_analyst_confirmed_facts`. **When an analyst row exists for that metric (and period scope), the cell shows both:** a line labeled **XBRL:** (automated value or N/A) and a line labeled **Analyst:** (user-confirmed text). **Find tag** is suppressed when an analyst value is present for that primary cell, because the user has already committed a filing-backed candidate. **Derived metrics** (second table) still use mechanical `StockData` only—documented in `EidosAnalystConfirmedFactMerge.kt` as deferred.*
+- [x] **ViewModel(s)** — Analyst-specific ViewModel(s) for chat, proposal state, and DB writes; keep concerns separate from `AiAssistantViewModel` that class is already provides tag-fix and general tools. *Implemented: `EidosAnalystViewModel` (chat, proposal, `acceptProposal` / `declineProposal` → confirmed facts + audit + chat messages); separate from `AiAssistantViewModel`.*
+- [x] **Grok / tools contract** — Define tools so Eidos can: (0) **read** the app’s stored fundamentals for the symbol **read-only** (`analyst_get_app_financial_data`, same payload shape as main assistant `get_stock_data` when present—no refresh/write), (1) **search** the normalized primary filing for phrases and get **offsets**, (2) request **financial-statement-scoped** normalized text (dedicated tool/API above), (3) request **additional chunks** at chosen offsets **multiple times per reply chain** if needed, (4) call **`analyst_present_metric_proposal`** with **candidates** (no silent DB writes), (5) persist only via **user Accept** into analyst-confirmed storage. Keep these tools separate from any generic periodic fetch used for exploration only. *App read + search + multi-round loop + proposal UI + **Accept → `eidos_analyst_confirmed_facts`** implemented.*
 
 ### Audit trail & memory
 
-- [ ] **Analyst audit trail** — History of proposals, accepts, declines, and other notes useful for “why does this number look like this?” Keep this **separate from main Eidos Assistant** memory (use analyst-specific tables or scopes—see **Persistence** above). Use a seperate font color for displaying Eidos Analyst entered data, so they are visually distinct from automatically extracted data. 
+- [x] **Visual distinction (XBRL vs Analyst)** — Analyst-confirmed values use **`R.color.eidos_analyst_confirmed_value`** on the **Analyst:** line; automated values use the normal theme/accent colors on the **XBRL:** line. Implemented on **Raw Financial Facts** and **financial history** (TTM, quarterly, annual) when a confirmed fact exists.
+- [ ] **Analyst audit trail** — History of proposals, accepts, declines, and other notes useful for “why does this number look like this?” Keep this **separate from main Eidos Assistant** memory (use analyst-specific tables or scopes—see **Persistence** above). *Partially implemented: `eidos_analyst_audit_events`.*
 
 ### Quality & ops
 
 - [ ] **Strings / accessibility** — Copy for analyst vs “Find tag (Eidos)” so users understand tag mapping vs filing-based value confirmation.
 - [ ] **Diagnostics** — Optional logging category (similar to `EIDOS_TAG` prefix) for analyst flows to simplify support.
-- [ ] **Tests** — Room migration tests for new tables; unit tests for merge logic and for “refresh does not delete analyst facts.”
+- [x] **Tests** — Room migration tests for new tables; unit tests for merge logic and for “refresh does not delete analyst facts.” *Implemented: `RoomMigration32To33Test`; `EidosAnalystConfirmedFactMergeTest`. **Not yet:** automated test that runs refresh and asserts analyst rows unchanged (invariant covered by schema separation + code review).*
 
 ### Lingering / related code today (not the analyst product)
 
-The app already has: **Full Analysis** (`FullAnalysisActivity`), **Find tag (Eidos)** → `AiAssistantActivity` + `runTagFixBootstrap`, **`set_symbol_tag_override`**, `SymbolTagOverrideEntity`, `SecEdgarService.getCompanyFacts` / `buildFactsConceptIndexJson`, and **`AiMemoryCache`** (main assistant only). Those support the **evolving tag** path and general assistant; **Eidos as analyst** still needs **its own** confirmed-metric storage, **separate chat persistence**, **raw filing fetch**, and **proposal/accept UI**.
+The app already has: **Full Analysis** (`FullAnalysisActivity`), **Find tag (Eidos)** → `AiAssistantActivity` + `runTagFixBootstrap`, **`set_symbol_tag_override`**, `SymbolTagOverrideEntity`, `SecEdgarService.getCompanyFacts` / `buildFactsConceptIndexJson`, and **`AiMemoryCache`** (main assistant only). Those support the **evolving tag** path and general assistant. **Eidos as analyst** now has **its own** confirmed-metric storage (`eidos_analyst_confirmed_facts`), **audit events** (`eidos_analyst_audit_events`), **merge-on-display** for raw facts, **separate chat persistence**, **primary-document search**, a **dedicated financial-statement extraction path** (not the truncated generic periodic fetch), **chunked full-form** reads with **multi-round** tool execution, and **proposal/accept UI**.
 
 ---

@@ -272,8 +272,6 @@ class FinancialHealthAnalyzer {
 
     fun calculateCompositeScore(scoringInput: ScoringInput, benchmarkOverride: Benchmark? = null): HealthScore {
         // Retained for call-site compatibility; benchmark no longer participates in v3 scoring.
-        @Suppress("UNUSED_VARIABLE")
-        val ignoredBenchmark = benchmarkOverride
         val stockData = scoringInput.stockData
         val (coreHealthScoreRaw, breakdown) = computeCoreHealthScore(stockData)
         val growthScoreRaw = calculateGrowthScore(stockData)

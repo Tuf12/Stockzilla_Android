@@ -3,8 +3,6 @@ package com.example.stockzilla.feature
 import androidx.fragment.app.Fragment
 import androidx.fragment.app.FragmentActivity
 import androidx.viewpager2.adapter.FragmentStateAdapter
-import com.example.stockzilla.feature.PersonalProfileFragment
-import com.example.stockzilla.feature.ViewedStocksFragment
 
 class MainPagerAdapter(activity: FragmentActivity) : FragmentStateAdapter(activity) {
 

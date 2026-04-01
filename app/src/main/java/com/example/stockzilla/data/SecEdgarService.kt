@@ -8,6 +8,8 @@ import com.example.stockzilla.sec.EdgarConcepts
 import com.example.stockzilla.sec.EdgarMetricKey
 import com.example.stockzilla.sec.EdgarTaxonomy
 import com.example.stockzilla.sec.NewsContent
+import com.example.stockzilla.sec.AnalystFilingTextSearch
+import com.example.stockzilla.sec.FinancialStatementSectionExtractor
 import com.example.stockzilla.sec.SecFilingMeta
 import com.example.stockzilla.sec.SecViewerUrls
 import com.example.stockzilla.sec.TagOverrideResolver
@@ -880,6 +882,195 @@ class SecEdgarService private constructor(
 
     fun filingViewerUrl(cik: String, accessionNumber: String): String =
         SecViewerUrls.filingViewerUrl(cik, accessionNumber)
+
+    // --------------- Eidos Analyst: financial statement text (primary document) ---------------
+
+    /**
+     * Returns normalized text focused on financial statements (Item/Part slice for US forms; best-effort for 20-F/40-F).
+     * Uses the **full** primary HTML document after strip — not [fetchNewsContent] long-document prefix heuristics.
+     */
+    suspend fun fetchFinancialStatementsTextForAnalyst(
+        cik: String,
+        request: AnalystPeriodicFilingRequest
+    ): AnalystFinancialStatementDocument? = withContext(Dispatchers.IO) {
+        val meta = resolvePeriodicFilingMetaForAnalyst(cik, request) ?: return@withContext null
+        val primaryUrl = resolvePrimaryDocumentUrlForAnalyst(meta) ?: return@withContext null
+        val fullText = fetchAndNormalizeDocument(primaryUrl, meta.cik, "analyst-fs-primary") ?: return@withContext null
+        val extracted = FinancialStatementSectionExtractor.extract(meta.formType, fullText)
+        var body = extracted.text
+        if (extracted.usedFallback && extracted.note != null) {
+            body = "=== NOTE ===\n${extracted.note}\n\n=== PRIMARY TEXT (prefix) ===\n$body"
+        }
+        if (body.length > ANALYST_FS_TOOL_MAX_CHARS) {
+            body = body.take(ANALYST_FS_TOOL_MAX_CHARS) +
+                "\n\n=== TRUNCATED at ${ANALYST_FS_TOOL_MAX_CHARS} chars. Use analyst_fetch_filing_chunk for more. ==="
+        }
+        AnalystFinancialStatementDocument(
+            meta = meta,
+            normalizedText = body,
+            viewerUrl = filingViewerUrl(meta.cik, meta.accessionNumber),
+            primaryDocumentUrl = primaryUrl,
+            usedFullDocumentFallback = extracted.usedFallback,
+            extractionNote = extracted.note
+        )
+    }
+
+    /**
+     * Chunk of the **full** normalized primary document (same filing as [fetchFinancialStatementsTextForAnalyst]).
+     */
+    suspend fun fetchPrimaryDocumentChunkForAnalyst(
+        cik: String,
+        request: AnalystPeriodicFilingRequest,
+        charOffset: Int,
+        maxChars: Int
+    ): AnalystPrimaryDocumentChunk? = withContext(Dispatchers.IO) {
+        val meta = resolvePeriodicFilingMetaForAnalyst(cik, request) ?: return@withContext null
+        val primaryUrl = resolvePrimaryDocumentUrlForAnalyst(meta) ?: return@withContext null
+        val fullText = fetchAndNormalizeDocument(primaryUrl, meta.cik, "analyst-fs-chunk") ?: return@withContext null
+        val cap = maxChars.coerceIn(1, ANALYST_FILING_CHUNK_MAX_CHARS)
+        val offset = charOffset.coerceIn(0, fullText.length)
+        val end = (offset + cap).coerceAtMost(fullText.length)
+        AnalystPrimaryDocumentChunk(
+            meta = meta,
+            charOffset = offset,
+            maxChars = cap,
+            totalChars = fullText.length,
+            text = fullText.substring(offset, end),
+            viewerUrl = filingViewerUrl(meta.cik, meta.accessionNumber),
+            primaryDocumentUrl = primaryUrl
+        )
+    }
+
+    /**
+     * Search the **full** normalized primary document for phrases (e.g. Item 8, Balance Sheet, Revenue)
+     * and return match offsets plus short snippets. Use hits to choose [char_offset] for [fetchPrimaryDocumentChunkForAnalyst].
+     */
+    suspend fun searchPrimaryDocumentForAnalyst(
+        cik: String,
+        request: AnalystPeriodicFilingRequest,
+        queries: List<String>,
+        maxMatches: Int = 25,
+        contextRadius: Int = 240
+    ): AnalystFilingSearchResult? = withContext(Dispatchers.IO) {
+        val meta = resolvePeriodicFilingMetaForAnalyst(cik, request) ?: return@withContext null
+        val primaryUrl = resolvePrimaryDocumentUrlForAnalyst(meta) ?: return@withContext null
+        val fullText = fetchAndNormalizeDocument(primaryUrl, meta.cik, "analyst-search") ?: return@withContext null
+        val clean = queries.map { it.trim() }.filter { it.length >= 2 }.distinct()
+        if (clean.isEmpty()) return@withContext null
+        val capMatches = maxMatches.coerceIn(1, 50)
+        val capRadius = contextRadius.coerceIn(32, 2000)
+        val matches = AnalystFilingTextSearch.findMatches(fullText, clean, capMatches, capRadius)
+        AnalystFilingSearchResult(
+            meta = meta,
+            totalChars = fullText.length,
+            matches = matches,
+            viewerUrl = filingViewerUrl(meta.cik, meta.accessionNumber),
+            primaryDocumentUrl = primaryUrl
+        )
+    }
+
+    private fun defaultPeriodEndForQuarter(fiscalYear: Int, fiscalQuarter: String): String {
+        return when (fiscalQuarter.uppercase()) {
+            "Q1" -> "$fiscalYear-03-31"
+            "Q2" -> "$fiscalYear-06-30"
+            "Q3" -> "$fiscalYear-09-30"
+            "Q4" -> "$fiscalYear-12-31"
+            else -> "$fiscalYear-12-31"
+        }
+    }
+
+    private suspend fun resolveLatestPeriodicMeta(cik: String, preferAnnual: Boolean): SecFilingMeta? {
+        val rows = fetchRecentFinancialFilingRows(cik, 400)
+        val preferred = if (preferAnnual) {
+            rows.filter { it.form in PERIODIC_FORMS_ANNUAL }
+        } else {
+            rows.filter { it.form in PERIODIC_FORMS_QUARTERLY }
+        }
+        val pool = preferred.ifEmpty {
+            if (preferAnnual) rows.filter { it.form in PERIODIC_FORMS_ANNUAL }
+            else rows.filter { it.form in PERIODIC_FORMS_QUARTERLY }
+        }
+        if (pool.isEmpty()) return null
+        val row = pool.maxWithOrNull(compareBy<RecentFinancialFilingRow> { it.filingDate }) ?: return null
+        return SecFilingMeta(
+            formType = row.form,
+            filingDate = row.filingDate,
+            accessionNumber = row.accessionNumber,
+            primaryDocument = row.primaryDocument,
+            itemsRaw = null,
+            cik = cik.trimStart('0').padStart(10, '0'),
+            secFolderUrl = SecFilingMeta.buildSecFolderUrl(cik, row.accessionNumber)
+        )
+    }
+
+    /**
+     * Resolves which periodic filing to use for analyst tools (annual vs quarterly, fiscal year / quarter).
+     */
+    suspend fun resolvePeriodicFilingMetaForAnalyst(
+        cik: String,
+        request: AnalystPeriodicFilingRequest
+    ): SecFilingMeta? {
+        val padded = cik.trimStart('0').padStart(10, '0')
+        val fy = request.fiscalYear
+        val fq = request.fiscalQuarter?.trim()?.uppercase()
+        if (fy != null && !fq.isNullOrBlank() && fq !in setOf("FY", "ANNUAL")) {
+            val pe = request.periodEnd?.takeIf { it.length >= 8 }
+                ?: defaultPeriodEndForQuarter(fy, fq)
+            return resolveFilingForFiscalQuarter(padded, pe, fy, fq)
+        }
+        if (fy != null && request.preferAnnual) {
+            return resolveFilingForFiscalYear(padded, fy)
+        }
+        if (fy != null && !request.preferAnnual) {
+            val rows = fetchRecentFinancialFilingRows(padded, 500)
+                .filter { it.form in PERIODIC_FORMS_QUARTERLY && it.reportDate?.startsWith(fy.toString()) == true }
+            val row = rows.maxWithOrNull(compareBy<RecentFinancialFilingRow> { it.filingDate })
+            if (row != null) {
+                return SecFilingMeta(
+                    formType = row.form,
+                    filingDate = row.filingDate,
+                    accessionNumber = row.accessionNumber,
+                    primaryDocument = row.primaryDocument,
+                    itemsRaw = null,
+                    cik = padded.trimStart('0').padStart(10, '0'),
+                    secFolderUrl = SecFilingMeta.buildSecFolderUrl(padded, row.accessionNumber)
+                )
+            }
+            return resolveLatestPeriodicMeta(padded, false)
+        }
+        return resolveLatestPeriodicMeta(padded, request.preferAnnual)
+    }
+
+    private suspend fun resolvePrimaryDocumentUrlForAnalyst(meta: SecFilingMeta): String? = withContext(Dispatchers.IO) {
+        if (meta.primaryDocument != null) {
+            return@withContext "${meta.secFolderUrl}${meta.primaryDocument}"
+        }
+        val indexUrl = "${meta.secFolderUrl}index.json"
+        try {
+            val indexRequest = Request.Builder()
+                .url(indexUrl)
+                .header("Accept", "application/json")
+                .build()
+            val indexResponse = documentClient.newCall(indexRequest).execute()
+            if (!indexResponse.isSuccessful) return@withContext null
+            val indexBody = indexResponse.body()?.string() ?: return@withContext null
+            val indexJson = gson.fromJson(indexBody, JsonObject::class.java)
+            val items = indexJson.getAsJsonObject("directory")?.getAsJsonArray("item") ?: return@withContext null
+            var firstHtml: String? = null
+            items.forEach { element ->
+                val item = element.asJsonObject
+                val docName = safeJsonString(item.get("name")) ?: return@forEach
+                val lower = docName.lowercase()
+                if (lower.endsWith(".htm") || lower.endsWith(".html")) {
+                    if (firstHtml == null) firstHtml = docName
+                }
+            }
+            firstHtml?.let { "${meta.secFolderUrl}$it" }
+        } catch (e: Exception) {
+            Log.w(TAG, "resolvePrimaryDocumentUrlForAnalyst index fail ${meta.accessionNumber}", e)
+            null
+        }
+    }
 
     // --------------- Company Facts (XBRL data) ---------------
 
@@ -2681,13 +2872,19 @@ class SecEdgarService private constructor(
 
     companion object {
         /** Maximum combined characters sent to Grok/Eidos for 8-K analysis. */
-        const val MAX_AI_INPUT_CHARS = 80_000
+        const val MAX_AI_INPUT_CHARS = 100_000
+
+        /** Max characters returned to Grok for [fetchFinancialStatementsTextForAnalyst]. */
+        const val ANALYST_FS_TOOL_MAX_CHARS = 130_000
+
+        /** Max characters per [fetchPrimaryDocumentChunkForAnalyst] response. */
+        const val ANALYST_FILING_CHUNK_MAX_CHARS = 64_000
 
         /**
          * Maximum characters used for the 8-K cover page in the combined AI prompt.
          * The cover page usually just says "See Exhibit 99.1" — exhibits get the bulk of the budget.
          */
-        const val COVER_MAX_CHARS = 6_000
+        const val COVER_MAX_CHARS = 10_000
 
         /** Financial report forms (10-K, 10-Q, etc.) - accessible for financial report analysis */
         val FINANCIAL_REPORT_FORM_TYPES = setOf(

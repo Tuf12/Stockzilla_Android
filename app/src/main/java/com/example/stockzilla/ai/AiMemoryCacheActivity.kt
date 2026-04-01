@@ -7,8 +7,6 @@ import android.view.View
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
 import androidx.recyclerview.widget.LinearLayoutManager
-import com.example.stockzilla.ai.AiMemoryCacheAdapter
-import com.example.stockzilla.ai.AiMemoryCacheViewModel
 import com.example.stockzilla.databinding.ActivityAiMemoryCacheBinding
 
 class AiMemoryCacheActivity : AppCompatActivity() {

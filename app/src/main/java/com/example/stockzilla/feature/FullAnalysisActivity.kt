@@ -4,6 +4,9 @@ import android.content.Intent
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuItem
@@ -25,6 +28,10 @@ import com.example.stockzilla.R
 import com.example.stockzilla.ai.AiAssistantActivity
 import com.example.stockzilla.ai.AiAssistantViewModel
 import com.example.stockzilla.analyst.EidosAnalystActivity
+import com.example.stockzilla.analyst.EidosAnalystConfirmedFactMerge
+import com.example.stockzilla.analyst.EidosAnalystMetricKey
+import com.example.stockzilla.analyst.EidosAnalystPeriodScope
+import com.example.stockzilla.data.EidosAnalystConfirmedFactEntity
 import com.example.stockzilla.data.CompanyProfileEntity
 import com.example.stockzilla.data.QuarterlyFinancialFactEntity
 import com.example.stockzilla.data.SecEdgarService
@@ -57,6 +64,12 @@ class FullAnalysisActivity : AppCompatActivity() {
     private val database by lazy { StockzillaDatabase.Companion.getDatabase(this) }
     private val tagFixVm: AiAssistantViewModel by viewModels()
     private var historyMode: HistoryMode = HistoryMode.YEARLY
+
+    /** Primary-scoped analyst confirmations keyed by [com.example.stockzilla.sec.EdgarMetricKey.name]. */
+    private var analystConfirmedByMetric: Map<String, EidosAnalystConfirmedFactEntity> = emptyMap()
+
+    /** All analyst-confirmed facts (including per-period rows for the history table). */
+    private var analystConfirmedFacts: List<EidosAnalystConfirmedFactEntity> = emptyList()
 
     private enum class HistoryMode { YEARLY, QUARTERLY }
 
@@ -135,6 +148,9 @@ class FullAnalysisActivity : AppCompatActivity() {
         populateFinancialHistoryTable(stockData)
         loadBusinessProfile(stockData)
         loadQuarterlyFacts()
+        // Analyst facts load asynchronously in onResume; prime immediately so first paint matches
+        // after DB read without waiting for another lifecycle pass.
+        lifecycleScope.launch { refreshAnalystConfirmedOverrides() }
 
         if (!cik.isNullOrBlank()) {
             binding.btnView10kSec.visibility = View.VISIBLE
@@ -222,6 +238,25 @@ class FullAnalysisActivity : AppCompatActivity() {
         }
     }
 
+    override fun onResume() {
+        super.onResume()
+        refreshAnalystConfirmedOverrides()
+    }
+
+    private fun refreshAnalystConfirmedOverrides() {
+        lifecycleScope.launch {
+            val rows = withContext(Dispatchers.IO) {
+                database.eidosAnalystConfirmedFactDao().getAllForSymbol(symbol)
+            }
+            analystConfirmedFacts = rows
+            analystConfirmedByMetric = rows
+                .filter { it.periodLabel.isBlank() }
+                .associateBy { EidosAnalystMetricKey.normalize(it.metricKey) }
+            populateRawFactsTable(latestStockData)
+            populateFinancialHistoryTable(latestStockData)
+        }
+    }
+
     private fun loadBusinessProfile(stockData: StockData) {
         val summaryParts = listOfNotNull(
             stockData.companyName?.takeIf { it.isNotBlank() },
@@ -299,7 +334,9 @@ class FullAnalysisActivity : AppCompatActivity() {
 
     private data class RawFactRowSpec(
         val label: String,
-        /** Metric Eidos should adjust when this row is missing. */
+        /** Row identity for analyst overrides (matches proposal / [EdgarMetricKey.name]). */
+        val metricKey: EdgarMetricKey,
+        /** Metric Eidos should adjust when this row is missing (may differ from [metricKey] for EBITDA / FCF). */
         val tagFixKey: EdgarMetricKey,
         val isMissing: Boolean,
         val displayValue: String
@@ -329,11 +366,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.revenue),
                 EdgarMetricKey.REVENUE,
+                EdgarMetricKey.REVENUE,
                 stockData.revenueDisplay == null,
                 formatAbbreviatedCurrency(stockData.revenueDisplay)
             ),
             RawFactRowSpec(
                 getString(R.string.net_income),
+                EdgarMetricKey.NET_INCOME,
                 EdgarMetricKey.NET_INCOME,
                 stockData.netIncomeDisplay == null,
                 formatAbbreviatedCurrency(stockData.netIncomeDisplay)
@@ -341,11 +380,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_eps),
                 EdgarMetricKey.EPS,
+                EdgarMetricKey.EPS,
                 stockData.epsDisplay == null,
                 formatNumber(stockData.epsDisplay)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_ebitda),
+                EdgarMetricKey.EBITDA,
                 tagFixKeyForMissingEbitda(stockData),
                 stockData.ebitdaDisplay == null,
                 formatAbbreviatedCurrency(stockData.ebitdaDisplay)
@@ -353,11 +394,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_operating_income),
                 EdgarMetricKey.EBIT,
+                EdgarMetricKey.EBIT,
                 stockData.operatingIncomeDisplay == null,
                 formatAbbreviatedCurrency(stockData.operatingIncomeDisplay)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_depreciation_and_amortization),
+                EdgarMetricKey.DEPRECIATION,
                 EdgarMetricKey.DEPRECIATION,
                 stockData.depreciationAmortizationDisplay == null,
                 formatAbbreviatedCurrency(stockData.depreciationAmortizationDisplay)
@@ -365,11 +408,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_cogs),
                 EdgarMetricKey.COST_OF_GOODS,
+                EdgarMetricKey.COST_OF_GOODS,
                 stockData.costOfGoodsSoldDisplay == null,
                 formatAbbreviatedCurrency(stockData.costOfGoodsSoldDisplay)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_gross_profit),
+                EdgarMetricKey.GROSS_PROFIT,
                 EdgarMetricKey.GROSS_PROFIT,
                 stockData.grossProfitDisplay == null,
                 formatAbbreviatedCurrency(stockData.grossProfitDisplay)
@@ -377,17 +422,20 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_operating_cash_flow),
                 EdgarMetricKey.OPERATING_CASH_FLOW,
+                EdgarMetricKey.OPERATING_CASH_FLOW,
                 stockData.operatingCashFlowDisplay == null,
                 formatAbbreviatedCurrency(stockData.operatingCashFlowDisplay)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_capex),
                 EdgarMetricKey.CAPEX,
+                EdgarMetricKey.CAPEX,
                 stockData.capexDisplay == null,
                 formatAbbreviatedCurrency(stockData.capexDisplay)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_free_cash_flow),
+                EdgarMetricKey.FREE_CASH_FLOW,
                 tagFixKeyForMissingFreeCashFlow(stockData),
                 stockData.freeCashFlowDisplay == null,
                 formatAbbreviatedCurrency(stockData.freeCashFlowDisplay)
@@ -395,11 +443,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_outstanding_shares),
                 EdgarMetricKey.SHARES_OUTSTANDING,
+                EdgarMetricKey.SHARES_OUTSTANDING,
                 stockData.outstandingShares == null,
                 formatAbbreviatedShares(stockData.outstandingShares)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_total_assets),
+                EdgarMetricKey.TOTAL_ASSETS,
                 EdgarMetricKey.TOTAL_ASSETS,
                 stockData.totalAssets == null,
                 formatAbbreviatedCurrency(stockData.totalAssets)
@@ -407,11 +457,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_total_liabilities),
                 EdgarMetricKey.TOTAL_LIABILITIES,
+                EdgarMetricKey.TOTAL_LIABILITIES,
                 stockData.totalLiabilities == null,
                 formatAbbreviatedCurrency(stockData.totalLiabilities)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_total_debt),
+                EdgarMetricKey.TOTAL_DEBT,
                 EdgarMetricKey.TOTAL_DEBT,
                 stockData.totalDebt == null,
                 formatAbbreviatedCurrency(stockData.totalDebt)
@@ -419,11 +471,13 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_cash_and_equivalents),
                 EdgarMetricKey.CASH_AND_EQUIVALENTS,
+                EdgarMetricKey.CASH_AND_EQUIVALENTS,
                 stockData.cashAndEquivalents == null,
                 formatAbbreviatedCurrency(stockData.cashAndEquivalents)
             ),
             RawFactRowSpec(
                 getString(R.string.metric_accounts_receivable),
+                EdgarMetricKey.ACCOUNTS_RECEIVABLE,
                 EdgarMetricKey.ACCOUNTS_RECEIVABLE,
                 stockData.accountsReceivable == null,
                 formatAbbreviatedCurrency(stockData.accountsReceivable)
@@ -431,29 +485,62 @@ class FullAnalysisActivity : AppCompatActivity() {
             RawFactRowSpec(
                 getString(R.string.metric_retained_earnings),
                 EdgarMetricKey.RETAINED_EARNINGS,
+                EdgarMetricKey.RETAINED_EARNINGS,
                 stockData.retainedEarnings == null,
                 formatAbbreviatedCurrency(stockData.retainedEarnings)
             )
         )
 
-        specs.forEach { addRawFactRow(table, it, stockData) }
+        specs.forEach { addRawFactRow(table, it, stockData, analystConfirmedByMetric) }
+        val known = specs.map { it.metricKey.name }.toSet()
+        analystConfirmedByMetric
+            .filterKeys { it !in known }
+            .toSortedMap()
+            .forEach { (metricKey, fact) ->
+                val row = TableRow(this)
+                row.addView(buildCell(EidosAnalystMetricKey.humanizeMetricKey(metricKey)))
+                row.addView(buildCell(fact.valueText, analystConfirmed = true))
+                table.addView(row)
+            }
     }
 
-    private fun addRawFactRow(table: TableLayout, spec: RawFactRowSpec, stockData: StockData) {
-        val row = TableRow(this)
-        row.addView(buildCell(spec.label))
-        if (spec.isMissing) {
-            val dp8 = (8 * resources.displayMetrics.density).toInt()
-            val btn = Button(this, null, android.R.attr.buttonStyleSmall).apply {
-                text = getString(R.string.tag_fix_find_tag)
-                setPadding(dp8, paddingTop, dp8, paddingBottom)
-                setOnClickListener { launchTagFixForMetric(stockData, spec.tagFixKey) }
+    private fun addRawFactRow(
+        table: TableLayout,
+        spec: RawFactRowSpec,
+        stockData: StockData,
+        analystByMetric: Map<String, EidosAnalystConfirmedFactEntity>,
+    ) {
+        when (
+            val merged = EidosAnalystConfirmedFactMerge.mergeRawFactCell(
+                spec.displayValue,
+                spec.isMissing,
+                analystByMetric[spec.metricKey.name],
+            )
+        ) {
+            is EidosAnalystConfirmedFactMerge.RawFactCellMergeOutcome.ShowTagFixButton -> {
+                val row = TableRow(this)
+                row.addView(buildCell(spec.label))
+                val dp8 = (8 * resources.displayMetrics.density).toInt()
+                val btn = Button(this, null, android.R.attr.buttonStyleSmall).apply {
+                    text = getString(R.string.tag_fix_find_tag)
+                    setPadding(dp8, paddingTop, dp8, paddingBottom)
+                    setOnClickListener { launchTagFixForMetric(stockData, spec.tagFixKey) }
+                }
+                row.addView(btn)
+                table.addView(row)
             }
-            row.addView(btn)
-        } else {
-            row.addView(buildCell(spec.displayValue))
+            is EidosAnalystConfirmedFactMerge.RawFactCellMergeOutcome.ValueCell -> {
+                val row = TableRow(this)
+                row.addView(buildCell(spec.label))
+                val display = if (merged.fromAnalyst) {
+                    formatAnalystDisplayForRawMetric(spec.metricKey, merged.displayText)
+                } else {
+                    merged.displayText
+                }
+                row.addView(buildCell(display, analystConfirmed = merged.fromAnalyst))
+                table.addView(row)
+            }
         }
-        table.addView(row)
     }
 
     /**
@@ -712,7 +799,7 @@ class FullAnalysisActivity : AppCompatActivity() {
         table.addView(row)
     }
 
-    private fun buildCell(text: String, header: Boolean = false): TextView {
+    private fun buildCell(text: String, header: Boolean = false, analystConfirmed: Boolean = false): TextView {
         val dp8 = (8 * resources.displayMetrics.density).toInt()
         val dp4 = (4 * resources.displayMetrics.density).toInt()
         val tv = TypedValue()
@@ -728,9 +815,14 @@ class FullAnalysisActivity : AppCompatActivity() {
         } else {
             0xff757575.toInt()
         }
+        val analystColor = ResourcesCompat.getColor(resources, R.color.eidos_analyst_confirmed_value, null)
         return TextView(this).apply {
             setPadding(dp8, dp4, dp8, dp4)
-            setTextColor(if (header) secondaryColor else primaryColor)
+            when {
+                header -> setTextColor(secondaryColor)
+                analystConfirmed -> setTextColor(analystColor)
+                else -> setTextColor(primaryColor)
+            }
             this.text = text
             if (header) setTypeface(typeface, Typeface.BOLD)
         }
@@ -755,6 +847,8 @@ class FullAnalysisActivity : AppCompatActivity() {
     private data class HistoryTableRow(
         val labelRes: Int,
         val tagFixKey: EdgarMetricKey,
+        /** Null for derived % rows; otherwise used for analyst-confirmed history overrides. */
+        val analystMetricKey: EdgarMetricKey?,
         val annualValues: List<Double?>,
         /** Key for [QuarterlyHistoryTableData.valuesByMetric] (string resource id). */
         val quarterlyValuesKey: Int,
@@ -796,6 +890,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.revenue,
                 EdgarMetricKey.REVENUE,
+                EdgarMetricKey.REVENUE,
                 stockData.revenueHistory,
                 R.string.revenue,
                 stockData.revenueTtm,
@@ -804,6 +899,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             ),
             HistoryTableRow(
                 R.string.metric_gross_profit,
+                EdgarMetricKey.GROSS_PROFIT,
                 EdgarMetricKey.GROSS_PROFIT,
                 stockData.grossProfitHistory,
                 R.string.metric_gross_profit,
@@ -814,6 +910,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.metric_history_gross_margin_pct,
                 EdgarMetricKey.GROSS_PROFIT,
+                null,
                 grossMarginAnnual,
                 R.string.metric_history_gross_margin_pct,
                 grossMarginTtm,
@@ -822,6 +919,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             ),
             HistoryTableRow(
                 R.string.net_income,
+                EdgarMetricKey.NET_INCOME,
                 EdgarMetricKey.NET_INCOME,
                 stockData.netIncomeHistory,
                 R.string.net_income,
@@ -832,6 +930,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.metric_history_net_margin_pct,
                 EdgarMetricKey.NET_INCOME,
+                null,
                 netMarginAnnual,
                 R.string.metric_history_net_margin_pct,
                 netMarginTtm,
@@ -841,6 +940,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.metric_ebitda,
                 tagFixKeyForMissingEbitda(stockData),
+                EdgarMetricKey.EBITDA,
                 stockData.ebitdaHistory,
                 R.string.metric_ebitda,
                 stockData.ebitdaTtm,
@@ -849,6 +949,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             ),
             HistoryTableRow(
                 R.string.metric_depreciation_and_amortization,
+                EdgarMetricKey.DEPRECIATION,
                 EdgarMetricKey.DEPRECIATION,
                 stockData.depreciationAmortizationHistory.orEmpty(),
                 R.string.metric_depreciation_and_amortization,
@@ -859,6 +960,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.metric_operating_cash_flow,
                 EdgarMetricKey.OPERATING_CASH_FLOW,
+                EdgarMetricKey.OPERATING_CASH_FLOW,
                 stockData.operatingCashFlowHistory.orEmpty(),
                 R.string.metric_operating_cash_flow,
                 stockData.operatingCashFlowTtm,
@@ -867,6 +969,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             ),
             HistoryTableRow(
                 R.string.metric_capex,
+                EdgarMetricKey.CAPEX,
                 EdgarMetricKey.CAPEX,
                 stockData.capexHistory.orEmpty(),
                 R.string.metric_capex,
@@ -877,6 +980,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.metric_free_cash_flow,
                 tagFixKeyForMissingFreeCashFlow(stockData),
+                EdgarMetricKey.FREE_CASH_FLOW,
                 stockData.freeCashFlowHistory.orEmpty(),
                 R.string.metric_free_cash_flow,
                 stockData.freeCashFlowTtm,
@@ -886,6 +990,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             HistoryTableRow(
                 R.string.metric_total_debt,
                 EdgarMetricKey.TOTAL_DEBT,
+                EdgarMetricKey.TOTAL_DEBT,
                 stockData.totalDebtHistory,
                 R.string.metric_total_debt,
                 null,
@@ -894,6 +999,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             ),
             HistoryTableRow(
                 R.string.metric_outstanding_shares,
+                EdgarMetricKey.SHARES_OUTSTANDING,
                 EdgarMetricKey.SHARES_OUTSTANDING,
                 stockData.sharesOutstandingHistory.orEmpty(),
                 R.string.metric_outstanding_shares,
@@ -908,14 +1014,35 @@ class FullAnalysisActivity : AppCompatActivity() {
         val quarterlyData = buildQuarterlyTableData()
         val quarterlyColumnCount = quarterlyData.periodLabels.size
 
+        val knownHistoryMetricKeys = historyRows.mapNotNull { it.analystMetricKey?.name }.toSet()
+        val dynamicHistoryMetricKeys = analystConfirmedFacts
+            .map { EidosAnalystMetricKey.normalize(it.metricKey) }
+            .filter { it.isNotBlank() && it !in knownHistoryMetricKeys }
+            .distinct()
+            .sorted()
+
         val activeColumnCount = if (historyMode == HistoryMode.QUARTERLY && quarterlyColumnCount > 0) {
             quarterlyColumnCount
         } else {
             annualColumnCount
         }
         if (activeColumnCount == 0 && !hasTtm) {
-            binding.tvHistoryNoData.visibility = View.VISIBLE
-            binding.scrollFinancialHistory.visibility = View.GONE
+            if (dynamicHistoryMetricKeys.isEmpty()) {
+                binding.tvHistoryNoData.visibility = View.VISIBLE
+                binding.scrollFinancialHistory.visibility = View.GONE
+                binding.tableFinancialHistory.removeAllViews()
+                binding.tableFinancialHistoryAnalyst.removeAllViews()
+                binding.tvFinancialHistoryAnalystSection.visibility = View.GONE
+                binding.tableFinancialHistoryAnalyst.visibility = View.GONE
+                return
+            }
+            binding.tvHistoryNoData.visibility = View.GONE
+            binding.scrollFinancialHistory.visibility = View.VISIBLE
+            binding.tableFinancialHistory.removeAllViews()
+            populateAnalystOnlyFinancialHistoryTable(
+                dynamicHistoryMetricKeys,
+                quarterlyColumnCount,
+            )
             return
         }
         binding.tvHistoryNoData.visibility = View.GONE
@@ -935,6 +1062,7 @@ class FullAnalysisActivity : AppCompatActivity() {
         theme.resolveAttribute(android.R.attr.textColorSecondary, tv, true)
         val secondaryColor = if (tv.resourceId != 0) ResourcesCompat.getColor(resources, tv.resourceId, null) else 0xff757575.toInt()
         val accentColor = getColor(R.color.scoreMedium)
+        val analystHistoryColor = ResourcesCompat.getColor(resources, R.color.eidos_analyst_confirmed_value, null)
 
         fun labelCell(text: String): TextView = TextView(this).apply {
             setPadding(dp12, dp6, dp12, dp6)
@@ -944,13 +1072,20 @@ class FullAnalysisActivity : AppCompatActivity() {
             this.text = text
         }
 
-        fun dataCell(text: String, highlight: Boolean = false): TextView = TextView(this).apply {
-            setPadding(dp12, dp6, dp12, dp6)
-            setTextColor(if (highlight) accentColor else primaryColor)
-            setMinimumWidth(dataMinWidth)
-            textAlignment = View.TEXT_ALIGNMENT_TEXT_END
-            this.text = text
-        }
+        fun dataCell(text: String, highlight: Boolean = false, analystConfirmed: Boolean = false): TextView =
+            TextView(this).apply {
+                setPadding(dp12, dp6, dp12, dp6)
+                setTextColor(
+                    when {
+                        analystConfirmed -> analystHistoryColor
+                        highlight -> accentColor
+                        else -> primaryColor
+                    }
+                )
+                setMinimumWidth(dataMinWidth)
+                textAlignment = View.TEXT_ALIGNMENT_TEXT_END
+                this.text = text
+            }
 
         fun formatHistoryValue(kind: HistoryValueKind, value: Double?): String {
             return when (kind) {
@@ -974,6 +1109,29 @@ class FullAnalysisActivity : AppCompatActivity() {
             emptyList()
         }
         val quarterlyColumnContexts = quarterlyData.columnContexts
+        val existingQuarterlyLabels = quarterlyData.periodLabels.toSet()
+        val existingAnnualYears = annualColumnContexts.map { it.fiscalYear }.toSet()
+        // Extra period columns on the SEC grid only when a known (mapped) metric has analyst data
+        // for a fiscal period that the mechanical table does not already include.
+        val factsForKnownScopedHistory = analystConfirmedFacts.filter {
+            EidosAnalystMetricKey.normalize(it.metricKey) in knownHistoryMetricKeys &&
+                EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel).isNotEmpty()
+        }
+        val quarterlyPeriodRegex = Regex("""Q[1-4] (19|20)\d{2}""")
+        val extraQuarterlyLabels = factsForKnownScopedHistory
+            .map { EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel) }
+            .filter { it.matches(quarterlyPeriodRegex) && it !in existingQuarterlyLabels }
+            .distinct()
+            .sortedWith(
+                compareByDescending<String> { it.takeLast(4).toIntOrNull() ?: 0 }
+                    .thenByDescending { it.getOrNull(1)?.digitToIntOrNull() ?: 0 }
+            )
+        val extraAnnualYears = factsForKnownScopedHistory
+            .map { EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel) }
+            .mapNotNull { canonicalPeriodToFiscalYear(it) }
+            .filter { it !in existingAnnualYears }
+            .distinct()
+            .sortedDescending()
 
         val headerRow = TableRow(this).apply {
             addView(labelCell(""))
@@ -982,9 +1140,15 @@ class FullAnalysisActivity : AppCompatActivity() {
                 for (label in quarterlyData.periodLabels) {
                     addView(dataCell(label))
                 }
+                for (label in extraQuarterlyLabels) {
+                    addView(dataCell(label, highlight = true))
+                }
             } else {
                 for (i in 0 until annualColumnCount) {
                     addView(dataCell("FY ${currentYear - 1 - i}"))
+                }
+                for (year in extraAnnualYears) {
+                    addView(dataCell("FY $year", highlight = true))
                 }
             }
         }
@@ -1013,20 +1177,49 @@ class FullAnalysisActivity : AppCompatActivity() {
                 }
                 addView(labelView)
                 if (hasTtm) {
-                    val ttmText = if (row.ttmValue == null) {
-                        getString(R.string.not_available)
+                    val mk = row.analystMetricKey
+                    val ttmFact = if (mk != null) {
+                        EidosAnalystPeriodScope.findForTtmHistoryCell(analystConfirmedFacts, mk)
+                    } else null
+                    if (ttmFact != null) {
+                        addView(
+                            dataCell(
+                                formatAnalystDisplayForHistoryValue(row.valueKind, ttmFact.valueText),
+                                analystConfirmed = true
+                            )
+                        )
                     } else {
-                        formatHistoryValue(row.valueKind, row.ttmValue)
+                        val ttmText = if (row.ttmValue == null) {
+                            getString(R.string.not_available)
+                        } else {
+                            formatHistoryValue(row.valueKind, row.ttmValue)
+                        }
+                        addView(dataCell(ttmText, highlight = true))
                     }
-                    addView(dataCell(ttmText, highlight = true))
                 }
                 if (historyMode == HistoryMode.QUARTERLY && quarterlyColumnCount > 0) {
                     val dp8 = (8 * density).toInt()
                     for (i in 0 until quarterlyColumnCount) {
                         val v = quarterlyValues.getOrNull(i)
                         val isMissing = v == null
-                        if (isMissing && row.allowTagFix) {
-                            val col = quarterlyColumnContexts.getOrNull(i)
+                        val col = quarterlyColumnContexts.getOrNull(i)
+                        val mk = row.analystMetricKey
+                        val qFact = if (mk != null && col != null && col.fiscalPeriod != null) {
+                            EidosAnalystPeriodScope.findForQuarterlyHistoryCell(
+                                analystConfirmedFacts,
+                                mk,
+                                col.fiscalYear,
+                                col.fiscalPeriod,
+                            )
+                        } else null
+                        if (qFact != null) {
+                            addView(
+                                dataCell(
+                                    formatAnalystDisplayForHistoryValue(row.valueKind, qFact.valueText),
+                                    analystConfirmed = true
+                                )
+                            )
+                        } else if (isMissing && row.allowTagFix) {
                             if (col != null) {
                                 addView(
                                     buildMissingTagFixCellStrip(
@@ -1047,6 +1240,25 @@ class FullAnalysisActivity : AppCompatActivity() {
                             val text = if (isMissing) getString(R.string.not_available)
                             else formatHistoryValue(row.valueKind, v)
                             addView(dataCell(text, highlight = isMissing))
+                        }
+                    }
+                    // Extra analyst-added periods are reserved for analyst-only dynamic rows.
+                    for (period in extraQuarterlyLabels) {
+                        val mk = row.analystMetricKey
+                        val xFact = if (mk != null) {
+                            findAnalystConfirmedFactForScopedPeriod(mk, period)
+                        } else {
+                            null
+                        }
+                        if (xFact != null) {
+                            addView(
+                                dataCell(
+                                    formatAnalystDisplayForHistoryValue(row.valueKind, xFact.valueText),
+                                    analystConfirmed = true
+                                )
+                            )
+                        } else {
+                            addView(dataCell(getString(R.string.not_available), highlight = true))
                         }
                     }
                 } else {
@@ -1054,8 +1266,23 @@ class FullAnalysisActivity : AppCompatActivity() {
                     for (i in 0 until annualColumnCount) {
                         val v = row.annualValues.getOrNull(i)
                         val isMissing = v == null
-                        if (isMissing && row.allowTagFix) {
-                            val col = annualColumnContexts.getOrNull(i)
+                        val col = annualColumnContexts.getOrNull(i)
+                        val mk = row.analystMetricKey
+                        val aFact = if (mk != null && col != null) {
+                            EidosAnalystPeriodScope.findForAnnualHistoryCell(
+                                analystConfirmedFacts,
+                                mk,
+                                col.fiscalYear,
+                            )
+                        } else null
+                        if (aFact != null) {
+                            addView(
+                                dataCell(
+                                    formatAnalystDisplayForHistoryValue(row.valueKind, aFact.valueText),
+                                    analystConfirmed = true
+                                )
+                            )
+                        } else if (isMissing && row.allowTagFix) {
                             if (col != null) {
                                 addView(
                                     buildMissingTagFixCellStrip(
@@ -1078,9 +1305,273 @@ class FullAnalysisActivity : AppCompatActivity() {
                             addView(dataCell(text, highlight = isMissing))
                         }
                     }
+                    // Extra analyst-added periods are reserved for analyst-only dynamic rows.
+                    for (year in extraAnnualYears) {
+                        val mk = row.analystMetricKey
+                        val xFact = if (mk != null) {
+                            EidosAnalystPeriodScope.findForAnnualHistoryCell(
+                                analystConfirmedFacts,
+                                mk,
+                                year,
+                            )
+                        } else {
+                            null
+                        }
+                        if (xFact != null) {
+                            addView(
+                                dataCell(
+                                    formatAnalystDisplayForHistoryValue(row.valueKind, xFact.valueText),
+                                    analystConfirmed = true
+                                )
+                            )
+                        } else {
+                            addView(dataCell(getString(R.string.not_available), highlight = true))
+                        }
+                    }
                 }
             }
             table.addView(tr)
+        }
+
+        populateAnalystOnlyFinancialHistoryTable(
+            dynamicHistoryMetricKeys,
+            quarterlyColumnCount,
+        )
+    }
+
+    /** FY year from `FY YYYY`, or calendar year from `Qx YYYY` (for extra annual columns only). */
+    private fun canonicalPeriodToFiscalYear(canonical: String): Int? {
+        if (canonical.startsWith("FY ")) return canonical.removePrefix("FY ").trim().toIntOrNull()
+        val qy = Regex("""Q[1-4] (19|20)\d{2}""")
+        if (canonical.matches(qy)) return canonical.takeLast(4).toIntOrNull()
+        return null
+    }
+
+    private fun findAnalystConfirmedFactForScopedPeriod(
+        metricKey: EdgarMetricKey,
+        periodLabel: String,
+    ): EidosAnalystConfirmedFactEntity? {
+        val normalizedPeriod = EidosAnalystPeriodScope.canonicalizePeriodLabel(periodLabel)
+        return analystConfirmedFacts.firstOrNull { fact ->
+            EidosAnalystMetricKey.matches(fact.metricKey, metricKey) &&
+                EidosAnalystPeriodScope.matchesPeriod(fact.periodLabel, listOf(normalizedPeriod))
+        }
+    }
+
+    private fun findAnalystConfirmedFactForDynamicMetric(
+        metricKeyNormalized: String,
+        periodLabel: String,
+    ): EidosAnalystConfirmedFactEntity? {
+        val normalizedPeriod = EidosAnalystPeriodScope.canonicalizePeriodLabel(periodLabel)
+        return analystConfirmedFacts.firstOrNull { fact ->
+            EidosAnalystMetricKey.normalize(fact.metricKey) == metricKeyNormalized &&
+                EidosAnalystPeriodScope.matchesPeriod(fact.periodLabel, listOf(normalizedPeriod))
+        }
+    }
+
+    private fun analystScopedFactMatchesFiscalYear(fact: EidosAnalystConfirmedFactEntity, yearDigits: String): Boolean {
+        val c = EidosAnalystPeriodScope.canonicalizePeriodLabel(fact.periodLabel)
+        return when {
+            c.startsWith("FY ") && c.removePrefix("FY ").trim() == yearDigits -> true
+            c.matches(Regex("""Q[1-4] $yearDigits""")) -> true
+            else -> false
+        }
+    }
+
+    private fun findAnalystConfirmedFactForDynamicFiscalYear(
+        metricKeyNormalized: String,
+        fiscalYear: Int,
+    ): EidosAnalystConfirmedFactEntity? {
+        val enumKey = EdgarMetricKey.entries.firstOrNull { it.name == metricKeyNormalized }
+        if (enumKey != null) {
+            return EidosAnalystPeriodScope.findForAnnualHistoryCell(analystConfirmedFacts, enumKey, fiscalYear)
+        }
+        val y = fiscalYear.toString()
+        return analystConfirmedFacts.firstOrNull { fact ->
+            EidosAnalystMetricKey.normalize(fact.metricKey) == metricKeyNormalized &&
+                analystScopedFactMatchesFiscalYear(fact, y)
+        }
+    }
+
+    /**
+     * Metrics that are not part of the standard SEC history row set get their own compact table so the
+     * primary grid is not widened with empty columns.
+     */
+    private fun populateAnalystOnlyFinancialHistoryTable(
+        dynamicMetricKeys: List<String>,
+        quarterlyColumnCount: Int,
+    ) {
+        val sectionTitle = binding.tvFinancialHistoryAnalystSection
+        val analystTable = binding.tableFinancialHistoryAnalyst
+        if (dynamicMetricKeys.isEmpty()) {
+            sectionTitle.visibility = View.GONE
+            analystTable.visibility = View.GONE
+            analystTable.removeAllViews()
+            return
+        }
+        val dynFacts = analystConfirmedFacts.filter {
+            EidosAnalystMetricKey.normalize(it.metricKey) in dynamicMetricKeys
+        }
+        val quarterlyPeriodRegex = Regex("""Q[1-4] (19|20)\d{2}""")
+        val showTtm = dynFacts.any { fact ->
+            EidosAnalystPeriodScope.matchesPeriod(fact.periodLabel, EidosAnalystPeriodScope.ttmLookupKeys())
+        }
+        val hasScopedPeriod = dynFacts.any {
+            EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel).isNotEmpty()
+        }
+        if (!hasScopedPeriod && !showTtm) {
+            sectionTitle.visibility = View.GONE
+            analystTable.visibility = View.GONE
+            analystTable.removeAllViews()
+            return
+        }
+
+        sectionTitle.visibility = View.VISIBLE
+        analystTable.visibility = View.VISIBLE
+        analystTable.removeAllViews()
+
+        val density = resources.displayMetrics.density
+        val dp12 = (12 * density).toInt()
+        val dp6 = (6 * density).toInt()
+        val labelMinWidth = (130 * density).toInt()
+        val dataMinWidth = (72 * density).toInt()
+        val tv = TypedValue()
+        theme.resolveAttribute(android.R.attr.textColorPrimary, tv, true)
+        val primaryColor = if (tv.resourceId != 0) ResourcesCompat.getColor(resources, tv.resourceId, null) else 0xff000000.toInt()
+        theme.resolveAttribute(android.R.attr.textColorSecondary, tv, true)
+        val secondaryColor = if (tv.resourceId != 0) ResourcesCompat.getColor(resources, tv.resourceId, null) else 0xff757575.toInt()
+        val accentColor = getColor(R.color.scoreMedium)
+        val analystHistoryColor = ResourcesCompat.getColor(resources, R.color.eidos_analyst_confirmed_value, null)
+
+        fun labelCell(text: String): TextView = TextView(this@FullAnalysisActivity).apply {
+            setPadding(dp12, dp6, dp12, dp6)
+            setTextColor(secondaryColor)
+            setTypeface(typeface, Typeface.BOLD)
+            setMinimumWidth(labelMinWidth)
+            this.text = text
+        }
+        fun dataCell(text: String, highlight: Boolean = false, analystConfirmed: Boolean = false): TextView =
+            TextView(this@FullAnalysisActivity).apply {
+                setPadding(dp12, dp6, dp12, dp6)
+                setTextColor(
+                    when {
+                        analystConfirmed -> analystHistoryColor
+                        highlight -> accentColor
+                        else -> primaryColor
+                    }
+                )
+                setMinimumWidth(dataMinWidth)
+                textAlignment = View.TEXT_ALIGNMENT_TEXT_END
+                this.text = text
+            }
+
+        if (historyMode == HistoryMode.QUARTERLY && quarterlyColumnCount > 0) {
+            val periodCols = dynFacts
+                .map { EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel) }
+                .filter { it.matches(quarterlyPeriodRegex) }
+                .distinct()
+                .sortedWith(
+                    compareByDescending<String> { it.takeLast(4).toIntOrNull() ?: 0 }
+                        .thenByDescending { it.getOrNull(1)?.digitToIntOrNull() ?: 0 }
+                )
+            if (periodCols.isEmpty()) {
+                val yearCols = dynFacts
+                    .map { EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel) }
+                    .mapNotNull { canonicalPeriodToFiscalYear(it) }
+                    .distinct()
+                    .sortedDescending()
+                val headerRow = TableRow(this).apply {
+                    addView(labelCell(""))
+                    if (showTtm) addView(dataCell(getString(R.string.current_ttm_row), highlight = true))
+                    for (y in yearCols) {
+                        addView(dataCell("FY $y", highlight = true))
+                    }
+                }
+                analystTable.addView(headerRow)
+                for (mk in dynamicMetricKeys) {
+                    val tr = TableRow(this).apply {
+                        addView(labelCell(EidosAnalystMetricKey.humanizeMetricKey(mk)))
+                        if (showTtm) {
+                            val f = findAnalystConfirmedFactForDynamicMetric(mk, "TTM")
+                            addView(
+                                if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                                else dataCell(getString(R.string.not_available), highlight = true)
+                            )
+                        }
+                        for (y in yearCols) {
+                            val f = findAnalystConfirmedFactForDynamicFiscalYear(mk, y)
+                            addView(
+                                if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                                else dataCell(getString(R.string.not_available), highlight = true)
+                            )
+                        }
+                    }
+                    analystTable.addView(tr)
+                }
+                return
+            }
+            val headerRow = TableRow(this).apply {
+                addView(labelCell(""))
+                if (showTtm) addView(dataCell(getString(R.string.current_ttm_row), highlight = true))
+                for (label in periodCols) {
+                    addView(dataCell(label, highlight = true))
+                }
+            }
+            analystTable.addView(headerRow)
+            for (mk in dynamicMetricKeys) {
+                val tr = TableRow(this).apply {
+                    addView(labelCell(EidosAnalystMetricKey.humanizeMetricKey(mk)))
+                    if (showTtm) {
+                        val f = findAnalystConfirmedFactForDynamicMetric(mk, "TTM")
+                        addView(
+                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            else dataCell(getString(R.string.not_available), highlight = true)
+                        )
+                    }
+                    for (period in periodCols) {
+                        val f = findAnalystConfirmedFactForDynamicMetric(mk, period)
+                        addView(
+                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            else dataCell(getString(R.string.not_available), highlight = true)
+                        )
+                    }
+                }
+                analystTable.addView(tr)
+            }
+        } else {
+            val yearCols = dynFacts
+                .map { EidosAnalystPeriodScope.canonicalizePeriodLabel(it.periodLabel) }
+                .mapNotNull { canonicalPeriodToFiscalYear(it) }
+                .distinct()
+                .sortedDescending()
+            val headerRow = TableRow(this).apply {
+                addView(labelCell(""))
+                if (showTtm) addView(dataCell(getString(R.string.current_ttm_row), highlight = true))
+                for (y in yearCols) {
+                    addView(dataCell("FY $y", highlight = true))
+                }
+            }
+            analystTable.addView(headerRow)
+            for (mk in dynamicMetricKeys) {
+                val tr = TableRow(this).apply {
+                    addView(labelCell(EidosAnalystMetricKey.humanizeMetricKey(mk)))
+                    if (showTtm) {
+                        val f = findAnalystConfirmedFactForDynamicMetric(mk, "TTM")
+                        addView(
+                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            else dataCell(getString(R.string.not_available), highlight = true)
+                        )
+                    }
+                    for (y in yearCols) {
+                        val f = findAnalystConfirmedFactForDynamicFiscalYear(mk, y)
+                        addView(
+                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            else dataCell(getString(R.string.not_available), highlight = true)
+                        )
+                    }
+                }
+                analystTable.addView(tr)
+            }
         }
     }
 
@@ -1264,6 +1755,48 @@ class FullAnalysisActivity : AppCompatActivity() {
     private fun formatPrice(value: Double?): String {
         val v = value?.takeIf { it.isFinite() } ?: return getString(R.string.not_available)
         return "$%.2f".format(v)
+    }
+
+    private fun parseAnalystNumeric(valueText: String): Double? {
+        val t = valueText.trim()
+        if (t.isEmpty()) return null
+        var s = t.replace(",", "")
+        var sign = 1.0
+        if (s.startsWith("(") && s.endsWith(")")) {
+            sign = -1.0
+            s = s.substring(1, s.length - 1)
+        }
+        s = s.replace("$", "").replace("%", "").trim()
+        val multiplier = when {
+            s.endsWith("B", ignoreCase = true) -> 1_000_000_000.0
+            s.endsWith("M", ignoreCase = true) -> 1_000_000.0
+            s.endsWith("K", ignoreCase = true) -> 1_000.0
+            else -> 1.0
+        }
+        if (multiplier != 1.0) s = s.dropLast(1).trim()
+        val n = s.toDoubleOrNull() ?: return null
+        return sign * n * multiplier
+    }
+
+    private fun formatAnalystDisplayForHistoryValue(kind: HistoryValueKind, valueText: String): String {
+        val numeric = parseAnalystNumeric(valueText) ?: return valueText
+        return when (kind) {
+            HistoryValueKind.CURRENCY -> formatAbbreviatedCurrency(numeric)
+            HistoryValueKind.SHARES -> formatAbbreviatedShares(numeric)
+            HistoryValueKind.PERCENT -> {
+                val ratio = if (valueText.contains("%")) numeric / 100.0 else numeric
+                formatPercent(ratio)
+            }
+        }
+    }
+
+    private fun formatAnalystDisplayForRawMetric(metricKey: EdgarMetricKey, valueText: String): String {
+        val numeric = parseAnalystNumeric(valueText) ?: return valueText
+        return when (metricKey) {
+            EdgarMetricKey.EPS -> formatNumber(numeric)
+            EdgarMetricKey.SHARES_OUTSTANDING -> formatAbbreviatedShares(numeric)
+            else -> formatAbbreviatedCurrency(numeric)
+        }
     }
 
     private fun formatNumber(value: Double?): String {

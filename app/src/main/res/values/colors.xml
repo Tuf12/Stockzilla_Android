@@ -61,5 +61,7 @@
 
     <!-- Diagnostic log: Eidos / evolving tag lines -->
     <color name="eidosDiagnosticLog">#6A1B9A</color>
+    <!-- Full Analysis: value confirmed via Eidos analyst chat (distinct from mechanical extraction). -->
+    <color name="eidos_analyst_confirmed_value">#00695C</color>
 
 </resources>

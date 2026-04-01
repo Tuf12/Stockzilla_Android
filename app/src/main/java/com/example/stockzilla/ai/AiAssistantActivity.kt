@@ -289,6 +289,18 @@ class AiAssistantActivity : AppCompatActivity() {
         viewModel.requiresApiKey.observe(this) { needsKey ->
             binding.apiKeyHint.isVisible = needsKey
         }
+        viewModel.secFilingConsentRequested.observe(this) {
+            AlertDialog.Builder(this)
+                .setTitle(R.string.sec_filing_extraction_consent_title)
+                .setMessage(R.string.sec_filing_extraction_consent_message)
+                .setPositiveButton(R.string.sec_filing_extraction_allow) { _, _ ->
+                    viewModel.onSecFilingConsentGranted()
+                }
+                .setNegativeButton(R.string.sec_filing_extraction_not_now) { _, _ ->
+                    viewModel.onSecFilingConsentDeclined()
+                }
+                .show()
+        }
         viewModel.draftText.observe(this) { draft ->
             val current = binding.editMessage.text?.toString() ?: ""
             if (current == draft) return@observe
@@ -320,6 +332,9 @@ class AiAssistantActivity : AppCompatActivity() {
                         Toast.makeText(this, message, Toast.LENGTH_LONG).show()
                     },
                     onFailure = { error ->
+                        if (error.message == "CONSENT_REQUIRED") {
+                            return@fold
+                        }
                         Toast.makeText(
                             this,
                             "Error: ${error.message}",

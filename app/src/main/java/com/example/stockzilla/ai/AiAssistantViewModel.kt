@@ -7,44 +7,38 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
-import com.example.stockzilla.util.ApiConstants
-import com.example.stockzilla.feature.ApiKeyManager
-import com.example.stockzilla.feature.DiagnosticsLogger
-import com.example.stockzilla.data.DEFAULT_GROK_MODEL
-import com.example.stockzilla.scoring.FinancialHealthAnalyzer
-import com.example.stockzilla.data.GrokApiClient
-import com.example.stockzilla.data.GrokChatChoiceMessage
-import com.example.stockzilla.data.GrokChatMessage
-import com.example.stockzilla.data.GrokChatResponse
-import com.example.stockzilla.data.GrokChatRequest
-import com.example.stockzilla.data.GrokTool
-import com.example.stockzilla.data.GrokToolCall
-import com.example.stockzilla.data.GrokToolFunction
-import com.example.stockzilla.scoring.HealthScore
-import com.example.stockzilla.sec.NewsAnalyzer
-import com.example.stockzilla.data.NewsRepository
-import com.example.stockzilla.data.SecEdgarService
-import com.example.stockzilla.sec.SecFilingMeta
-import com.example.stockzilla.scoring.StockData
-import com.example.stockzilla.data.StockRepository
 import com.example.stockzilla.data.AiConversationEntity
 import com.example.stockzilla.data.AiMemoryCacheEntity
 import com.example.stockzilla.data.AiMessageEntity
-import com.example.stockzilla.data.EdgarRawFactsEntity
-import com.example.stockzilla.data.FinancialDerivedMetricsEntity
-import com.example.stockzilla.data.NewsSummaryWithFormTypeRow
-import com.example.stockzilla.data.ScoreSnapshotEntity
-import com.example.stockzilla.data.SymbolTagOverrideEntity
+import com.example.stockzilla.data.DEFAULT_GROK_MODEL
+import com.example.stockzilla.data.GrokApiClient
+import com.example.stockzilla.data.GrokChatChoiceMessage
+import com.example.stockzilla.data.GrokChatMessage
+import com.example.stockzilla.data.GrokChatRequest
+import com.example.stockzilla.data.GrokChatResponse
+import com.example.stockzilla.data.GrokTool
+import com.example.stockzilla.data.GrokToolCall
+import com.example.stockzilla.data.GrokToolFunction
+import com.example.stockzilla.data.NewsRepository
+import com.example.stockzilla.data.SecEdgarService
+import com.example.stockzilla.data.StockRepository
 import com.example.stockzilla.data.StockzillaDatabase
+import com.example.stockzilla.data.SymbolTagOverrideEntity
+import com.example.stockzilla.feature.ApiKeyManager
+import com.example.stockzilla.feature.DiagnosticsLogger
+import com.example.stockzilla.scoring.FinancialHealthAnalyzer
+import com.example.stockzilla.scoring.StockData
 import com.example.stockzilla.sec.EdgarMetricKey
-import com.example.stockzilla.sec.TagOverrideResolver
 import com.example.stockzilla.sec.EdgarTaxonomy
+import com.example.stockzilla.sec.NewsAnalyzer
+import com.example.stockzilla.sec.SecFilingMeta
+import com.example.stockzilla.sec.TagOverrideResolver
+import com.example.stockzilla.util.ApiConstants
 import com.google.gson.Gson
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
-import kotlin.collections.get
 import kotlin.math.abs
 
 private fun Boolean?.isNullOrFalse(): Boolean = this == null || this == false
@@ -76,6 +70,13 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     private val grokClient = GrokApiClient(apiKeyProvider = { apiKeyManager.getAiApiKey() })
     private val gson = Gson()
     private val financialHealthAnalyzer = FinancialHealthAnalyzer()
+    private val stockContextBuilder = AiStockContextBuilder(
+        rawFactsDao = rawFactsDao,
+        derivedDao = derivedDao,
+        scoreSnapshotDao = scoreSnapshotDao,
+        newsSummariesDao = newsSummariesDao,
+        financialHealthAnalyzer = financialHealthAnalyzer
+    )
     private val draftsPrefs = application.getSharedPreferences("ai_assistant_drafts", Context.MODE_PRIVATE)
     private val keyLastSelectedConversationId = "last_selected_conversation_id"
 
@@ -115,6 +116,13 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
 
     private val _requiresApiKey = MutableLiveData<Boolean>(!apiKeyManager.hasAiApiKey())
     val requiresApiKey: LiveData<Boolean> = _requiresApiKey
+
+    /** Fired when Eidos needs user approval before downloading SEC filing document text. */
+    private val _secFilingConsentRequested = MutableLiveData<Unit>()
+    val secFilingConsentRequested: LiveData<Unit> = _secFilingConsentRequested
+
+    /** SEC filing discovery: retry [saveAndAnalyzeFilings] after the user approves in the dialog. */
+    private var pendingDiscoveryRetry: Pair<String, List<String>>? = null
 
     // Persisted per-conversation draft text so users can leave the chat UI,
     // navigate elsewhere, and return without losing what they were typing.
@@ -513,48 +521,8 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
      * Loads full stock context for a symbol from DB (raw, derived, snapshot, stockData, healthScore).
      * Returns null if the symbol is not in the DB. Used by get_stock_data tool and by primary context.
      */
-    private suspend fun buildOneStockContext(symbol: String): Map<String, Any?>? {
-        val raw = rawFactsDao.getBySymbol(symbol) ?: return null
-        val derived = derivedDao.getBySymbol(symbol)
-        val snapshot = scoreSnapshotDao.getLatest(symbol)
-        val stockData = raw.toStockData(derived).withGrowthFromHistory()
-        val healthScore = financialHealthAnalyzer.calculateCompositeScore(stockData)
-        // Include formType in chat context so Eidos can apply form-specific reasoning.
-        val recentNews = newsSummariesDao.getRecentForSymbolWithFormType(symbol, limit = 5)
-        return buildStockContextMap(raw, derived, snapshot, stockData, healthScore, recentNews)
-    }
-
-    /**
-     * Builds the stock context wrapper used in the JSON packet.
-     *
-     * Design rule (see STOCKZILLA_AI.md):
-     * - Eidos should see the full underlying entities, not a cherry‑picked subset.
-     * - This wrapper just groups the full objects together and adds a few convenience identity fields.
-     */
-    private fun buildStockContextMap(
-        raw: EdgarRawFactsEntity,
-        derived: FinancialDerivedMetricsEntity?,
-        snapshot: ScoreSnapshotEntity?,
-        stockData: StockData?,
-        healthScore: HealthScore?,
-        recentNews: List<NewsSummaryWithFormTypeRow>?
-    ): Map<String, Any?> {
-        val base = mutableMapOf<String, Any?>(
-            "symbol" to (stockData?.symbol ?: raw.symbol),
-            "companyName" to (stockData?.companyName ?: raw.companyName),
-            "sector" to (stockData?.sector ?: raw.sector),
-            "industry" to (stockData?.industry ?: raw.industry),
-            "sicCode" to raw.sicCode,
-            // Full underlying entities
-            "rawFactsEntity" to raw,
-            "derivedMetricsEntity" to derived,
-            "scoreSnapshotEntity" to snapshot,
-            "stockData" to stockData,
-            "healthScore" to healthScore,
-            "recentNews" to recentNews
-        )
-        return base
-    }
+    private suspend fun buildOneStockContext(symbol: String): Map<String, Any?>? =
+        stockContextBuilder.buildContextMap(symbol)
 
     private suspend fun buildContextPacket(symbol: String?): String? {
         // Load Memory Cache notes first so they are always available,
@@ -977,15 +945,20 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                         results.add(callId to "sec_save_filings_metadata requires a non-empty symbol.")
                         continue
                     }
-                    if (args?.accessionNumbers.isNullOrEmpty()) {
+                    if (args.accessionNumbers.isNullOrEmpty()) {
                         results.add(callId to "sec_save_filings_metadata requires at least one accession number.")
                         continue
                     }
-                    val resultJson = secSaveFilingsMetadataForTool(sym, args!!.accessionNumbers!!)
+                    val resultJson = secSaveFilingsMetadataForTool(sym, args.accessionNumbers)
                     results.add(callId to resultJson)
                     continue
                 }
                 "sec_analyze_saved_filings" -> {
+                    if (!apiKeyManager.hasSecFilingExtractionConsent()) {
+                        results.add(callId to secFilingExtractionConsentRequiredJson())
+                        _secFilingConsentRequested.postValue(Unit)
+                        continue
+                    }
                     val args = try {
                         gson.fromJson(fn.arguments, SecAnalyzeFilingsArgs::class.java)
                     } catch (e: Exception) { null }
@@ -1410,6 +1383,13 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
 
     // --------------- SEC Form Discovery Tool Helpers ---------------
 
+    private fun secFilingExtractionConsentRequiredJson(): String = gson.toJson(
+        mapOf(
+            "error" to "CONSENT_REQUIRED",
+            "message" to "The user must approve downloading SEC filing documents before Eidos can analyze filing text. Wait for approval or ask them to allow access in the prompt."
+        )
+    )
+
     /**
      * Searches SEC EDGAR for recent filings. Returns candidate filings NOT already in the database.
      * This is read-only - no DB changes are made.
@@ -1663,12 +1643,91 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     // --------------- Public API for UI-driven SEC filing operations ---------------
 
     /**
+     * User approved SEC filing downloads in the dialog. Retries discovery analysis or the last chat turn.
+     */
+    /** User dismissed the SEC filing consent dialog (e.g. discovery flow should not auto-retry). */
+    fun onSecFilingConsentDeclined() {
+        pendingDiscoveryRetry = null
+    }
+
+    fun onSecFilingConsentGranted() {
+        apiKeyManager.setSecFilingExtractionConsent(true)
+        viewModelScope.launch {
+            val pending = pendingDiscoveryRetry
+            if (pending != null) {
+                pendingDiscoveryRetry = null
+                saveAndAnalyzeFilings(pending.first, pending.second, null)
+                return@launch
+            }
+            val convId = _selectedConversationId.value ?: return@launch
+            withContext(Dispatchers.IO) {
+                aiMessageDao.deleteLastAssistantForConversation(convId)
+            }
+            loadMessagesForConversation(convId)
+            runGrokForConversationNoNewUserMessage(convId)
+        }
+    }
+
+    private suspend fun runGrokForConversationNoNewUserMessage(conversationId: Long) {
+        _loading.value = true
+        _error.value = null
+        try {
+            val conversation = aiConversationDao.getById(conversationId) ?: return
+            val conversationSymbol = conversation.symbol?.takeIf { it.isNotBlank() }
+            val contextSymbol = conversationSymbol ?: initialSymbol?.takeIf { it.isNotBlank() }
+            val contextJson = buildContextPacket(contextSymbol)
+            val history = aiMessageDao.getMessagesForConversation(conversationId)
+            val initialGrokMessages = buildGrokMessages(history, contextJson)
+            val outcome = runGrokToolLoop(initialGrokMessages, contextSymbol)
+            val chatResult = outcome.chatResult
+            val lastResponse = outcome.lastResponse
+            val lastDiscoveryResult = outcome.lastDiscoveryResult
+            chatResult.fold(
+                onSuccess = {
+                    var assistantText = lastResponse?.content
+                        ?.takeIf { !it.isNullOrBlank() }
+                        ?: "I wasn't able to generate a response."
+                    if (lastDiscoveryResult != null) {
+                        assistantText = "$assistantText\n\n$lastDiscoveryResult"
+                    }
+                    val assistantEntity = AiMessageEntity(
+                        conversationId = conversationId,
+                        role = "assistant",
+                        content = assistantText,
+                        timestamp = System.currentTimeMillis()
+                    )
+                    aiMessageDao.insert(assistantEntity)
+                    val lastUserContent = history.lastOrNull { it.role == "user" }?.content ?: ""
+                    aiConversationDao.renameConversation(
+                        id = conversationId,
+                        title = buildConversationTitle(conversationSymbol, lastUserContent),
+                        updatedAt = System.currentTimeMillis()
+                    )
+                    _messages.value = aiMessageDao.getMessagesForConversation(conversationId)
+                    _conversations.value = aiConversationDao.getAllOrderedByUpdated()
+                },
+                onFailure = { e ->
+                    _error.value = e.message ?: "AI request failed."
+                }
+            )
+        } finally {
+            _loading.value = false
+        }
+    }
+
+    /**
      * Called by the UI when user confirms SEC filing discovery.
      * Saves metadata and runs analysis programmatically without requiring AI tool calls.
      */
     fun saveAndAnalyzeFilings(symbol: String, accessionNumbers: List<String>, onComplete: ((Result<String>) -> Unit)? = null) {
         viewModelScope.launch {
             try {
+                if (!apiKeyManager.hasSecFilingExtractionConsent()) {
+                    pendingDiscoveryRetry = symbol to accessionNumbers
+                    _secFilingConsentRequested.postValue(Unit)
+                    onComplete?.invoke(Result.failure(IllegalStateException("CONSENT_REQUIRED")))
+                    return@launch
+                }
                 // Step 1: Save metadata
                 val saveResult = with(Dispatchers.IO) {
                     secSaveFilingsMetadataForTool(symbol, accessionNumbers)
