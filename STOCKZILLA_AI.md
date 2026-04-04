@@ -63,6 +63,8 @@ When Eidos needs data for a stock that is not yet in the database, it calls the 
 - Raw or derived financial data of any kind
 - Anything outside the four write areas listed above
 
+These boundaries apply to the **main Eidos Assistant** (`AiAssistantActivity` / `AiAssistantViewModel`) and its tools. **Eidos as analyst** is a separate Full Analysis flow: user-accepted values persist in **`eidos_analyst_confirmed_facts`** and merge on the Full Analysis screen only. It does **not** replace writes to `edgar_raw_facts`. For **`metricKey` / `periodLabel`** rules so history cells display correctly, see [EIDOS_AS_ANALYST.md](EIDOS_AS_ANALYST.md).
+
 ---
 
 # Section 3 — How Things Work

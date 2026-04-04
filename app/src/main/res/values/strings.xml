@@ -51,6 +51,8 @@
     <string name="history_mode_quarterly">Quarterly</string>
     <string name="financial_history_no_data">No historical data available.</string>
     <string name="financial_history_analyst_metrics_heading">Analyst-added metrics (not in standard history rows)</string>
+    <string name="eidos_analyst_revert_to_sec">Use SEC data (remove analyst value)</string>
+    <string name="eidos_analyst_reverted_to_sec">Showing SEC data for this value again</string>
     <string name="view_10k_sec">View 10-K on SEC.gov</string>
     <string name="view_quarterly_sec">View quarterly filings on SEC.gov</string>
     <string name="your_ratio">Your %1$s</string>

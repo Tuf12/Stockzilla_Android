@@ -10,6 +10,7 @@ import android.text.style.ForegroundColorSpan
 import android.util.TypedValue
 import android.view.Menu
 import android.view.MenuItem
+import android.widget.PopupMenu
 import android.view.Gravity
 import android.view.View
 import android.widget.Button
@@ -31,6 +32,7 @@ import com.example.stockzilla.analyst.EidosAnalystActivity
 import com.example.stockzilla.analyst.EidosAnalystConfirmedFactMerge
 import com.example.stockzilla.analyst.EidosAnalystMetricKey
 import com.example.stockzilla.analyst.EidosAnalystPeriodScope
+import com.example.stockzilla.analyst.EidosAnalystStockDataMerge
 import com.example.stockzilla.data.EidosAnalystConfirmedFactEntity
 import com.example.stockzilla.data.CompanyProfileEntity
 import com.example.stockzilla.data.QuarterlyFinancialFactEntity
@@ -52,6 +54,7 @@ class FullAnalysisActivity : AppCompatActivity() {
     companion object {
         const val EXTRA_STOCK_DATA = "extra_stock_data"
         private const val STOCK_ANALYSIS_BASE = "https://stockanalysis.com/stocks/"
+        private const val MENU_ID_REVERT_ANALYST_FACT = 10001
     }
 
     private lateinit var binding: ActivityFullAnalysisBinding
@@ -254,6 +257,36 @@ class FullAnalysisActivity : AppCompatActivity() {
                 .associateBy { EidosAnalystMetricKey.normalize(it.metricKey) }
             populateRawFactsTable(latestStockData)
             populateFinancialHistoryTable(latestStockData)
+        }
+    }
+
+    /** Long-press an analyst-highlighted value to drop that confirmed fact row and show SEC data again. */
+    private fun attachAnalystFactLongPressMenu(tv: TextView, fact: EidosAnalystConfirmedFactEntity?) {
+        if (fact == null) return
+        tv.setOnLongClickListener { anchor ->
+            PopupMenu(this, anchor).apply {
+                menu.add(Menu.NONE, MENU_ID_REVERT_ANALYST_FACT, 0, R.string.eidos_analyst_revert_to_sec)
+                setOnMenuItemClickListener { item ->
+                    if (item.itemId != MENU_ID_REVERT_ANALYST_FACT) return@setOnMenuItemClickListener false
+                    lifecycleScope.launch {
+                        withContext(Dispatchers.IO) {
+                            database.eidosAnalystConfirmedFactDao().deleteByKey(
+                                fact.symbol,
+                                fact.metricKey,
+                                fact.periodLabel,
+                            )
+                        }
+                        refreshAnalystConfirmedOverrides()
+                        Toast.makeText(
+                            this@FullAnalysisActivity,
+                            R.string.eidos_analyst_reverted_to_sec,
+                            Toast.LENGTH_SHORT,
+                        ).show()
+                    }
+                    true
+                }
+            }.show()
+            true
         }
     }
 
@@ -499,7 +532,10 @@ class FullAnalysisActivity : AppCompatActivity() {
             .forEach { (metricKey, fact) ->
                 val row = TableRow(this)
                 row.addView(buildCell(EidosAnalystMetricKey.humanizeMetricKey(metricKey)))
-                row.addView(buildCell(fact.valueText, analystConfirmed = true))
+                val enumKey = EdgarMetricKey.entries.firstOrNull { it.name == EidosAnalystMetricKey.normalize(metricKey) }
+                val display =
+                    if (enumKey != null) formatAnalystDisplayForRawMetric(enumKey, fact.valueText) else fact.valueText
+                row.addView(buildCell(display, analystConfirmed = true, analystFactForRevert = fact))
                 table.addView(row)
             }
     }
@@ -537,7 +573,14 @@ class FullAnalysisActivity : AppCompatActivity() {
                 } else {
                     merged.displayText
                 }
-                row.addView(buildCell(display, analystConfirmed = merged.fromAnalyst))
+                val revertFact = if (merged.fromAnalyst) analystByMetric[spec.metricKey.name] else null
+                row.addView(
+                    buildCell(
+                        display,
+                        analystConfirmed = merged.fromAnalyst,
+                        analystFactForRevert = revertFact,
+                    )
+                )
                 table.addView(row)
             }
         }
@@ -799,7 +842,12 @@ class FullAnalysisActivity : AppCompatActivity() {
         table.addView(row)
     }
 
-    private fun buildCell(text: String, header: Boolean = false, analystConfirmed: Boolean = false): TextView {
+    private fun buildCell(
+        text: String,
+        header: Boolean = false,
+        analystConfirmed: Boolean = false,
+        analystFactForRevert: EidosAnalystConfirmedFactEntity? = null,
+    ): TextView {
         val dp8 = (8 * resources.displayMetrics.density).toInt()
         val dp4 = (4 * resources.displayMetrics.density).toInt()
         val tv = TypedValue()
@@ -825,6 +873,7 @@ class FullAnalysisActivity : AppCompatActivity() {
             }
             this.text = text
             if (header) setTypeface(typeface, Typeface.BOLD)
+            attachAnalystFactLongPressMenu(this, analystFactForRevert)
         }
     }
 
@@ -867,6 +916,34 @@ class FullAnalysisActivity : AppCompatActivity() {
         }
     }
 
+    /** Mechanical annual cell or same-FY analyst confirmation (for derived % rows). */
+    private fun effectiveAnnualNumericForFinancialHistory(
+        mechanical: Double?,
+        metricKey: EdgarMetricKey,
+        fiscalYear: Int,
+    ): Double? {
+        if (mechanical != null) return mechanical
+        val fact = EidosAnalystPeriodScope.findForAnnualHistoryCell(analystConfirmedFacts, metricKey, fiscalYear)
+            ?: return null
+        return EidosAnalystStockDataMerge.parseAnalystNumeric(fact.valueText)
+    }
+
+    private fun ratioHistorySeriesWithAnalystAnnualFallback(
+        numeratorMechanical: List<Double?>,
+        denominatorMechanical: List<Double?>,
+        numeratorKey: EdgarMetricKey,
+        denominatorKey: EdgarMetricKey,
+    ): List<Double?> {
+        val currentYear = Calendar.getInstance().get(Calendar.YEAR)
+        val n = kotlin.math.max(numeratorMechanical.size, denominatorMechanical.size)
+        return List(n) { i ->
+            val fy = currentYear - 1 - i
+            val num = effectiveAnnualNumericForFinancialHistory(numeratorMechanical.getOrNull(i), numeratorKey, fy)
+            val den = effectiveAnnualNumericForFinancialHistory(denominatorMechanical.getOrNull(i), denominatorKey, fy)
+            if (num != null && den != null && abs(den) > 1e-9) num / den else null
+        }
+    }
+
     private fun grossProfitTtmForHistory(stockData: StockData): Double? {
         if (!stockData.hasTtm) return null
         val r = stockData.revenueTtm
@@ -875,8 +952,18 @@ class FullAnalysisActivity : AppCompatActivity() {
     }
 
     private fun populateFinancialHistoryTable(stockData: StockData) {
-        val grossMarginAnnual = ratioHistorySeries(stockData.grossProfitHistory, stockData.revenueHistory)
-        val netMarginAnnual = ratioHistorySeries(stockData.netIncomeHistory, stockData.revenueHistory)
+        val grossMarginAnnual = ratioHistorySeriesWithAnalystAnnualFallback(
+            stockData.grossProfitHistory,
+            stockData.revenueHistory,
+            EdgarMetricKey.GROSS_PROFIT,
+            EdgarMetricKey.REVENUE,
+        )
+        val netMarginAnnual = ratioHistorySeriesWithAnalystAnnualFallback(
+            stockData.netIncomeHistory,
+            stockData.revenueHistory,
+            EdgarMetricKey.NET_INCOME,
+            EdgarMetricKey.REVENUE,
+        )
         val revTtm = stockData.revenueTtm
         val grossMarginTtm = if (stockData.hasTtm && revTtm != null) {
             val gp = grossProfitTtmForHistory(stockData)
@@ -1072,7 +1159,12 @@ class FullAnalysisActivity : AppCompatActivity() {
             this.text = text
         }
 
-        fun dataCell(text: String, highlight: Boolean = false, analystConfirmed: Boolean = false): TextView =
+        fun dataCell(
+            text: String,
+            highlight: Boolean = false,
+            analystConfirmed: Boolean = false,
+            analystFact: EidosAnalystConfirmedFactEntity? = null,
+        ): TextView =
             TextView(this).apply {
                 setPadding(dp12, dp6, dp12, dp6)
                 setTextColor(
@@ -1085,6 +1177,7 @@ class FullAnalysisActivity : AppCompatActivity() {
                 setMinimumWidth(dataMinWidth)
                 textAlignment = View.TEXT_ALIGNMENT_TEXT_END
                 this.text = text
+                attachAnalystFactLongPressMenu(this, analystFact)
             }
 
         fun formatHistoryValue(kind: HistoryValueKind, value: Double?): String {
@@ -1216,7 +1309,8 @@ class FullAnalysisActivity : AppCompatActivity() {
                             addView(
                                 dataCell(
                                     formatAnalystDisplayForHistoryValue(row.valueKind, qFact.valueText),
-                                    analystConfirmed = true
+                                    analystConfirmed = true,
+                                    analystFact = qFact,
                                 )
                             )
                         } else if (isMissing && row.allowTagFix) {
@@ -1254,7 +1348,8 @@ class FullAnalysisActivity : AppCompatActivity() {
                             addView(
                                 dataCell(
                                     formatAnalystDisplayForHistoryValue(row.valueKind, xFact.valueText),
-                                    analystConfirmed = true
+                                    analystConfirmed = true,
+                                    analystFact = xFact,
                                 )
                             )
                         } else {
@@ -1321,7 +1416,8 @@ class FullAnalysisActivity : AppCompatActivity() {
                             addView(
                                 dataCell(
                                     formatAnalystDisplayForHistoryValue(row.valueKind, xFact.valueText),
-                                    analystConfirmed = true
+                                    analystConfirmed = true,
+                                    analystFact = xFact,
                                 )
                             )
                         } else {
@@ -1450,7 +1546,12 @@ class FullAnalysisActivity : AppCompatActivity() {
             setMinimumWidth(labelMinWidth)
             this.text = text
         }
-        fun dataCell(text: String, highlight: Boolean = false, analystConfirmed: Boolean = false): TextView =
+        fun dataCell(
+            text: String,
+            highlight: Boolean = false,
+            analystConfirmed: Boolean = false,
+            analystFact: EidosAnalystConfirmedFactEntity? = null,
+        ): TextView =
             TextView(this@FullAnalysisActivity).apply {
                 setPadding(dp12, dp6, dp12, dp6)
                 setTextColor(
@@ -1463,6 +1564,7 @@ class FullAnalysisActivity : AppCompatActivity() {
                 setMinimumWidth(dataMinWidth)
                 textAlignment = View.TEXT_ALIGNMENT_TEXT_END
                 this.text = text
+                attachAnalystFactLongPressMenu(this, analystFact)
             }
 
         if (historyMode == HistoryMode.QUARTERLY && quarterlyColumnCount > 0) {
@@ -1494,14 +1596,14 @@ class FullAnalysisActivity : AppCompatActivity() {
                         if (showTtm) {
                             val f = findAnalystConfirmedFactForDynamicMetric(mk, "TTM")
                             addView(
-                                if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                                if (f != null) dataCell(EidosAnalystStockDataMerge.analystValuePrimaryToken(f.valueText), analystConfirmed = true, analystFact = f)
                                 else dataCell(getString(R.string.not_available), highlight = true)
                             )
                         }
                         for (y in yearCols) {
                             val f = findAnalystConfirmedFactForDynamicFiscalYear(mk, y)
                             addView(
-                                if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                                if (f != null) dataCell(EidosAnalystStockDataMerge.analystValuePrimaryToken(f.valueText), analystConfirmed = true, analystFact = f)
                                 else dataCell(getString(R.string.not_available), highlight = true)
                             )
                         }
@@ -1524,14 +1626,14 @@ class FullAnalysisActivity : AppCompatActivity() {
                     if (showTtm) {
                         val f = findAnalystConfirmedFactForDynamicMetric(mk, "TTM")
                         addView(
-                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            if (f != null) dataCell(EidosAnalystStockDataMerge.analystValuePrimaryToken(f.valueText), analystConfirmed = true, analystFact = f)
                             else dataCell(getString(R.string.not_available), highlight = true)
                         )
                     }
                     for (period in periodCols) {
                         val f = findAnalystConfirmedFactForDynamicMetric(mk, period)
                         addView(
-                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            if (f != null) dataCell(EidosAnalystStockDataMerge.analystValuePrimaryToken(f.valueText), analystConfirmed = true, analystFact = f)
                             else dataCell(getString(R.string.not_available), highlight = true)
                         )
                     }
@@ -1558,14 +1660,14 @@ class FullAnalysisActivity : AppCompatActivity() {
                     if (showTtm) {
                         val f = findAnalystConfirmedFactForDynamicMetric(mk, "TTM")
                         addView(
-                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            if (f != null) dataCell(EidosAnalystStockDataMerge.analystValuePrimaryToken(f.valueText), analystConfirmed = true, analystFact = f)
                             else dataCell(getString(R.string.not_available), highlight = true)
                         )
                     }
                     for (y in yearCols) {
                         val f = findAnalystConfirmedFactForDynamicFiscalYear(mk, y)
                         addView(
-                            if (f != null) dataCell(f.valueText, analystConfirmed = true)
+                            if (f != null) dataCell(EidosAnalystStockDataMerge.analystValuePrimaryToken(f.valueText), analystConfirmed = true, analystFact = f)
                             else dataCell(getString(R.string.not_available), highlight = true)
                         )
                     }
@@ -1757,26 +1859,8 @@ class FullAnalysisActivity : AppCompatActivity() {
         return "$%.2f".format(v)
     }
 
-    private fun parseAnalystNumeric(valueText: String): Double? {
-        val t = valueText.trim()
-        if (t.isEmpty()) return null
-        var s = t.replace(",", "")
-        var sign = 1.0
-        if (s.startsWith("(") && s.endsWith(")")) {
-            sign = -1.0
-            s = s.substring(1, s.length - 1)
-        }
-        s = s.replace("$", "").replace("%", "").trim()
-        val multiplier = when {
-            s.endsWith("B", ignoreCase = true) -> 1_000_000_000.0
-            s.endsWith("M", ignoreCase = true) -> 1_000_000.0
-            s.endsWith("K", ignoreCase = true) -> 1_000.0
-            else -> 1.0
-        }
-        if (multiplier != 1.0) s = s.dropLast(1).trim()
-        val n = s.toDoubleOrNull() ?: return null
-        return sign * n * multiplier
-    }
+    private fun parseAnalystNumeric(valueText: String): Double? =
+        EidosAnalystStockDataMerge.parseAnalystNumeric(valueText)
 
     private fun formatAnalystDisplayForHistoryValue(kind: HistoryValueKind, valueText: String): String {
         val numeric = parseAnalystNumeric(valueText) ?: return valueText

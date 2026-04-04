@@ -1,5 +1,7 @@
 package com.example.stockzilla.analyst
 
+import android.content.Context
+import android.content.SharedPreferences
 import android.os.Bundle
 import android.view.inputmethod.EditorInfo
 import androidx.activity.viewModels
@@ -26,6 +28,14 @@ class EidosAnalystActivity : AppCompatActivity() {
     private val viewModel: EidosAnalystViewModel by viewModels()
     /** Shown when Eidos calls [analyst_present_metric_proposal] (numeric value confirmation). */
     private var proposalDialog: AlertDialog? = null
+
+    /** [ApiKeyManager] uses the same file; draft is keyed per symbol. */
+    private val draftPrefs: SharedPreferences by lazy {
+        getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+    }
+
+    /** Non-null after stock is loaded: [DRAFT_KEY_PREFIX] + uppercase symbol. */
+    private var draftPrefsKey: String? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -65,9 +75,12 @@ class EidosAnalystActivity : AppCompatActivity() {
         }
 
         val symbol = stockData.symbol.trim().uppercase()
+        draftPrefsKey = DRAFT_KEY_PREFIX + symbol
         supportActionBar?.title = getString(R.string.eidos_analyst_title_symbol, symbol)
 
         viewModel.bindStock(stockData)
+
+        binding.editMessage.setText(draftPrefs.getString(draftPrefsKey, null).orEmpty())
 
         val adapter = EidosAnalystMessageAdapter(
             onDeleteMessage = { viewModel.deleteMessage(it.id) }
@@ -141,11 +154,27 @@ class EidosAnalystActivity : AppCompatActivity() {
         viewModel.refreshApiKeyState()
     }
 
+    override fun onPause() {
+        persistMessageDraft()
+        super.onPause()
+    }
+
+    private fun persistMessageDraft() {
+        val key = draftPrefsKey ?: return
+        draftPrefs.edit().putString(key, binding.editMessage.text?.toString().orEmpty()).apply()
+    }
+
+    private fun clearMessageDraft() {
+        val key = draftPrefsKey ?: return
+        draftPrefs.edit().remove(key).apply()
+    }
+
     private fun sendFromInput() {
         val text = binding.editMessage.text?.toString()?.trim().orEmpty()
         if (text.isBlank()) return
         binding.editMessage.setText("")
         binding.editMessage.setSelection(0)
+        clearMessageDraft()
         viewModel.sendMessage(text)
     }
 
@@ -157,5 +186,10 @@ class EidosAnalystActivity : AppCompatActivity() {
             }
             else -> super.onOptionsItemSelected(item)
         }
+    }
+
+    companion object {
+        private const val PREFS_NAME = "stockzilla_prefs"
+        private const val DRAFT_KEY_PREFIX = "eidos_analyst_message_draft_"
     }
 }

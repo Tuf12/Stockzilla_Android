@@ -88,7 +88,8 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             derivedMetricsDao = derivedDao,
             scoreSnapshotDao = scoreSnapshotDao,
             symbolTagOverrideDao = symbolTagOverrideDao,
-            quarterlyFinancialFactDao = database.quarterlyFinancialFactDao()
+            quarterlyFinancialFactDao = database.quarterlyFinancialFactDao(),
+            eidosAnalystConfirmedFactDao = database.eidosAnalystConfirmedFactDao()
         )
     }
 

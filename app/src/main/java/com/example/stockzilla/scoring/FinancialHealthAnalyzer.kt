@@ -83,7 +83,9 @@ data class StockData(
     val accountsReceivable: Double? = null,
     /** Same fact as EBIT ([OperatingIncomeLoss]); tag fix uses [com.example.stockzilla.sec.EdgarMetricKey.EBIT]. */
     val operatingIncome: Double? = null,
-    val operatingIncomeTtm: Double? = null
+    val operatingIncomeTtm: Double? = null,
+    /** Annual 10-K operating income (EBIT) series; [ebitdaHistory] is often EBIT + D&amp;A when both exist. */
+    val operatingIncomeHistory: List<Double?>? = null
 ): Serializable {
 
     /** TTM-preferred value for display and ratio calculations; falls back to annual 10-K. */

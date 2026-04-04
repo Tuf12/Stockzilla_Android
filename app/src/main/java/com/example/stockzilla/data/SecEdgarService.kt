@@ -2413,7 +2413,8 @@ class SecEdgarService private constructor(
             cashAndEquivalents = cashAndEquivalents,
             accountsReceivable = accountsReceivable,
             operatingIncome = ebit,
-            operatingIncomeTtm = ebitTtm
+            operatingIncomeTtm = ebitTtm,
+            operatingIncomeHistory = operatingIncomeHistory
         )
     }
 

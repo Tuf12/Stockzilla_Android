@@ -58,6 +58,8 @@ The legacy `analyzed_stocks` table has been **removed**. Financial persistence f
 | `financial_derived_metrics` / `FinancialDerivedMetricsEntity` | B — deterministic ratios, growth, benchmarks used for display/peers |
 | `score_snapshots` / `ScoreSnapshotEntity` | C — serialized scoring outputs (versioned by model id in row) |
 | `symbol_tag_overrides` / `SymbolTagOverrideEntity` | A-adjunct — per-symbol XBRL tag overrides for EDGAR parsing (`symbol`, `metricKey`, `taxonomy`, `tag`, `updatedAt`, `source`). PK `(symbol, metricKey)`. |
+| `eidos_analyst_confirmed_facts` / `EidosAnalystConfirmedFactEntity` | **Display adjunct** — user-accepted **Eidos Analyst** values from filing text (not written by mechanical refresh; not merged into `edgar_raw_facts`). Full Analysis joins these rows by **`metricKey` + `periodLabel`**. **`periodLabel` rules** matter for history cells: see [EIDOS_AS_ANALYST.md — Proposal JSON contract](EIDOS_AS_ANALYST.md#proposal-json-contract-for-metrickey-and-periodlabel). |
+| `eidos_analyst_chat_messages`, `eidos_analyst_audit_events` | Analyst chat and audit trail (separate from main assistant tables). |
 
 Additional tables (same file): `favorites`, `stock_cache`, `stock_industry_peers`, `user_stock_list`, `company_profiles`, `stock_profiles`, `ai_memory_cache`, `ai_conversations`, `ai_messages`, `news_metadata`, `news_summaries`, portfolio tables, etc.
 

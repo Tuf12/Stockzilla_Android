@@ -140,6 +140,7 @@ data class EdgarRawFactsEntity(
     val accountsReceivable: Double?,
     val operatingIncome: Double?,
     val operatingIncomeTtm: Double?,
+    val operatingIncomeHistoryJson: List<Double?>?,
     val revenueHistoryJson: List<Double?>?,
     val netIncomeHistoryJson: List<Double?>?,
     val ebitdaHistoryJson: List<Double?>?,
@@ -206,6 +207,7 @@ data class EdgarRawFactsEntity(
                 accountsReceivable = stockData.accountsReceivable,
                 operatingIncome = stockData.operatingIncome,
                 operatingIncomeTtm = stockData.operatingIncomeTtm,
+                operatingIncomeHistoryJson = stockData.operatingIncomeHistory?.takeIf { it.isNotEmpty() },
                 revenueHistoryJson = stockData.revenueHistory.takeIf { it.isNotEmpty() },
                 netIncomeHistoryJson = stockData.netIncomeHistory.takeIf { it.isNotEmpty() },
                 ebitdaHistoryJson = stockData.ebitdaHistory.takeIf { it.isNotEmpty() },
@@ -292,6 +294,7 @@ data class EdgarRawFactsEntity(
             accountsReceivable = accountsReceivable,
             operatingIncome = operatingIncome,
             operatingIncomeTtm = operatingIncomeTtm,
+            operatingIncomeHistory = operatingIncomeHistoryJson,
             totalDebtHistory = totalDebtHistoryJson ?: emptyList()
         )
     }
@@ -601,6 +604,27 @@ data class EidosAnalystChatMessageEntity(
     val role: String,
     val content: String,
     val timestampMs: Long
+)
+
+/**
+ * Long-term notes for **Eidos as analyst** only (Full Analysis chat). Separate from [AiMemoryCacheEntity].
+ * One row per saved note; scoped by [symbol] (the analyst session ticker).
+ */
+@Entity(
+    tableName = "eidos_analyst_memory_notes",
+    indices = [
+        Index(value = ["symbol"]),
+        Index(value = ["symbol", "updatedAt"])
+    ]
+)
+data class EidosAnalystMemoryNoteEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val symbol: String,
+    val noteType: String,
+    val noteText: String,
+    val createdAt: Long,
+    val updatedAt: Long,
+    val source: String
 )
 
 @Dao
@@ -1052,6 +1076,24 @@ interface EidosAnalystChatDao {
     suspend fun deleteLastAssistantForSymbol(symbol: String): Int
 }
 
+@Dao
+interface EidosAnalystMemoryDao {
+    @Query(
+        """
+        SELECT * FROM eidos_analyst_memory_notes
+        WHERE symbol = :symbol
+        ORDER BY updatedAt DESC, id DESC
+        """
+    )
+    suspend fun getNotesForSymbol(symbol: String): List<EidosAnalystMemoryNoteEntity>
+
+    @Insert
+    suspend fun insert(note: EidosAnalystMemoryNoteEntity): Long
+
+    @Query("DELETE FROM eidos_analyst_memory_notes WHERE id = :id")
+    suspend fun deleteById(id: Long)
+}
+
 /**
  * User-accepted numeric (or display) values from the Eidos analyst proposal flow.
  * Isolated from EDGAR/XBRL refresh tables; automated refresh must never delete these rows.
@@ -1087,6 +1129,14 @@ interface EidosAnalystConfirmedFactDao {
 
     @Query("SELECT * FROM eidos_analyst_confirmed_facts WHERE symbol = :symbol")
     suspend fun getAllForSymbol(symbol: String): List<EidosAnalystConfirmedFactEntity>
+
+    @Query(
+        """
+        DELETE FROM eidos_analyst_confirmed_facts
+        WHERE symbol = :symbol AND metricKey = :metricKey AND periodLabel = :periodLabel
+        """
+    )
+    suspend fun deleteByKey(symbol: String, metricKey: String, periodLabel: String)
 }
 
 /**
@@ -1317,6 +1367,7 @@ interface NewsSummariesDao {
         AiConversationEntity::class,
         AiMessageEntity::class,
         EidosAnalystChatMessageEntity::class,
+        EidosAnalystMemoryNoteEntity::class,
         EidosAnalystConfirmedFactEntity::class,
         EidosAnalystAuditEventEntity::class,
         PortfolioValueSnapshotEntity::class,
@@ -1325,7 +1376,7 @@ interface NewsSummariesDao {
         NewsSummaryEntity::class,
         SymbolTagOverrideEntity::class
     ],
-    version = 33,
+    version = 35,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -1345,6 +1396,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
         abstract fun aiConversationDao(): AiConversationDao
         abstract fun aiMessageDao(): AiMessageDao
         abstract fun eidosAnalystChatDao(): EidosAnalystChatDao
+        abstract fun eidosAnalystMemoryDao(): EidosAnalystMemoryDao
         abstract fun eidosAnalystConfirmedFactDao(): EidosAnalystConfirmedFactDao
         abstract fun eidosAnalystAuditDao(): EidosAnalystAuditDao
         abstract fun portfolioValueSnapshotDao(): PortfolioValueSnapshotDao
@@ -1678,6 +1730,36 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_34_35 = object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE edgar_raw_facts ADD COLUMN operatingIncomeHistoryJson TEXT")
+            }
+        }
+
+        val MIGRATION_33_34 = object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS eidos_analyst_memory_notes (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        symbol TEXT NOT NULL,
+                        noteType TEXT NOT NULL,
+                        noteText TEXT NOT NULL,
+                        createdAt INTEGER NOT NULL,
+                        updatedAt INTEGER NOT NULL,
+                        source TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_memory_notes_symbol ON eidos_analyst_memory_notes(symbol)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_eidos_analyst_memory_notes_symbol_updatedAt ON eidos_analyst_memory_notes(symbol, updatedAt)"
+                )
+            }
+        }
+
         private fun dropLegacyAnalystTables(db: SupportSQLiteDatabase) {
             // snake_case names (hand-authored SQL / docs)
             db.execSQL("DROP TABLE IF EXISTS analyst_messages")
@@ -1866,7 +1948,9 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_29_30,
                         MIGRATION_30_31,
                         MIGRATION_31_32,
-                        MIGRATION_32_33
+                        MIGRATION_32_33,
+                        MIGRATION_33_34,
+                        MIGRATION_34_35
                     )
                     .build()
                 INSTANCE = instance

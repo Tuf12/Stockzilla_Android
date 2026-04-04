@@ -59,6 +59,55 @@ when mechanical extraction fails or is doubtful, the user collaborates with Eido
 
 ---
 
+## Proposal JSON contract for metricKey and periodLabel
+
+Accepted proposals are persisted in **`eidos_analyst_confirmed_facts`**. Full Analysis **does not** copy them into `edgar_raw_facts`; it **merges at display time** using `EidosAnalystMetricKey`, `EidosAnalystPeriodScope`, `EidosAnalystConfirmedFactMerge`, and `FullAnalysisActivity` (raw facts table + financial history grid).
+
+**Important:** A row can be **saved correctly** in Room but **still not appear** in the multi-year / quarterly / TTM history cells if `metricKey` or `periodLabel` does not match what the merge code expects. Align prompts and tool descriptions with the rules below so the model emits proposal shapes the UI can join.
+
+### `metricKey` (per proposal line)
+
+- Prefer the exact string **`EdgarMetricKey.name`** for each line (examples: `REVENUE`, `NET_INCOME`, `GROSS_PROFIT`, `OPERATING_CASH_FLOW`, `EBITDA`, `FREE_CASH_FLOW`, `TOTAL_DEBT`, `SHARES_OUTSTANDING`, `DEPRECIATION`, `CAPEX`).
+- On Accept, the app runs **`EidosAnalystMetricKey.normalize(line.metricKey)`** before writing to the DB. A small **alias** map and fuzzy enum matching exist; odd or narrative labels may **not** resolve to the same key as the history row in `FullAnalysisActivity`, so the value will not land in that grid row.
+- The **financial history** grid only applies analyst overrides to rows that define a non-null **`analystMetricKey`** (known statement metrics). Metrics outside that set may show under **analyst-only** dynamic rows, not the main history row.
+
+### `periodLabel` (per proposal line)
+
+Values are **canonicalized** with **`EidosAnalystPeriodScope.canonicalizePeriodLabel`** when the user Accepts (combining explicit `line.periodLabel` with a period **inferred from the metric name** when `inferPeriodFromMetricKey` finds FY/Q/TTM embedded in `metricKey`).
+
+| Intent | What to send | After canonicalization (typical) |
+|--------|----------------|-----------------------------------|
+| **Primary scalar** — top “Raw Financial Facts” cell for that metric (summary / TTM-or-annual display row) | Omit period or use empty string `""` | `""` |
+| **TTM column** in the financial history table | `TTM` (or `LTM`, etc.; see code) | `TTM` |
+| **Annual** history column for fiscal year *YYYY* | `FY 2024`, `FY2024`, or equivalent recognized forms | `FY YYYY` |
+| **Quarterly** history column | `Q3 2024`, etc. | `Qn YYYY` |
+
+**Failure mode (common):** If **`periodLabel` is blank** and **`metricKey` does not embed** FY/Q/TTM (so inference yields nothing), the stored row has **`periodLabel == ""`**. That row participates in the **primary** raw-facts merge (`periodLabel` empty) but **not** in **`findForAnnualHistoryCell` / `findForQuarterlyHistoryCell` / `findForTtmHistoryCell`**. The user may see data “in the analyst table” in the DB but **not** in the multi-year grid—**not** because Accept failed, but because **period scope never matched**.
+
+**Rule for the model:** For every proposal line that is meant to fill a **specific fiscal year, quarter, or TTM column**, set **`periodLabel` explicitly** (`FY 2024`, `Q3 2024`, `TTM`). Do **not** rely on empty period for those cells.
+
+### Prompt and tool-description requirements
+
+Keep the **analyst system prompt** (`EidosAnalystViewModel.buildAnalystSystemPrompt`) and the **Grok tool definition** for **`analyst_present_metric_proposal`** aligned with this document:
+
+1. Use **`lines`** with **`metricKey`** = `EdgarMetricKey.name` where possible.
+2. **`periodLabel`**: non-empty for **every** history-scoped value; **`""` or omit only** for the **primary** raw-facts scalar.
+3. Optionally list allowed patterns in the prompt: `FY YYYY`, `Q[1-4] YYYY`, `TTM`.
+
+Schema separation is unchanged: analyst facts remain authoritative **for display** for that `(symbol, normalized metricKey, periodLabel)` and are **not** overwritten by mechanical EDGAR refresh.
+
+### Code references
+
+| Step | Location |
+|------|-----------|
+| Accept → upsert confirmed fact | `EidosAnalystViewModel.acceptProposal` |
+| Period canonicalization + history lookup | `EidosAnalystPeriodScope` |
+| Metric normalization + period in metric name | `EidosAnalystMetricKey` |
+| Raw scalar merge (XBRL vs Analyst) | `EidosAnalystConfirmedFactMerge`, `FullAnalysisActivity.populateRawFactsTable` |
+| History grid merge | `FullAnalysisActivity.populateFinancialHistoryTable`, `refreshAnalystConfirmedOverrides` |
+
+---
+
 ## Implementation checklist (app)
 
 Use this as a working list while building the feature. Items reflect `EIDOS_AS_ANALYST.md` as the source of truth and the current codebase (tag-fix / `SymbolTagOverrides` is a **different** path—keep it, but do not confuse it with analyst mode).
@@ -100,6 +149,8 @@ Use this as a working list while building the feature. Items reflect `EIDOS_AS_A
 - [x] **Merge rules (display-only)** — Mechanical `StockData` / history series are computed first from the XBRL path. Then `EidosAnalystConfirmedFactMerge` and `EidosAnalystPeriodScope` join in rows from `eidos_analyst_confirmed_facts`. **When an analyst row exists for that metric (and period scope), the cell shows both:** a line labeled **XBRL:** (automated value or N/A) and a line labeled **Analyst:** (user-confirmed text). **Find tag** is suppressed when an analyst value is present for that primary cell, because the user has already committed a filing-backed candidate. **Derived metrics** (second table) still use mechanical `StockData` only—documented in `EidosAnalystConfirmedFactMerge.kt` as deferred.*
 - [x] **ViewModel(s)** — Analyst-specific ViewModel(s) for chat, proposal state, and DB writes; keep concerns separate from `AiAssistantViewModel` that class is already provides tag-fix and general tools. *Implemented: `EidosAnalystViewModel` (chat, proposal, `acceptProposal` / `declineProposal` → confirmed facts + audit + chat messages); separate from `AiAssistantViewModel`.*
 - [x] **Grok / tools contract** — Define tools so Eidos can: (0) **read** the app’s stored fundamentals for the symbol **read-only** (`analyst_get_app_financial_data`, same payload shape as main assistant `get_stock_data` when present—no refresh/write), (1) **search** the normalized primary filing for phrases and get **offsets**, (2) request **financial-statement-scoped** normalized text (dedicated tool/API above), (3) request **additional chunks** at chosen offsets **multiple times per reply chain** if needed, (4) call **`analyst_present_metric_proposal`** with **candidates** (no silent DB writes), (5) persist only via **user Accept** into analyst-confirmed storage. Keep these tools separate from any generic periodic fetch used for exploration only. *App read + search + multi-round loop + proposal UI + **Accept → `eidos_analyst_confirmed_facts`** implemented.*
+- [x] **Prompt / tool copy = proposal contract** — Analyst system prompt and **`analyst_present_metric_proposal`** parameter descriptions state: **`metricKey`** → `EdgarMetricKey.name`; **`periodLabel`** → non-empty **`FY YYYY` / `Qn YYYY` / `TTM`** for every history cell; **`""` only** for primary raw-facts scalar. *Implemented: `EidosAnalystViewModel.buildAnalystSystemPrompt`, `EidosAnalystToolExecutor.buildAnalystGrokTools` (`proposal_json` + function description). See [Proposal JSON contract for metricKey and periodLabel](#proposal-json-contract-for-metrickey-and-periodlabel).*
+- [x] **`analyst_get_metric_keys` + explicit currency scale** — Grok tool lists allowed **`metricKey`** strings with labels and hints (`EidosAnalystMetricKeysCatalog`, optional `query` filter). Prompts and proposal tool text remind the model to use **`B`/`M`/`K` or `detail` (in millions / thousands)** for magnitude. *See `EidosAnalystToolExecutor`, `EIDOS_EDGAR_NORMALIZATION_ALIGNMENT.md`.*
 
 ### Audit trail & memory
 
@@ -110,6 +161,7 @@ Use this as a working list while building the feature. Items reflect `EIDOS_AS_A
 
 - [ ] **Strings / accessibility** — Copy for analyst vs “Find tag (Eidos)” so users understand tag mapping vs filing-based value confirmation.
 - [ ] **Diagnostics** — Optional logging category (similar to `EIDOS_TAG` prefix) for analyst flows to simplify support.
+- **Model behavior (proposal vs chat)** — The analyst loop stops when the assistant returns **no** `tool_calls` (`EidosAnalystViewModel.runAnalystGrokToolLoop`). If the model answers with numbers **only** in message text, the proposal sheet never opens. Mitigations: (1) system prompt + filing-tool descriptions insist **`analyst_present_metric_proposal` is mandatory** for any confirmable filing-backed figure, ideally **same turn** as `tool_calls` with brief `content`; (2) raise **`ANALYST_TOOL_MAX_ROUNDS`** if long search→chunk chains exhaust the budget before proposal. *See code: `buildAnalystSystemPrompt`, `EidosAnalystToolExecutor.buildAnalystGrokTools`.*
 - [x] **Tests** — Room migration tests for new tables; unit tests for merge logic and for “refresh does not delete analyst facts.” *Implemented: `RoomMigration32To33Test`; `EidosAnalystConfirmedFactMergeTest`. **Not yet:** automated test that runs refresh and asserts analyst rows unchanged (invariant covered by schema separation + code review).*
 
 ### Lingering / related code today (not the analyst product)

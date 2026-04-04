@@ -1,6 +1,8 @@
 package com.example.stockzilla.data
 
 import android.util.Log
+import com.example.stockzilla.analyst.EidosAnalystQuarterlyMerge
+import com.example.stockzilla.analyst.EidosAnalystStockDataMerge
 import com.example.stockzilla.feature.DiagnosticsLogger
 import com.example.stockzilla.scoring.HealthScore
 import com.example.stockzilla.scoring.StockData
@@ -10,6 +12,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.util.Locale
 import kotlin.math.abs
 
 private const val TAG = "StockRepository"
@@ -35,7 +38,8 @@ class StockRepository(
     private val derivedMetricsDao: FinancialDerivedMetricsDao? = null,
     private val scoreSnapshotDao: ScoreSnapshotDao? = null,
     private val symbolTagOverrideDao: SymbolTagOverrideDao? = null,
-    private val quarterlyFinancialFactDao: QuarterlyFinancialFactDao? = null
+    private val quarterlyFinancialFactDao: QuarterlyFinancialFactDao? = null,
+    private val eidosAnalystConfirmedFactDao: EidosAnalystConfirmedFactDao? = null
 ) {
     private val finnhubRetrofit = Retrofit.Builder()
         .baseUrl("https://finnhub.io/api/v1/")
@@ -101,7 +105,9 @@ class StockRepository(
             val needsRefresh = shouldRefreshFromEdgar(symbol, existingLastFilingDate) || missingGrowth
             if (!needsRefresh) {
                 DiagnosticsLogger.log(symbol, "DATA_SOURCE_DB", "Using cached data (no refresh needed)")
-                val withPrice = mergeWithLivePrice(existingStockData)
+                applyAnalystQuarterlyFactPatches(symbol)
+                val merged = applyAnalystConfirmedFacts(symbol, existingStockData, existingLastFilingDate)
+                val withPrice = mergeWithLivePrice(merged)
                 return@withContext Result.success(withPrice)
             }
             if (missingGrowth) {
@@ -129,19 +135,28 @@ class StockRepository(
                     if (quarterlyRows.isNotEmpty()) {
                         quarterlyFinancialFactDao?.upsertAll(quarterlyRows)
                     }
+                    applyAnalystQuarterlyFactPatches(symbol)
                 } catch (e: Exception) {
                     Log.w(TAG, "Failed to persist quarterly facts for $symbol", e)
                     DiagnosticsLogger.log(symbol, "QUARTERLY_SAVE_FAIL", e.message ?: "unknown")
                 }
                 DiagnosticsLogger.log(symbol, "DATA_SOURCE_EDGAR", "Saved to separated raw/derived tables")
-                val withPrice = mergeWithLivePrice(edgarData)
+                val lastFiling = try {
+                    getLatestFilingDate(symbol)
+                } catch (_: Exception) {
+                    existingLastFilingDate
+                }
+                val merged = applyAnalystConfirmedFacts(symbol, edgarData, lastFiling ?: existingLastFilingDate)
+                val withPrice = mergeWithLivePrice(merged)
                 return@withContext Result.success(withPrice)
             },
             onFailure = { error ->
                 if (existingStockData != null) {
                     Log.w(TAG, "EDGAR fetch failed for $symbol, using existing DB data", error)
                     DiagnosticsLogger.log(symbol, "EDGAR_FAIL_FALLBACK_DB", error.message ?: "unknown", "using cached row")
-                    val withPrice = mergeWithLivePrice(existingStockData)
+                    applyAnalystQuarterlyFactPatches(symbol)
+                    val merged = applyAnalystConfirmedFacts(symbol, existingStockData, existingLastFilingDate)
+                    val withPrice = mergeWithLivePrice(merged)
                     return@withContext Result.success(withPrice)
                 }
 
@@ -187,6 +202,22 @@ class StockRepository(
         )
 
         Log.d(TAG, "Saved ${stockData.symbol} to raw/derived persistence domains")
+    }
+
+    /**
+     * Re-merges analyst-confirmed facts into stored raw/derived for [symbol] (no EDGAR round-trip).
+     * Used after proposal Accept so fundamentals and scoring reflect accepted values immediately.
+     */
+    suspend fun rePersistFundamentalsAfterAnalystAccept(symbol: String) = withContext(Dispatchers.IO) {
+        val sym = symbol.trim().uppercase(Locale.US)
+        val raw = rawFactsDao?.getBySymbol(sym) ?: return@withContext
+        val derived = derivedMetricsDao?.getBySymbol(sym)
+        var sd = raw.toStockData(derived)
+        sd = applyAnalystConfirmedFacts(sym, sd, raw.lastFilingDate)
+        sd = mergeWithLivePrice(sd)
+        sd = sd.withGrowthFromHistory()
+        saveAnalyzedStock(sd, raw.sicCode, raw.naicsCode, raw.lastFilingDate)
+        applyAnalystQuarterlyFactPatches(sym)
     }
 
     suspend fun saveScoreSnapshot(
@@ -339,6 +370,28 @@ class StockRepository(
                 derived.averageNetIncomeGrowth == null &&
                 derived.netIncomeGrowth == null &&
                 derived.fcfGrowth == null
+    }
+
+    private suspend fun applyAnalystConfirmedFacts(
+        symbol: String,
+        stockData: StockData,
+        lastFilingDate: String?
+    ): StockData {
+        val dao = eidosAnalystConfirmedFactDao ?: return stockData
+        val facts = dao.getAllForSymbol(symbol.trim().uppercase(Locale.US))
+        if (facts.isEmpty()) return stockData
+        return EidosAnalystStockDataMerge.mergeConfirmedFactsIntoStockData(stockData, facts, lastFilingDate)
+    }
+
+    private suspend fun applyAnalystQuarterlyFactPatches(symbol: String) {
+        val qDao = quarterlyFinancialFactDao ?: return
+        val eidos = eidosAnalystConfirmedFactDao ?: return
+        val sym = symbol.trim().uppercase(Locale.US)
+        val facts = eidos.getAllForSymbol(sym)
+        if (facts.isEmpty()) return
+        val existing = qDao.getBySymbol(sym)
+        val patches = EidosAnalystQuarterlyMerge.buildPatchEntities(sym, facts, existing)
+        if (patches.isNotEmpty()) qDao.upsertAll(patches)
     }
 
     private suspend fun mergeWithLivePrice(stockData: StockData): StockData {

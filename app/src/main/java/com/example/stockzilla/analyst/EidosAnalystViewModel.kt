@@ -10,29 +10,37 @@ import com.example.stockzilla.data.DEFAULT_GROK_MODEL
 import com.example.stockzilla.data.EidosAnalystAuditEventEntity
 import com.example.stockzilla.data.EidosAnalystChatMessageEntity
 import com.example.stockzilla.data.EidosAnalystConfirmedFactEntity
+import com.example.stockzilla.data.EidosAnalystMemoryNoteEntity
 import com.example.stockzilla.data.GrokApiClient
 import com.example.stockzilla.data.GrokChatMessage
 import com.example.stockzilla.data.GrokChatRequest
 import com.example.stockzilla.data.GrokChatResponse
 import com.example.stockzilla.data.SecEdgarService
+import com.example.stockzilla.data.StockRepository
 import com.example.stockzilla.data.StockzillaDatabase
 import com.example.stockzilla.ai.AiStockContextBuilder
 import com.example.stockzilla.scoring.FinancialHealthAnalyzer
 import com.google.gson.Gson
 import com.example.stockzilla.feature.ApiKeyManager
+import com.example.stockzilla.util.ApiConstants
 import com.example.stockzilla.feature.MAX_HISTORY_MESSAGES
 import com.example.stockzilla.scoring.StockData
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import java.util.Locale
 
-/** Enough rounds for search → chunk → chunk → FS → proposal without exiting early. */
-private const val ANALYST_TOOL_MAX_ROUNDS = 12
+/**
+ * Max assistant steps that include tool_calls before we stop chaining.
+ * Search → multiple chunks → FS → proposal can burn many steps; ending early leaves proposal uncalled.
+ */
+private const val ANALYST_TOOL_MAX_ROUNDS = 18
 
 class EidosAnalystViewModel(application: Application) : AndroidViewModel(application) {
 
     private val database = StockzillaDatabase.getDatabase(application)
     private val dao = database.eidosAnalystChatDao()
+    private val analystMemoryDao = database.eidosAnalystMemoryDao()
     private val confirmedFactDao = database.eidosAnalystConfirmedFactDao()
     private val auditDao = database.eidosAnalystAuditDao()
     private val apiKeyManager = ApiKeyManager(application)
@@ -62,7 +70,34 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
             } else {
                 gson.toJson(ctx)
             }
+        },
+        writeAnalystMemoryNote = { noteText, noteType ->
+            val sym = symbol.trim().uppercase()
+            if (sym.isNotBlank()) {
+                val now = System.currentTimeMillis()
+                analystMemoryDao.insert(
+                    EidosAnalystMemoryNoteEntity(
+                        symbol = sym,
+                        noteType = noteType,
+                        noteText = noteText,
+                        createdAt = now,
+                        updatedAt = now,
+                        source = "AI_GENERATED"
+                    )
+                )
+            }
         }
+    )
+
+    private fun persistenceStockRepository(): StockRepository = StockRepository(
+        apiKey = ApiConstants.DEFAULT_DEMO_KEY,
+        finnhubApiKey = apiKeyManager.getFinnhubApiKey(),
+        rawFactsDao = database.edgarRawFactsDao(),
+        derivedMetricsDao = database.financialDerivedMetricsDao(),
+        scoreSnapshotDao = database.scoreSnapshotDao(),
+        symbolTagOverrideDao = database.symbolTagOverrideDao(),
+        quarterlyFinancialFactDao = database.quarterlyFinancialFactDao(),
+        eidosAnalystConfirmedFactDao = confirmedFactDao,
     )
 
     private var symbol: String = ""
@@ -145,7 +180,9 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
             } else {
                 history
             }
-            val grokMessages = buildGrokMessages(capped)
+            val grokMessages = withContext(Dispatchers.IO) {
+                buildGrokMessages(capped)
+            }
 
             val result = withContext(Dispatchers.IO) {
                 runAnalystGrokToolLoop(grokMessages)
@@ -308,7 +345,9 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
             } else {
                 history
             }
-            val grokMessages = buildGrokMessages(capped)
+            val grokMessages = withContext(Dispatchers.IO) {
+                buildGrokMessages(capped)
+            }
             val result = withContext(Dispatchers.IO) {
                 runAnalystGrokToolLoop(grokMessages)
             }
@@ -377,7 +416,10 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
                         symbol = symbol,
                         metricKey = EidosAnalystMetricKey.normalize(line.metricKey),
                         periodLabel = periodLabel,
-                        valueText = candidate.valueDisplay,
+                        valueText = EidosAnalystStockDataMerge.persistedFactValueText(
+                            candidate.valueDisplay,
+                            candidate.detail
+                        ),
                         filingFormType = filing?.formType,
                         accessionNumber = filing?.accessionNumber?.takeIf { it.isNotBlank() },
                         filedDate = filing?.filedDate,
@@ -402,7 +444,10 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
                             mapOf(
                                 "metricKey" to line.metricKey,
                                 "periodLabel" to pl,
-                                "valueText" to cand.valueDisplay,
+                                "valueText" to EidosAnalystStockDataMerge.persistedFactValueText(
+                                    cand.valueDisplay,
+                                    cand.detail
+                                ),
                                 "candidateId" to cand.id,
                             )
                         }
@@ -418,6 +463,16 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
                         timestampMs = now
                     )
                 )
+                val sym = symbol.trim().uppercase(Locale.US)
+                val repo = persistenceStockRepository()
+                repo.rePersistFundamentalsAfterAnalystAccept(sym)
+                val rawRow = database.edgarRawFactsDao().getBySymbol(sym)
+                val derivedRow = database.financialDerivedMetricsDao().getBySymbol(sym)
+                if (rawRow != null) {
+                    val forScore = rawRow.toStockData(derivedRow).withGrowthFromHistory()
+                    val score = financialHealthAnalyzer.calculateCompositeScore(forScore, null)
+                    repo.saveScoreSnapshot(sym, score)
+                }
             }
             loadMessages()
         }
@@ -453,7 +508,7 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
         }
     }
 
-    private fun buildAnalystSystemPrompt(): String = buildString {
+    private fun buildAnalystSystemPrompt(memoryNotes: List<EidosAnalystMemoryNoteEntity>): String = buildString {
         append("You are Eidos, acting as a research analyst in Stockzilla. ")
         append("The user is analyzing the public company with ticker ")
         append(symbol)
@@ -469,18 +524,44 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
             append(". ")
         }
         append("Help them interpret SEC filings, fundamentals, and gaps in structured data. ")
-        append("Use analyst_get_app_financial_data to see what the app already has in the database (mechanical extraction) for this symbol; it is read-only. For proposed **numerical** values from filings, ground them in normalized **primary** EDGAR filing text — not XBRL alone. Prefer analyst_search_filing_text to locate Items/headings/labels (char offsets), then analyst_fetch_filing_chunk at those offsets as needed; you may call chunk multiple times. Use analyst_fetch_financial_statements when a full FS block helps. ")
-        append("When you have filing-backed figures for the user to confirm, you **must** call **analyst_present_metric_proposal** with `proposal_json` (not only tables in chat). Use **`lines`** for multiple metrics or full statement rows: each line has `lineId`, `metricKey` ([EdgarMetricKey.name]), `periodLabel` (e.g. FY2024, Q3 2024, or empty for primary TTM/summary), and `candidates`. For a single metric, legacy `metricKey` + `candidates` at the root still works. ")
+        append("**Memory:** You may call **analyst_write_memory_note** (`noteText`, optional `noteType`) to save concise, durable notes for this ticker in an **analyst-only** cache (not the main Eidos assistant memory). Use it when something is worth recalling in future analyst sessions—interpretation, filing presentation quirks, or user-specific context. Do not use it instead of **analyst_present_metric_proposal** for figures the user should Accept. ")
+        append("**Proposal tool is mandatory for confirmable filing numbers.** After you use search/chunk/financial-statements and you have a **specific** figure the user could accept (or that fills a missing metric), you **must** invoke **analyst_present_metric_proposal** with `proposal_json` in the **same assistant turn** as that tool output (you may include `tool_calls` together with short `content`). ")
+        append("**Never** end the tool chain with only free-text message content that states the number— the app only persists Accept via the proposal popup. Brief explanation in chat is fine **together with** the proposal tool call, not **instead of** it. If you are only discussing (no number to confirm), skip the proposal. ")
+        append("Use analyst_get_app_financial_data to see what the app already has in the database (mechanical extraction) for this symbol; it is read-only. Call **analyst_get_metric_keys** (optional `query` filter) to retrieve the exact **`metricKey`** strings (EdgarMetricKey.name) and labels before you build proposals—do not guess camelCase or display-only names. ")
+        append("For proposed **numerical** values from filings, ground them in normalized **primary** EDGAR filing text — not XBRL alone. Prefer analyst_search_filing_text to locate Items/headings/labels (char offsets), then analyst_fetch_filing_chunk at those offsets as needed; you may call chunk multiple times. Use analyst_fetch_financial_statements when a full FS block helps. ")
+        append("For **currency** lines, always make scale explicit: use suffixes in valueDisplay (\$12.4B, 1.2M) **or** put **in millions** / **in thousands** / full USD in the candidate **detail** so persisted values match EDGAR magnitude. ")
+        append("When you have filing-backed figures for the user to confirm, you **must** call **analyst_present_metric_proposal** with `proposal_json` (not only tables in chat). Use **`lines`** for multiple metrics or full statement rows: each line has `lineId`, `metricKey`, `periodLabel`, and `candidates`. For a single metric, legacy `metricKey` + `candidates` at the root still works. ")
+        append("**Proposal contract (required for the app to show values in the right cells):** ")
+        append("`metricKey` must be the exact **`EdgarMetricKey.name`** string the app uses (examples: REVENUE, NET_INCOME, GROSS_PROFIT, OPERATING_CASH_FLOW, EBITDA, FREE_CASH_FLOW, TOTAL_DEBT, SHARES_OUTSTANDING, DEPRECIATION, CAPEX). Do not use prose labels only. ")
+        append("`periodLabel` controls where the accepted value appears: use **empty** (`\"\"`) **only** for the **primary scalar** row on Raw Financial Facts (the summary cell for that metric). ")
+        append("For the **multi-year financial history** table (TTM column, yearly FY columns, quarterly Q columns), you **must** set `periodLabel` explicitly for every line: **`TTM`** for trailing twelve months; **`FY YYYY`** for a fiscal year (e.g. FY 2024 or FY2024); **`Qn YYYY`** for a quarter (e.g. Q3 2024). ")
+        append("If `periodLabel` is empty and the metric name does not embed FY/Q/TTM, the value saves to the DB but **will not** appear in the history grid—so never leave period blank for a year- or quarter-specific figure. ")
         append("Set `symbol` in JSON to this ticker **or** the exact company name shown above if the filing uses that; optional `issuerName` for the registered name. ")
         append("If filing text does not support a figure, say so; do not invent. ")
         append("Be precise. Do not state specific numbers as if taken from a filing unless you are clearly grounded in filing text the user or tools provided; when unsure, say so. ")
         append("This mode is separate from the app's general Eidos assistant and from the \"Find tag (Eidos)\" company-facts mapping flow. ")
+        append("**Reminder:** If the user asked you to supply or correct a metric and you already pulled the figure from filing text, your **next** model output should still include **analyst_present_metric_proposal**—do not assume chat alone is enough. ")
         append("Stay anchored to this symbol while allowing natural discussion.")
+        if (memoryNotes.isNotEmpty()) {
+            append("\n\n**Analyst memory cache (this symbol only; separate from main assistant `ai_memory_cache`):**\n")
+            for (n in memoryNotes) {
+                append("- ")
+                val nt = n.noteType.trim()
+                if (nt.isNotEmpty() && !nt.equals("FREEFORM", ignoreCase = true)) {
+                    append("[$nt] ")
+                }
+                append(n.noteText.trim())
+                append('\n')
+            }
+        }
     }
 
-    private fun buildGrokMessages(history: List<EidosAnalystChatMessageEntity>): List<GrokChatMessage> {
+    private suspend fun buildGrokMessages(history: List<EidosAnalystChatMessageEntity>): List<GrokChatMessage> {
+        val memoryNotes = withContext(Dispatchers.IO) {
+            analystMemoryDao.getNotesForSymbol(symbol)
+        }
         val out = ArrayList<GrokChatMessage>(history.size + 1)
-        out.add(GrokChatMessage(role = "system", content = buildAnalystSystemPrompt()))
+        out.add(GrokChatMessage(role = "system", content = buildAnalystSystemPrompt(memoryNotes)))
         for (m in history) {
             val role = m.role.lowercase().let { r ->
                 when (r) {
