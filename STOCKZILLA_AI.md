@@ -57,13 +57,18 @@ The assistant is displayed as **Eidos** throughout the app — in the chat inter
 
 When Eidos needs data for a stock that is not yet in the database, it calls the **get_stock_data** tool with `fetch_if_missing: true`. The app then runs the same search/analyze pipeline as the Analyze Stock button (EDGAR + Finnhub fetch, then app writes to DB). Eidos has no direct write access to financial tables — it only triggers that pipeline.
 
+**Eidos Analyst** (Full Analysis → separate activity) is **not** listed in the table above: accepted filing-backed metrics go to **`eidos_analyst_confirmed_facts`**, then the app materializes merged `StockData` into raw/derived storage — see **What Eidos Never Touches** and [EIDOS_AS_ANALYST.md](EIDOS_AS_ANALYST.md).
+
 ## What Eidos Never Touches
 
-- Financial metrics, ratios, scores, or prices — these are read-only to Eidos
-- Raw or derived financial data of any kind
-- Anything outside the four write areas listed above
+- Financial metrics, ratios, scores, or prices — **as direct tool targets** in the **main** assistant: the model does not upsert `EdgarRawFactsEntity` or derived rows by itself
+- Raw SQL or ad-hoc table access — all writes go through app-defined tools and repositories
 
-These boundaries apply to the **main Eidos Assistant** (`AiAssistantActivity` / `AiAssistantViewModel`) and its tools. **Eidos as analyst** is a separate Full Analysis flow: user-accepted values persist in **`eidos_analyst_confirmed_facts`** and merge on the Full Analysis screen only. It does **not** replace writes to `edgar_raw_facts`. For **`metricKey` / `periodLabel`** rules so history cells display correctly, see [EIDOS_AS_ANALYST.md](EIDOS_AS_ANALYST.md).
+**Clarification:** The **main Eidos Assistant** still **triggers** pipelines that persist financial data (e.g. **`get_stock_data(fetch_if_missing: true)`** runs the analyze flow; **`set_symbol_tag_override`** refreshes EDGAR and saves). Those are **app-executed** writes, not the model “touching” tables directly.
+
+**Eidos Analyst** (`analyst/EidosAnalystActivity.kt`, `analyst/EidosAnalystViewModel.kt`) is separate from the main assistant. On **Accept**, the app writes **`eidos_analyst_confirmed_facts`** only from that flow, then **`StockApiService.rePersistFundamentalsAfterAnalystAccept`** **materializes** merged fundamentals into **`edgar_raw_facts`** and **`financial_derived_metrics`**. The Grok analyst tool loop does not replace that — it proposes; the user and app persist. Full Analysis still shows **XBRL vs Analyst** lines from the merge helpers. For **`metricKey` / `periodLabel`**, see [EIDOS_AS_ANALYST.md](EIDOS_AS_ANALYST.md).
+
+Anything outside the **main assistant** write areas in the table above (peers, memory, conversations, planned About) still applies **only** to `AiAssistantViewModel` unless another feature explicitly adds tools there (e.g. Gov News assistant tools — see [GOV_DATA_NEWS.md](GOV_DATA_NEWS.md)).
 
 ---
 

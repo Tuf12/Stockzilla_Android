@@ -15,6 +15,11 @@ class ApiKeyManager(context: Context) {
         private const val AI_API_KEY_PREF = "ai_api_key"
         /** User opted in to letting Eidos download/read SEC filing document text (forms, not just XBRL API). */
         private const val SEC_FILING_EXTRACTION_CONSENT_PREF = "sec_filing_extraction_consent"
+
+        private const val FRED_API_KEY_PREF = "gov_fred_api_key"
+        private const val BLS_API_KEY_PREF = "gov_bls_api_key"
+        private const val EIA_API_KEY_PREF = "gov_eia_api_key"
+        private const val CENSUS_API_KEY_PREF = "gov_census_api_key"
     }
 
     // --- Finnhub API key only (FMP removed) ---
@@ -58,4 +63,49 @@ class ApiKeyManager(context: Context) {
     fun setSecFilingExtractionConsent(allowed: Boolean) {
         sharedPreferences.edit { putBoolean(SEC_FILING_EXTRACTION_CONSENT_PREF, allowed) }
     }
+
+    // --- Government data APIs (Phase 7 — GOV_DATA_NEWS) ---
+    fun saveFredApiKey(key: String) {
+        sharedPreferences.edit {
+            val t = key.trim()
+            if (t.isEmpty()) remove(FRED_API_KEY_PREF) else putString(FRED_API_KEY_PREF, t)
+        }
+    }
+
+    fun getFredApiKey(): String? = sharedPreferences.getString(FRED_API_KEY_PREF, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun hasFredApiKey(): Boolean = !getFredApiKey().isNullOrBlank()
+
+    fun saveBlsApiKey(key: String) {
+        sharedPreferences.edit {
+            val t = key.trim()
+            if (t.isEmpty()) remove(BLS_API_KEY_PREF) else putString(BLS_API_KEY_PREF, t)
+        }
+    }
+
+    fun getBlsApiKey(): String? = sharedPreferences.getString(BLS_API_KEY_PREF, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun hasBlsApiKey(): Boolean = !getBlsApiKey().isNullOrBlank()
+
+    fun saveEiaApiKey(key: String) {
+        sharedPreferences.edit {
+            val t = key.trim()
+            if (t.isEmpty()) remove(EIA_API_KEY_PREF) else putString(EIA_API_KEY_PREF, t)
+        }
+    }
+
+    fun getEiaApiKey(): String? = sharedPreferences.getString(EIA_API_KEY_PREF, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun hasEiaApiKey(): Boolean = !getEiaApiKey().isNullOrBlank()
+
+    fun saveCensusApiKey(key: String) {
+        sharedPreferences.edit {
+            val t = key.trim()
+            if (t.isEmpty()) remove(CENSUS_API_KEY_PREF) else putString(CENSUS_API_KEY_PREF, t)
+        }
+    }
+
+    fun getCensusApiKey(): String? = sharedPreferences.getString(CENSUS_API_KEY_PREF, null)?.trim()?.takeIf { it.isNotEmpty() }
+
+    fun hasCensusApiKey(): Boolean = !getCensusApiKey().isNullOrBlank()
 }

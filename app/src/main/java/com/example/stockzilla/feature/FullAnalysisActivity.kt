@@ -74,6 +74,11 @@ class FullAnalysisActivity : AppCompatActivity() {
     /** All analyst-confirmed facts (including per-period rows for the history table). */
     private var analystConfirmedFacts: List<EidosAnalystConfirmedFactEntity> = emptyList()
 
+    /** Saved About text for read-only collapsible display (synced from DB / Save). */
+    private var fullAboutText: String = ""
+    private var aboutExpanded: Boolean = false
+    private var aboutInEditMode: Boolean = false
+
     private enum class HistoryMode { YEARLY, QUARTERLY }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -321,7 +326,15 @@ class FullAnalysisActivity : AppCompatActivity() {
             }
             val aboutText = existing?.about.orEmpty()
             binding.etBusinessProfileAbout.setText(aboutText)
+            aboutInEditMode = false
+            aboutExpanded = false
             updateAboutVisibility(aboutText)
+        }
+
+        binding.barAboutToggle.setOnClickListener {
+            if (!aboutNeedsExpansion(fullAboutText)) return@setOnClickListener
+            aboutExpanded = !aboutExpanded
+            applyAboutReadBodyAndToggle()
         }
 
         binding.btnSaveBusinessProfileAbout.setOnClickListener {
@@ -330,34 +343,107 @@ class FullAnalysisActivity : AppCompatActivity() {
                 val entity = CompanyProfileEntity(
                     symbol = stockData.symbol,
                     about = aboutText.ifBlank { null },
+                    aboutEditedByUser = true,
                     updatedAt = System.currentTimeMillis()
                 )
                 database.companyProfileDao().upsert(entity)
                 withContext(Dispatchers.Main) {
+                    aboutInEditMode = false
+                    aboutExpanded = false
                     updateAboutVisibility(aboutText)
                 }
             }
         }
 
         binding.btnEditBusinessProfileAbout.setOnClickListener {
-            // Switch back to edit mode while keeping the current text.
+            aboutInEditMode = true
+            aboutExpanded = false
+            binding.layoutAboutRead.visibility = View.GONE
+            binding.barAboutToggle.visibility = View.GONE
+            binding.tvAboutReadTitleStatic.visibility = View.GONE
             binding.tilBusinessProfileAbout.visibility = View.VISIBLE
             binding.btnSaveBusinessProfileAbout.visibility = View.VISIBLE
-            binding.tvBusinessProfileAbout.visibility = View.GONE
+            binding.btnEditBusinessProfileAbout.visibility = View.GONE
         }
     }
 
     private fun updateAboutVisibility(aboutText: String) {
-        if (aboutText.isBlank()) {
-            binding.tvBusinessProfileAbout.visibility = View.GONE
+        fullAboutText = aboutText.trim()
+        val hasText = fullAboutText.isNotBlank()
+        if (!hasText) {
+            aboutInEditMode = false
+            aboutExpanded = false
+            binding.layoutAboutRead.visibility = View.GONE
+            binding.barAboutToggle.visibility = View.GONE
+            binding.tvAboutReadTitleStatic.visibility = View.GONE
             binding.tilBusinessProfileAbout.visibility = View.VISIBLE
             binding.btnSaveBusinessProfileAbout.visibility = View.VISIBLE
-        } else {
-            binding.tvBusinessProfileAbout.text = aboutText
-            binding.tvBusinessProfileAbout.visibility = View.VISIBLE
-            binding.tilBusinessProfileAbout.visibility = View.GONE
-            binding.btnSaveBusinessProfileAbout.visibility = View.GONE
+            binding.btnEditBusinessProfileAbout.visibility = View.GONE
+            return
         }
+        if (aboutInEditMode) {
+            binding.layoutAboutRead.visibility = View.GONE
+            binding.barAboutToggle.visibility = View.GONE
+            binding.tvAboutReadTitleStatic.visibility = View.GONE
+            binding.tilBusinessProfileAbout.visibility = View.VISIBLE
+            binding.btnSaveBusinessProfileAbout.visibility = View.VISIBLE
+            binding.btnEditBusinessProfileAbout.visibility = View.GONE
+            return
+        }
+        binding.layoutAboutRead.visibility = View.VISIBLE
+        binding.tilBusinessProfileAbout.visibility = View.GONE
+        binding.btnSaveBusinessProfileAbout.visibility = View.GONE
+        binding.btnEditBusinessProfileAbout.visibility = View.VISIBLE
+        val needs = aboutNeedsExpansion(fullAboutText)
+        binding.barAboutToggle.isVisible = needs
+        binding.tvAboutReadTitleStatic.isVisible = !needs
+        binding.barAboutToggle.isClickable = needs
+        binding.barAboutToggle.isFocusable = needs
+        if (!needs) {
+            aboutExpanded = false
+        }
+        applyAboutReadBodyAndToggle()
+    }
+
+    private fun applyAboutReadBodyAndToggle() {
+        val full = fullAboutText
+        val needs = aboutNeedsExpansion(full)
+        val showFull = !needs || aboutExpanded
+        binding.tvBusinessProfileAbout.text = if (showFull) full else aboutPreviewText(full)
+        val chevron = binding.ivAboutChevron
+        if (needs) {
+            chevron.rotation = if (aboutExpanded) 180f else 0f
+            val cd = if (aboutExpanded) {
+                getString(R.string.business_profile_about_action_collapse)
+            } else {
+                getString(R.string.business_profile_about_action_expand)
+            }
+            binding.barAboutToggle.contentDescription = cd
+            chevron.contentDescription = cd
+        }
+    }
+
+    /** First sentences or a capped excerpt; add ellipsis when [full] is shortened. */
+    private fun aboutPreviewText(full: String): String {
+        val t = full.trim()
+        if (t.length <= 220) return t
+        val sentenceParts = t.split(Regex("(?<=[.!?])\\s+"))
+            .map { it.trim() }
+            .filter { it.isNotEmpty() }
+        if (sentenceParts.size >= 2) {
+            val two = sentenceParts.take(2).joinToString(" ")
+            if (two.length < t.length) return "$two …"
+        }
+        val slice = t.take(280)
+        val lastSpace = slice.lastIndexOf(' ')
+        val cut = if (lastSpace > 80) slice.take(lastSpace) else slice
+        return "$cut …"
+    }
+
+    private fun aboutNeedsExpansion(full: String): Boolean {
+        val t = full.trim()
+        if (t.isEmpty()) return false
+        return aboutPreviewText(t) != t
     }
 
     private fun updateQuarterlySecButtonVisibility() {

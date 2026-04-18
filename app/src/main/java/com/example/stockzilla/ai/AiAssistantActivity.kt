@@ -58,6 +58,8 @@ class AiAssistantActivity : AppCompatActivity() {
         Log.i("EidosNav", "AiAssistantActivity onCreate initialSymbol=$initialSymbol openMode=$openMode")
         viewModel.setInitialSymbol(initialSymbol)
         viewModel.setOpenMode(openMode)
+        val focusGovNewsItemId = intent.getLongExtra(EXTRA_GOV_NEWS_FOCUS_ITEM_ID, -1L).takeIf { it >= 0L }
+        viewModel.setPendingGovNewsFocusItemId(focusGovNewsItemId)
 
         setupRecyclerViews()
         setupInput()
@@ -101,6 +103,7 @@ class AiAssistantActivity : AppCompatActivity() {
                 // Launch Memory Cache viewer for the current stock symbol, if any.
                 val currentSymbol = viewModel.selectedConversationId.value
                     ?.let { id -> viewModel.conversations.value?.firstOrNull { it.id == id }?.symbol }
+                    ?.takeUnless { it == AiAssistantViewModel.RESERVED_SYMBOL_GOV_NEWS }
                 AiMemoryCacheActivity.Companion.start(this, currentSymbol)
                 true
             }
@@ -188,9 +191,10 @@ class AiAssistantActivity : AppCompatActivity() {
     }
 
     private fun showConversationLongPressMenu(conversation: AiConversationEntity) {
-        // General chat (symbol == null) is pinned and not editable.
-        val isGeneral = conversation.symbol.isNullOrBlank()
-        val options = if (isGeneral) {
+        // General and Gov News chats are pinned and not editable.
+        val isPinnedSystem = conversation.symbol.isNullOrBlank() ||
+            conversation.symbol == AiAssistantViewModel.RESERVED_SYMBOL_GOV_NEWS
+        val options = if (isPinnedSystem) {
             arrayOf(getString(R.string.ai_delete_conversation))
         } else {
             arrayOf(
@@ -202,9 +206,9 @@ class AiAssistantActivity : AppCompatActivity() {
         AlertDialog.Builder(this)
             .setTitle(conversation.title)
             .setItems(options) { dialog, which ->
-                if (isGeneral) {
+                if (isPinnedSystem) {
                     if (which == 0) {
-                        // Do not actually delete the General chat; just dismiss.
+                        // Do not actually delete pinned system chats; just dismiss.
                         dialog.dismiss()
                     }
                     return@setItems
@@ -349,6 +353,7 @@ class AiAssistantActivity : AppCompatActivity() {
     companion object {
         private const val EXTRA_SYMBOL = "extra_symbol"
         private const val EXTRA_OPEN_MODE = "extra_open_mode"
+        private const val EXTRA_GOV_NEWS_FOCUS_ITEM_ID = "extra_gov_news_focus_item_id"
         const val EXTRA_LAUNCHED_FOR_TAG_FIX = "extra_launched_for_tag_fix"
         const val EXTRA_TAG_FIX_METRIC_KEY = "extra_tag_fix_metric_key"
         const val EXTRA_TAG_FIX_FACTS_INDEX_JSON = "extra_tag_fix_facts_index_json"
@@ -376,6 +381,26 @@ class AiAssistantActivity : AppCompatActivity() {
                     putExtra(EXTRA_SYMBOL, symbol)
                 }
                 putExtra(EXTRA_OPEN_MODE, openMode.name)
+            }
+            context.startActivity(intent)
+        }
+
+        /** Opens Eidos with the pinned Gov News conversation (no stock symbol). */
+        fun startGovNewsChat(context: Context) {
+            startGovNewsChat(context, focusGovNewsItemId = null)
+        }
+
+        /**
+         * Opens the single Gov News chat. When [focusGovNewsItemId] is set, the next user message’s context
+         * includes that article once (then cleared); the thread stays a general Gov News conversation.
+         */
+        fun startGovNewsChat(context: Context, focusGovNewsItemId: Long?) {
+            val intent = Intent(context, AiAssistantActivity::class.java).apply {
+                putExtra(EXTRA_OPEN_MODE, AiAssistantViewModel.OpenMode.FORCE_GOV_NEWS_IF_NO_SYMBOL.name)
+                val id = focusGovNewsItemId?.takeIf { it >= 0L }
+                if (id != null) {
+                    putExtra(EXTRA_GOV_NEWS_FOCUS_ITEM_ID, id)
+                }
             }
             context.startActivity(intent)
         }

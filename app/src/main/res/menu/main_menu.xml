@@ -23,4 +23,9 @@
         android:title="@string/diagnostic_log"
         app:showAsAction="never" />
 
+    <item
+        android:id="@+id/action_gov_data_api_keys"
+        android:title="@string/gov_data_api_keys_menu"
+        app:showAsAction="never" />
+
 </menu>

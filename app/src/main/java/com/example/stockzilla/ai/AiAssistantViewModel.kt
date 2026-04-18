@@ -7,6 +7,7 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
 import androidx.lifecycle.viewModelScope
+import com.example.stockzilla.data.CompanyProfileAboutWriter
 import com.example.stockzilla.data.AiConversationEntity
 import com.example.stockzilla.data.AiMemoryCacheEntity
 import com.example.stockzilla.data.AiMessageEntity
@@ -19,6 +20,8 @@ import com.example.stockzilla.data.GrokChatResponse
 import com.example.stockzilla.data.GrokTool
 import com.example.stockzilla.data.GrokToolCall
 import com.example.stockzilla.data.GrokToolFunction
+import com.example.stockzilla.data.GovNewsItemStatus
+import com.example.stockzilla.data.GovNewsRepository
 import com.example.stockzilla.data.NewsRepository
 import com.example.stockzilla.data.SecEdgarService
 import com.example.stockzilla.data.StockRepository
@@ -33,16 +36,25 @@ import com.example.stockzilla.sec.EdgarTaxonomy
 import com.example.stockzilla.sec.NewsAnalyzer
 import com.example.stockzilla.sec.SecFilingMeta
 import com.example.stockzilla.sec.TagOverrideResolver
+import com.example.stockzilla.R
 import com.example.stockzilla.util.ApiConstants
 import com.google.gson.Gson
+import com.google.gson.annotations.SerializedName
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import org.jsoup.Jsoup
 import java.time.LocalDate
+import java.util.concurrent.TimeUnit
 import kotlin.math.abs
 
 private fun Boolean?.isNullOrFalse(): Boolean = this == null || this == false
 
+private const val FETCH_URL_MAX_CHARS = 75_000
+
+private const val GOV_NEWS_CONTEXT_ARTICLE_TEXT_MAX = 3_500
 
 class AiAssistantViewModel(application: Application) : AndroidViewModel(application) {
 
@@ -58,24 +70,33 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     private val newsSummariesDao = database.newsSummariesDao()
     private val newsMetadataDao = database.newsMetadataDao()
     private val symbolTagOverrideDao = database.symbolTagOverrideDao()
+    private val companyProfileDao = database.companyProfileDao()
 
     private val apiKeyManager = ApiKeyManager(application)
     private val secEdgarService = SecEdgarService.Companion.getInstance()
     private val newsRepository by lazy {
         NewsRepository(newsMetadataDao, newsSummariesDao, gson)
     }
+    private val govNewsRepository by lazy {
+        GovNewsRepository(database.govNewsDao())
+    }
     private val newsAnalyzer by lazy {
         NewsAnalyzer(grokClient, gson)
     }
     private val grokClient = GrokApiClient(apiKeyProvider = { apiKeyManager.getAiApiKey() })
     private val gson = Gson()
+    private val fetchUrlHttpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(5, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
+        .build()
     private val financialHealthAnalyzer = FinancialHealthAnalyzer()
     private val stockContextBuilder = AiStockContextBuilder(
         rawFactsDao = rawFactsDao,
         derivedDao = derivedDao,
         scoreSnapshotDao = scoreSnapshotDao,
         newsSummariesDao = newsSummariesDao,
-        financialHealthAnalyzer = financialHealthAnalyzer
+        financialHealthAnalyzer = financialHealthAnalyzer,
+        companyProfileDao = companyProfileDao
     )
     private val draftsPrefs = application.getSharedPreferences("ai_assistant_drafts", Context.MODE_PRIVATE)
     private val keyLastSelectedConversationId = "last_selected_conversation_id"
@@ -138,11 +159,21 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
          * When no symbol is provided, always open (or create) the pinned "General" conversation.
          * This ensures the main-page Eidos button doesn't jump to the last chat.
          */
-        FORCE_GENERAL_IF_NO_SYMBOL
+        FORCE_GENERAL_IF_NO_SYMBOL,
+        /**
+         * When no symbol is provided, open the pinned Gov News conversation (Government News → Eidos).
+         */
+        FORCE_GOV_NEWS_IF_NO_SYMBOL
     }
 
     private var openMode: OpenMode = OpenMode.LAST_CHAT
     private val userScopeKey = "user"
+
+    /**
+     * When non-null, the next successful model request in the **Gov News** pinned conversation may include
+     * this article in the context JSON as [openedFromArticle], then the id is cleared. Not persisted in chat rows.
+     */
+    private var pendingGovNewsFocusItemId: Long? = null
 
     fun setInitialSymbol(symbol: String?) {
         initialSymbol = symbol?.trim()?.uppercase()
@@ -152,6 +183,10 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         openMode = mode
     }
 
+    fun setPendingGovNewsFocusItemId(id: Long?) {
+        pendingGovNewsFocusItemId = id?.takeIf { it >= 0L }
+    }
+
     fun loadConversations() {
         viewModelScope.launch {
             try {
@@ -159,6 +194,7 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                     "EidosNav",
                     "loadConversations start: openMode=$openMode initialSymbol=$initialSymbol selectedId=${_selectedConversationId.value}"
                 )
+                ensureGovNewsPinnedConversation()
                 val list = aiConversationDao.getAllOrderedByUpdated()
                 _conversations.value = list
 
@@ -172,12 +208,18 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                         createConversationIfNeeded()
                     }
                 } else {
-                    // No symbol: either force General or open the last chat used.
-                    if (openMode == OpenMode.FORCE_GENERAL_IF_NO_SYMBOL) {
-                        createConversationIfNeeded()
-                    } else {
-                        val lastId = draftsPrefs.getLong(keyLastSelectedConversationId, -1)
-                        if (lastId >= 0 && list.any { it.id == lastId }) lastId else createConversationIfNeeded()
+                    // No symbol: force a pinned thread, or restore last chat.
+                    when (openMode) {
+                        OpenMode.FORCE_GENERAL_IF_NO_SYMBOL -> createConversationIfNeeded()
+                        OpenMode.FORCE_GOV_NEWS_IF_NO_SYMBOL -> {
+                            list.firstOrNull { it.symbol == RESERVED_SYMBOL_GOV_NEWS }?.id
+                                ?: aiConversationDao.getBySymbol(RESERVED_SYMBOL_GOV_NEWS).firstOrNull()?.id
+                                ?: createConversationIfNeeded()
+                        }
+                        OpenMode.LAST_CHAT -> {
+                            val lastId = draftsPrefs.getLong(keyLastSelectedConversationId, -1)
+                            if (lastId >= 0 && list.any { it.id == lastId }) lastId else createConversationIfNeeded()
+                        }
                     }
                 }
 
@@ -222,6 +264,9 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
 
     fun deleteConversation(id: Long) {
         viewModelScope.launch {
+            val convo = aiConversationDao.getById(id) ?: return@launch
+            if (convo.symbol.isNullOrBlank()) return@launch
+            if (convo.symbol == RESERVED_SYMBOL_GOV_NEWS) return@launch
             aiConversationDao.deleteById(id)
             if (_selectedConversationId.value == id) {
                 _selectedConversationId.value = null
@@ -245,9 +290,10 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             val trimmed = newTitle.trim()
             if (trimmed.isEmpty()) return@launch
 
-            // Do not allow renaming the General chat (symbol == null).
+            // Do not allow renaming pinned system chats (General, Gov News).
             val convo = aiConversationDao.getById(id) ?: return@launch
             if (convo.symbol.isNullOrBlank()) return@launch
+            if (convo.symbol == RESERVED_SYMBOL_GOV_NEWS) return@launch
 
             aiConversationDao.renameConversation(
                 id = id,
@@ -405,10 +451,24 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
 
             val conversationId = createConversationIfNeeded()
             val conversation = aiConversationDao.getById(conversationId)
-            // Important: keep a stable title for the General conversation.
-            // General has symbol == null/blank, but `initialSymbol` can be a stock ticker; we must not let that rename General.
+            // Important: keep stable titles for pinned threads (General, Gov News).
             val conversationSymbol = conversation?.symbol?.takeIf { it.isNotBlank() }
-            val contextSymbol = conversationSymbol ?: initialSymbol?.takeIf { it.isNotBlank() }
+            if (conversationSymbol != RESERVED_SYMBOL_GOV_NEWS) {
+                pendingGovNewsFocusItemId = null
+            }
+            val consumeArticleFocusAfterSuccess =
+                conversationSymbol == RESERVED_SYMBOL_GOV_NEWS && pendingGovNewsFocusItemId != null
+
+            val packetSymbol = when {
+                conversationSymbol == RESERVED_SYMBOL_GOV_NEWS -> conversationSymbol
+                conversationSymbol != null -> conversationSymbol
+                else -> initialSymbol?.takeIf { it.isNotBlank() }
+            }
+            val toolLoopSymbol = when {
+                conversationSymbol == RESERVED_SYMBOL_GOV_NEWS -> null
+                conversationSymbol != null -> conversationSymbol
+                else -> initialSymbol?.takeIf { it.isNotBlank() }
+            }
 
             val now = System.currentTimeMillis()
             val userMessageEntity = AiMessageEntity(
@@ -419,10 +479,10 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             )
             aiMessageDao.insert(userMessageEntity)
 
-            val contextJson = buildContextPacket(contextSymbol)
+            val contextJson = buildContextPacket(packetSymbol)
             val history = aiMessageDao.getMessagesForConversation(conversationId)
             val initialGrokMessages = buildGrokMessages(history, contextJson)
-            val outcome = runGrokToolLoop(initialGrokMessages, contextSymbol)
+            val outcome = runGrokToolLoop(initialGrokMessages, toolLoopSymbol)
             val chatResult = outcome.chatResult
             val lastResponse = outcome.lastResponse
             val lastDiscoveryResult = outcome.lastDiscoveryResult
@@ -453,6 +513,9 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                     )
                     _messages.value = aiMessageDao.getMessagesForConversation(conversationId)
                     _conversations.value = aiConversationDao.getAllOrderedByUpdated()
+                    if (consumeArticleFocusAfterSuccess) {
+                        pendingGovNewsFocusItemId = null
+                    }
                 },
                 onFailure = { e ->
                     _error.value = e.message ?: "AI request failed."
@@ -464,6 +527,14 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private suspend fun createConversationIfNeeded(): Long {
+        val selectedId = _selectedConversationId.value
+        if (selectedId != null) {
+            val selectedRow = aiConversationDao.getById(selectedId)
+            if (selectedRow != null) {
+                return selectedId
+            }
+        }
+
         // If we have an initial symbol, reuse any existing conversation for that symbol to
         // guarantee exactly one conversation per stock.
         val symbol = initialSymbol?.takeIf { it.isNotBlank() }
@@ -538,10 +609,10 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                 )
             }
 
-        val stockSymbol = symbol?.takeIf { it.isNotBlank() }
-        val stockNotes = if (stockSymbol != null) {
+        val stockSymbolForNotes = symbol?.takeIf { it.isNotBlank() && it != RESERVED_SYMBOL_GOV_NEWS }
+        val stockNotes = if (stockSymbolForNotes != null) {
             aiMemoryCacheDao
-                .getNotesForScope(scope = "STOCK", scopeKey = stockSymbol)
+                .getNotesForScope(scope = "STOCK", scopeKey = stockSymbolForNotes)
                 .map {
                     mapOf(
                         "noteType" to it.noteType,
@@ -562,7 +633,12 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             "groupNotes" to groupNotes
         )
 
+        if (symbol == RESERVED_SYMBOL_GOV_NEWS) {
+            return buildGovNewsContextPacket(memorySection)
+        }
+
         // General chat: memory only. Eidos uses tools (get_stock_data, get_portfolio_overview, etc.) for any symbol or list it needs.
+        val stockSymbol = symbol?.takeIf { it.isNotBlank() }
         if (stockSymbol == null) {
             val baseContext = mutableMapOf<String, Any?>(
                 "memory" to memorySection
@@ -582,6 +658,70 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         context["memory"] = memorySection
 
         return gson.toJson(context as Map<String, Any?>)
+    }
+
+    private suspend fun buildGovNewsContextPacket(memorySection: Map<String, Any?>): String {
+        val items = govNewsRepository.listRecentForAssistantContext(25)
+        val slim = items.map { e ->
+            mapOf(
+                "id" to e.id,
+                "sourceId" to e.sourceId,
+                "symbol" to e.symbol,
+                "companyName" to e.companyName,
+                "title" to e.title,
+                "shortSummary" to e.shortSummary,
+                "status" to e.status,
+                "publishedAt" to e.publishedAt
+            )
+        }
+        val base = mutableMapOf<String, Any?>(
+            "conversation" to "gov_news",
+            "memory" to memorySection,
+            "recentGovNewsItems" to slim
+        )
+        val focusId = pendingGovNewsFocusItemId
+        if (focusId != null) {
+            val art = govNewsRepository.getById(focusId)
+            if (art != null) {
+                base["openedFromArticle"] = mapOf(
+                    "id" to art.id,
+                    "sourceId" to art.sourceId,
+                    "symbol" to art.symbol,
+                    "companyName" to art.companyName,
+                    "title" to art.title,
+                    "documentUrl" to art.documentUrl,
+                    "status" to art.status,
+                    "publishedAt" to art.publishedAt,
+                    "shortSummary" to art.shortSummary?.let { truncateGovNewsContextText(it) },
+                    "detailedSummary" to art.detailedSummary?.let { truncateGovNewsContextText(it) },
+                    "impact" to art.impact
+                )
+                base["articleNavigationHint"] = getApplication<Application>().getString(
+                    R.string.ai_gov_news_article_context_hint
+                )
+            }
+        }
+        return gson.toJson(base as Map<String, Any?>)
+    }
+
+    private fun truncateGovNewsContextText(text: String): String {
+        if (text.length <= GOV_NEWS_CONTEXT_ARTICLE_TEXT_MAX) return text
+        return text.take(GOV_NEWS_CONTEXT_ARTICLE_TEXT_MAX) + "…"
+    }
+
+    private suspend fun ensureGovNewsPinnedConversation() {
+        val existing = aiConversationDao.getBySymbol(RESERVED_SYMBOL_GOV_NEWS).firstOrNull()
+        if (existing != null) return
+        val now = System.currentTimeMillis()
+        val title = getApplication<Application>().getString(R.string.ai_conversation_gov_news_title)
+        aiConversationDao.insert(
+            AiConversationEntity(
+                symbol = RESERVED_SYMBOL_GOV_NEWS,
+                title = title,
+                createdAt = now,
+                updatedAt = now
+            )
+        )
     }
 
     private fun buildEidosTools(): List<GrokTool> {
@@ -608,6 +748,30 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             name = "write_memory_note",
             description = "Save a long-term memory note about the user, a specific stock, or a peer group.",
             parameters = memoryParams
+        )
+
+        val setFullAnalysisAboutParams: Map<String, Any?> = mapOf(
+            "type" to "object",
+            "properties" to mapOf(
+                "symbol" to mapOf(
+                    "type" to "string",
+                    "description" to "Ticker symbol. Omit when the conversation is already scoped to a stock."
+                ),
+                "about" to mapOf(
+                    "type" to "string",
+                    "description" to "Plain-text company narrative for the Full Analysis About section (2–8 short paragraphs max; no markdown tables)."
+                ),
+                "replace_existing" to mapOf(
+                    "type" to "boolean",
+                    "description" to "If false (default), fails when About already has text. Set true only when the user explicitly asked to replace or regenerate it."
+                )
+            ),
+            "required" to listOf("about")
+        )
+        val setFullAnalysisAboutFn = GrokToolFunction(
+            name = "set_full_analysis_about",
+            description = "Save the business \"About\" narrative shown on the stock's Full Analysis screen (`company_profiles`). Use when the user asks you to draft, update, or save a company summary. Call get_stock_data first if you need fundamentals; context JSON may include fullAnalysisAbout when text already exists.",
+            parameters = setFullAnalysisAboutParams
         )
 
         val getStockDataParams: Map<String, Any?> = mapOf(
@@ -762,13 +926,53 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             parameters = setTagOverrideParams
         )
 
+        val fetchUrlParams: Map<String, Any?> = mapOf(
+            "type" to "object",
+            "properties" to mapOf(
+                "url" to mapOf(
+                    "type" to "string",
+                    "description" to "The full https:// URL to fetch"
+                )
+            ),
+            "required" to listOf("url")
+        )
+        val fetchUrlFn = GrokToolFunction(
+            name = "fetch_url",
+            description = "Fetches the text content of a public web page URL. Use when the user provides a link and wants you to read or summarize it. Only fetches URLs starting with https://.",
+            parameters = fetchUrlParams
+        )
+
+        val searchGovSourcesParams: Map<String, Any?> = mapOf(
+            "type" to "object",
+            "properties" to mapOf(
+                "query" to mapOf(
+                    "type" to "string",
+                    "description" to "Symbol, company name, or topic (e.g. NVDA, interest rates)"
+                ),
+                "sources" to mapOf(
+                    "type" to "array",
+                    "items" to mapOf("type" to "string"),
+                    "description" to "Optional filter: DOJ, FDA, FTC, FRED, BLS, EIA, CENSUS, EDGAR. Omit to search all."
+                )
+            ),
+            "required" to listOf("query")
+        )
+        val searchGovSourcesFn = GrokToolFunction(
+            name = "search_gov_sources",
+            description = "Query the local government news database (no network). Returns summarized matches in `items`. If `flagged_or_pending_count` is present, tell the user to open the Gov News tab to fetch/summarize those. If `items` is empty, suggest the Gov News tab or a different query.",
+            parameters = searchGovSourcesParams
+        )
+
         return listOf(
             GrokTool(function = writeMemoryFn),
+            GrokTool(function = setFullAnalysisAboutFn),
             GrokTool(function = getStockDataFn),
             GrokTool(function = getPortfolioOverviewFn),
             GrokTool(function = getWatchlistFn),
             GrokTool(function = getFavoritesFn),
             GrokTool(function = listAnalyzedStocksFn),
+            GrokTool(function = fetchUrlFn),
+            GrokTool(function = searchGovSourcesFn),
             GrokTool(function = secSearchFilingsFn),
             GrokTool(function = secSaveFilingsFn),
             GrokTool(function = secAnalyzeFilingsFn),
@@ -868,6 +1072,62 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         return gson.toJson(rows)
     }
 
+    private suspend fun fetchUrlForTool(url: String): String = withContext(Dispatchers.IO) {
+        try {
+            val request = Request.Builder().url(url).get().build()
+            fetchUrlHttpClient.newCall(request).execute().use { response ->
+                if (!response.isSuccessful) {
+                    return@withContext "HTTP ${response.code()}: failed to fetch URL."
+                }
+                val body = response.body()?.string() ?: return@withContext "Empty response body."
+                val text = Jsoup.parse(body).text()
+                if (text.length > FETCH_URL_MAX_CHARS) {
+                    text.take(FETCH_URL_MAX_CHARS) + "\n\n[Truncated at $FETCH_URL_MAX_CHARS characters.]"
+                } else {
+                    text
+                }
+            }
+        } catch (e: Exception) {
+            "Failed to fetch URL: ${e.message ?: e.javaClass.simpleName}"
+        }
+    }
+
+    private suspend fun searchGovSourcesForTool(query: String, sources: List<String>?): String {
+        val trimmed = query.trim()
+        if (trimmed.isEmpty()) {
+            return gson.toJson(mapOf("error" to "search_gov_sources requires a non-empty query."))
+        }
+        val rows = govNewsRepository.searchForAssistant(trimmed, sources, limit = 40)
+        val summarized = rows.filter { it.status == GovNewsItemStatus.SUMMARIZED }
+        val notReady = rows.filter {
+            it.status == GovNewsItemStatus.FLAGGED || it.status == GovNewsItemStatus.PENDING
+        }
+        val items = summarized.map { entity ->
+            mapOf(
+                "source" to entity.sourceId,
+                "symbol" to entity.symbol,
+                "company_name" to entity.companyName,
+                "title" to entity.title,
+                "summary" to (entity.shortSummary ?: entity.detailedSummary),
+                "impact" to entity.impact,
+                "published_at" to entity.publishedAt,
+                "document_url" to entity.documentUrl
+            )
+        }
+        val payload = mutableMapOf<String, Any?>("items" to items)
+        if (notReady.isNotEmpty()) {
+            payload["flagged_or_pending_count"] = notReady.size
+            payload["unsummarized_hint"] =
+                "There are ${notReady.size} matching row(s) that are not summarized yet (FLAGGED or PENDING). " +
+                    "Direct the user to the Gov News tab in Stockzilla to open the Government News page and run summarization."
+        }
+        if (rows.isEmpty()) {
+            payload["hint"] =
+                "No local matches. Suggest the Gov News tab (Government News) after polling has run, or a different symbol/topic."
+        }
+        return gson.toJson(payload)
+    }
+
     /**
      * Executes tool calls (e.g. write_memory_note, get_stock_data), persists to DB, and returns one result string per
      * tool call for the API follow-up request. Order matches [toolCalls]; id is from each [GrokToolCall].
@@ -921,6 +1181,36 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                 }
                 "list_analyzed_stocks" -> {
                     val json = listAnalyzedStocksForTool()
+                    results.add(callId to json)
+                    continue
+                }
+                "fetch_url" -> {
+                    val args = try {
+                        gson.fromJson(fn.arguments, FetchUrlArgs::class.java)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val rawUrl = args?.url?.trim().orEmpty()
+                    if (!rawUrl.startsWith("https://")) {
+                        results.add(callId to "fetch_url only allows URLs starting with https://")
+                        continue
+                    }
+                    val fetched = fetchUrlForTool(rawUrl)
+                    results.add(callId to fetched)
+                    continue
+                }
+                "search_gov_sources" -> {
+                    val args = try {
+                        gson.fromJson(fn.arguments, SearchGovSourcesArgs::class.java)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val q = args?.query?.trim().orEmpty()
+                    if (q.isEmpty()) {
+                        results.add(callId to gson.toJson(mapOf("error" to "search_gov_sources requires a non-empty query.")))
+                        continue
+                    }
+                    val json = searchGovSourcesForTool(q, args?.sources)
                     results.add(callId to json)
                     continue
                 }
@@ -1091,6 +1381,37 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                     results.add(callId to payload)
                     continue
                 }
+                "set_full_analysis_about" -> {
+                    val args = try {
+                        gson.fromJson(fn.arguments, SetFullAnalysisAboutArgs::class.java)
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val sym = args?.symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+                        ?: symbol?.trim()?.uppercase()?.takeIf { it.isNotBlank() }
+                    val about = args?.about?.trim().orEmpty()
+                    if (sym.isNullOrBlank()) {
+                        results.add(
+                            callId to gson.toJson(
+                                mapOf(
+                                    "ok" to false,
+                                    "error" to "symbol required (pass symbol or open a per-stock conversation)."
+                                )
+                            )
+                        )
+                        continue
+                    }
+                    val replace = args?.replace_existing == true
+                    val json = CompanyProfileAboutWriter.upsertJson(
+                        companyProfileDao,
+                        gson,
+                        sym,
+                        about,
+                        replace
+                    )
+                    results.add(callId to json)
+                    continue
+                }
                 "write_memory_note" -> { /* fall through to existing logic */ }
                 else -> {
                     results.add(callId to "Unknown tool.")
@@ -1176,11 +1497,14 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
             
             Tool Call Options:
             - Memory Cache: write_memory_note(scope, scopeKey, noteText)
+            - Full Analysis About: set_full_analysis_about(about, symbol?, replace_existing?) — persists the company narrative on the Analysis screen; use replace_existing true only when the user asked to replace existing About text
             - Stock Data: get_stock_data(symbol, fetch_if_missing)
             - Portfolio Overview: get_portfolio_overview()
             - Watchlist: get_watchlist()
             - Favorites: get_favorites()
             - List Analyzed Stocks: list_analyzed_stocks()
+            - Fetch URL: fetch_url(url) — https only; returns page text (HTML stripped)
+            - Gov news (local DB): search_gov_sources(query, sources?) — summarized items in JSON; unsummarized matches include a hint to use the Gov News tab
             - SEC Form Discovery: sec_search_filings(symbol, formTypes?, lookbackDays?, limit?)
             - SEC Save Filings: sec_save_filings_metadata(symbol, accessionNumbers)
             - SEC Analyze Filings: sec_analyze_saved_filings(symbol, accessionNumbers)                   
@@ -1331,6 +1655,9 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
     }
 
     private fun buildConversationTitle(symbol: String?, firstUserMessage: String?): String {
+        if (symbol == RESERVED_SYMBOL_GOV_NEWS) {
+            return getApplication<Application>().getString(R.string.ai_conversation_gov_news_title)
+        }
         val base = symbol?.takeIf { it.isNotBlank() } ?: "General chat"
         // General chat should never be renamed to a stock ticker.
         if (symbol.isNullOrBlank()) return "General chat"
@@ -1352,9 +1679,24 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         val noteText: String?
     )
 
+    private data class SetFullAnalysisAboutArgs(
+        val symbol: String? = null,
+        val about: String? = null,
+        @SerializedName("replace_existing") val replace_existing: Boolean? = false
+    )
+
     private data class GetStockDataArgs(
         val symbol: String?,
         val fetch_if_missing: Boolean?
+    )
+
+    private data class FetchUrlArgs(
+        val url: String?
+    )
+
+    private data class SearchGovSourcesArgs(
+        val query: String?,
+        val sources: List<String>?
     )
 
     private data class SetSymbolTagOverrideArgs(
@@ -1675,11 +2017,20 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
         try {
             val conversation = aiConversationDao.getById(conversationId) ?: return
             val conversationSymbol = conversation.symbol?.takeIf { it.isNotBlank() }
-            val contextSymbol = conversationSymbol ?: initialSymbol?.takeIf { it.isNotBlank() }
-            val contextJson = buildContextPacket(contextSymbol)
+            val packetSymbol = when {
+                conversationSymbol == RESERVED_SYMBOL_GOV_NEWS -> conversationSymbol
+                conversationSymbol != null -> conversationSymbol
+                else -> initialSymbol?.takeIf { it.isNotBlank() }
+            }
+            val toolLoopSymbol = when {
+                conversationSymbol == RESERVED_SYMBOL_GOV_NEWS -> null
+                conversationSymbol != null -> conversationSymbol
+                else -> initialSymbol?.takeIf { it.isNotBlank() }
+            }
+            val contextJson = buildContextPacket(packetSymbol)
             val history = aiMessageDao.getMessagesForConversation(conversationId)
             val initialGrokMessages = buildGrokMessages(history, contextJson)
-            val outcome = runGrokToolLoop(initialGrokMessages, contextSymbol)
+            val outcome = runGrokToolLoop(initialGrokMessages, toolLoopSymbol)
             val chatResult = outcome.chatResult
             val lastResponse = outcome.lastResponse
             val lastDiscoveryResult = outcome.lastDiscoveryResult
@@ -1753,5 +2104,10 @@ class AiAssistantViewModel(application: Application) : AndroidViewModel(applicat
                 onComplete?.invoke(Result.failure(e))
             }
         }
+    }
+
+    companion object {
+        /** Reserved [AiConversationEntity.symbol] for the pinned Gov News thread (not a stock ticker). */
+        const val RESERVED_SYMBOL_GOV_NEWS = "__EIDOS_GOV_NEWS__"
     }
 }

@@ -18,6 +18,7 @@ Work through one item at a time. Reference `STOCKZILLA_AI.md` before starting ea
 - **`get_stock_data`** — full join context + optional `fetch_if_missing` analyze pipeline
 - **Per-symbol + General conversations** — `AiAssistantViewModel` + `AiAssistantActivity.start(..., openMode)`; General conversation pinned / non-rename rules in UI
 - **SEC filing discovery (chat)** — `sec_search_filings` tool + discovery card UI; `saveAndAnalyzeFilings` persists metadata and runs analysis (`AiAssistantViewModel`)
+- **Eidos Analyst** — `EidosAnalystActivity` / `EidosAnalystViewModel`; filing search/chunk/FS tools; proposal sheet + Accept → **`eidos_analyst_confirmed_facts`**; app **`rePersistFundamentalsAfterAnalystAccept`** / **`applyAnalystConfirmedFacts`** materialize merged `StockData` into **`edgar_raw_facts`** / **`financial_derived_metrics`** (see [EIDOS_AS_ANALYST.md](EIDOS_AS_ANALYST.md))
 
 ---
 
@@ -25,13 +26,13 @@ Work through one item at a time. Reference `STOCKZILLA_AI.md` before starting ea
 
 ### 1. AI auto-writes the About section
 
-`StockProfileEntity` / `stock_profiles` exists in `RoomDatabase.kt`, but **no** stock-load or UI path reads/writes About yet.
+Full Analysis reads/writes **`company_profiles.about`** (`CompanyProfileEntity`). `StockProfileEntity` / `stock_profiles` remains unused for this path.
 
-- [x] Confirm `StockProfileEntity` exists in Room
-- [ ] On stock load: if About is empty and `editedByUser` is false, fire background AI call
-- [ ] Write result into an About field on the stock detail / profile UI
+- [x] Confirm profile storage in Room (`company_profiles` + `CompanyProfileEntity`)
+- [ ] On stock load: if About is empty and `aboutEditedByUser` is false, fire background AI call
+- [x] Eidos can write About via tools: main assistant **`set_full_analysis_about`**, analyst **`analyst_set_full_analysis_about`** (same table); `get_stock_data` / `analyst_get_app_financial_data` JSON includes `fullAnalysisAbout` / `fullAnalysisAboutEditedByUser`
 - [ ] If API unavailable: leave empty or show “Generate with Eidos” fallback
-- [ ] Set `editedByUser = true` when the user edits manually
+- [x] Set `aboutEditedByUser = true` when the user saves manually on Full Analysis
 
 ---
 

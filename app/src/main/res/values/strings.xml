@@ -332,6 +332,9 @@
     <string name="business_profile_about_hint">Your "About" summary or notes for this company</string>
     <string name="business_profile_save_about">Save About</string>
     <string name="business_profile_edit_about">Edit</string>
+    <string name="business_profile_about_read_title">About the company</string>
+    <string name="business_profile_about_action_expand">Show full About</string>
+    <string name="business_profile_about_action_collapse">Show less</string>
     <string name="eidos_analyst">Eidos Analyst</string>
     <string name="eidos_analyst_title_symbol">Eidos Analyst · %1$s</string>
     <string name="eidos_analyst_messages_empty">No messages yet. Ask about missing metrics, filing context, or how to interpret numbers for this symbol.</string>
@@ -418,6 +421,8 @@
     <string name="ai_chat_title_prefix">Eidos chat</string>
     <string name="ai_assistant_missing_key_hint">Add an AI API key in settings to start a conversation with Eidos.</string>
     <string name="ai_conversations_label">Eidos chats</string>
+    <string name="ai_conversation_gov_news_title">Gov News</string>
+    <string name="ai_gov_news_article_context_hint">The user opened this Gov News chat from a specific article below. Treat their next question as possibly about that item, but keep the thread open: answer other Gov News, tickers, or portfolio questions normally and do not insist every reply stay on this one article.</string>
     <string name="ai_search_conversation">Search for a stock to chat about</string>
     <string name="ai_drawer_open">Open Eidos conversations</string>
     <string name="ai_drawer_close">Close Eidos conversations</string>
@@ -471,4 +476,39 @@
     <string name="sec_discovery_declined">Declined. No filings were saved.</string>
     <string name="sec_discovery_completed">✓ Analysis complete. %1$d filing(s) saved and analyzed.</string>
     <string name="sec_discovery_error">Error: %1$s</string>
+
+    <!-- Government news (Phase 4+) -->
+    <string name="gov_news_channel_name">Government news</string>
+    <string name="gov_news_channel_description">Alerts when press releases match your stocks</string>
+    <string name="gov_news_notification_title_format">%1$s — %2$s</string>
+    <string name="gov_news_notification_tier1_macro_title_format">%1$s — %2$s</string>
+    <string name="gov_news_detail_title">Government news</string>
+    <string name="gov_news_eidos_assistant_button">Eidos Assistant — Gov News chat</string>
+    <string name="gov_news_detail_chat_with_eidos">Chat with Eidos about this item</string>
+    <string name="gov_news_empty">No government news items yet. Matches from DOJ, FDA, and FTC will appear here after the next poll.</string>
+    <string name="gov_news_macro_label">Macro / no ticker</string>
+    <string name="gov_news_symbol_company_format">%1$s · %2$s</string>
+    <string name="gov_news_date_unknown">Date unknown</string>
+    <string name="gov_news_status_pending">Summary in progress…</string>
+    <string name="gov_news_status_failed_tap">Could not summarize automatically. Tap to try again (uses your AI API key).</string>
+    <string name="gov_news_status_flagged_tap">Not summarized yet. Tap to fetch and summarize (uses your AI API key).</string>
+    <string name="gov_news_open_document">Open original document</string>
+    <string name="gov_news_detail_not_summarized">Full analysis is not available yet. Open the Gov News tab and tap this item to summarize, or wait if it is queued.</string>
+    <string name="gov_news_delete_content_description">Remove from list</string>
+    <string name="gov_news_delete_confirm">Remove this item from Government news? It will not appear in the feed or assistant search.</string>
+    <string name="gov_news_delete_button">Remove</string>
+
+    <!-- Government data API keys (Phase 7) -->
+    <string name="gov_data_api_keys_menu">Government data API keys</string>
+    <string name="gov_data_api_keys_title">Government data keys</string>
+    <string name="gov_data_api_keys_intro">Optional free keys unlock FRED releases, EIA press releases, and reserve BLS/Census keys for API use. Census news RSS and BLS index scraping work without keys when the sites allow your device.</string>
+    <string name="gov_data_key_fred_hint">FRED API key (St. Louis Fed)</string>
+    <string name="gov_data_key_bls_hint">BLS API key (optional)</string>
+    <string name="gov_data_key_eia_hint">EIA Open Data API key</string>
+    <string name="gov_data_key_census_hint">Census API key (optional; RSS does not need it)</string>
+    <string name="gov_data_register_fred">Get FRED key</string>
+    <string name="gov_data_register_bls">Get BLS key</string>
+    <string name="gov_data_register_eia">Get EIA key</string>
+    <string name="gov_data_register_census">Get Census key</string>
+    <string name="gov_data_api_keys_saved">Government data keys saved</string>
 </resources>

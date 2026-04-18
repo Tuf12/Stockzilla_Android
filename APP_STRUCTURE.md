@@ -2,15 +2,16 @@
 
 ## Overview
 
-The launcher activity is **`com.example.stockzilla.feature.MainActivity`**. It hosts a **ViewPager2** with three pages (see `MainPagerAdapter`):
+The launcher activity is **`com.example.stockzilla.feature.MainActivity`**. It hosts a **ViewPager2** with **four** pages (see `MainPagerAdapter`):
 
 | Page | Fragment | Role |
 |------|-----------|------|
 | 0 | `PersonalProfileFragment` | User profile, portfolio-related entry points |
 | 1 | `MainFragment` | **Primary stock lookup** — search, summary card, favorites list, recent SEC news list |
 | 2 | `ViewedStocksFragment` | History of viewed tickers |
+| 3 | `GovNewsFragment` | Government-source documents feed (see [GOV_DATA_NEWS.md](GOV_DATA_NEWS.md)) |
 
-The app opens on the center tab (stock lookup).
+The app opens on the stock lookup tab (position 1).
 
 ---
 
@@ -129,6 +130,7 @@ Accessed via the **"Full Analysis"** button (`FullAnalysisActivity`).
 **Authoritative spec:** [FULL_ANALYSIS.md](FULL_ANALYSIS.md). **Formulas & planned metric rows:** [CALCULATIONS.md](CALCULATIONS.md).
 
 At a glance:
+- **Eidos Analyst** button — filing-text chat and proposals ([EIDOS_AS_ANALYST.md](EIDOS_AS_ANALYST.md)); distinct from **Find tag (Eidos)** (XBRL overrides)
 - **Raw Financial Facts** (EDGAR) with **Find tag (Eidos)** when a metric is missing
 - **Standard Derived Metrics** (Domain B style ratios/margins)
 - **Multi-Year Financial History** with **Yearly / Quarterly** toggle, **TTM** column, quarterly SEC filing link when applicable
@@ -175,6 +177,8 @@ Accessed from the main flow as **industry / similar stocks** (peer discovery and
 | `DiagnosticLogActivity` | `feature` |
 | `AiAssistantActivity` | `ai` |
 | `AiMemoryCacheActivity` | `ai` |
+| `EidosAnalystActivity` | `analyst` |
+| `GovNewsDetailActivity` | `feature` |
 
 Toolbar actions on `MainActivity` include Finnhub API key setup, Eidos entry points, and diagnostic log.
 
@@ -186,11 +190,12 @@ Toolbar actions on `MainActivity` include Finnhub API key setup, Eidos entry poi
 MainActivity (ViewPager2)
     ├─ PersonalProfileFragment
     ├─ MainFragment (search, card, favorites, news)
-    └─ ViewedStocksFragment
+    ├─ ViewedStocksFragment
+    └─ GovNewsFragment
 
 From MainFragment / card actions:
     ├─ HealthScoreDetailsActivity
-    ├─ FullAnalysisActivity
+    ├─ FullAnalysisActivity (includes Eidos Analyst entry)
     ├─ IndustryStocksActivity → AddPeerActivity
     ├─ AiAssistantActivity (Eidos)
     ├─ PortfolioChartActivity
@@ -210,5 +215,7 @@ From MainFragment / card actions:
 | News UI | `news/NewsAdapter.kt`, `news/AllNewsBottomSheet.kt`, `news/NewsDetailBottomSheet.kt` |
 | SEC news analysis | `sec/EightKNewsAnalyzer.kt`, `sec/EightKModels.kt`, `sec/SecXmlExtraction.kt` |
 | AI | `ai/AiAssistantActivity.kt`, `ai/AiAssistantViewModel.kt`, `data/GrokApiClient.kt` |
+| Eidos Analyst | `analyst/EidosAnalystActivity.kt`, `analyst/EidosAnalystViewModel.kt`, `analyst/EidosAnalystToolExecutor.kt` |
+| Gov news | `feature/GovNewsFragment.kt`, `feature/GovNewsViewModel.kt`, `data/GovNewsRepository.kt` |
 | Favorites list UI | `FavoritesAdapter.kt` (package root) |
 | HTTP | Retrofit services in `data/` (e.g. `FinnhubApiService.kt`) |

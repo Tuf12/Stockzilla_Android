@@ -11,7 +11,9 @@ The client is **Kotlin**, **Material Components**, **View Binding**, and **XML l
 - Recently viewed symbols (`ViewedStocksFragment`)
 - Industry peer discovery and saved peer groups (`IndustryStocksActivity`, `IndustryPeerRepository`)
 - SEC “news” filings pipeline (8-K, ownership forms, etc.) with AI summaries (`NewsRepository`, `EightKNewsAnalyzer`)
+- Government-source news tab and summaries (`GovNewsFragment`, `GOV_DATA_NEWS.md`)
 - Eidos AI assistant: conversations, memory cache, SEC filing discovery tools (`AiAssistantActivity`, `AiAssistantViewModel`)
+- Eidos Analyst on Full Analysis: filing-grounded metric proposals and accepted values (`EidosAnalystActivity`, `EIDOS_AS_ANALYST.md`)
 
 ## Getting started
 

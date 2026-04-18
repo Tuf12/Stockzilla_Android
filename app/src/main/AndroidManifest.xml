@@ -5,6 +5,7 @@
     <!-- Internet permission for API calls -->
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <application
         android:allowBackup="true"
@@ -75,8 +76,15 @@
             android:parentActivityName=".feature.MainActivity" />
 
         <activity
+            android:name=".feature.GovNewsDetailActivity"
+            android:exported="false"
+            android:label="@string/gov_news_detail_title"
+            android:parentActivityName=".feature.MainActivity" />
+
+        <activity
             android:name=".feature.MainActivity"
             android:exported="true"
+            android:launchMode="singleTop"
             android:theme="@style/Theme.Stockzilla">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />

@@ -1,12 +1,22 @@
 package com.example.stockzilla.feature
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
 import com.example.stockzilla.R
+import com.example.stockzilla.gov.GovNewsNotificationResend
+import com.example.stockzilla.gov.GovNewsWorkScheduler
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import com.example.stockzilla.stock.StockViewModel
 import com.example.stockzilla.ai.AiAssistantActivity
 import com.example.stockzilla.ai.AiAssistantViewModel
@@ -17,6 +27,21 @@ class MainActivity : AppCompatActivity() {
 
     companion object {
         const val EXTRA_ANALYZE_SYMBOL = "extra_analyze_symbol"
+    }
+
+    private var pendingGovNewsHighlightItemId: Long? = null
+
+    private val requestPostNotificationsPermission = registerForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            // Poll may have finished before Allow; replay FLAGGED alerts, then run an on-demand poll.
+            lifecycleScope.launch(Dispatchers.IO) {
+                GovNewsNotificationResend.resendRecentFlagged(applicationContext)
+                GovNewsWorkScheduler.enqueueOneTime(applicationContext)
+                GovNewsWorkScheduler.enqueueSummarizeOneTime(applicationContext)
+            }
+        }
     }
 
     private val viewModel: StockViewModel by viewModels()
@@ -43,12 +68,22 @@ class MainActivity : AppCompatActivity() {
 
         checkApiKeySetup()
         handleAnalyzeIntent(intent)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            requestPostNotificationsPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        GovNewsWorkScheduler.schedulePeriodic(applicationContext)
+        GovNewsWorkScheduler.schedulePeriodicSummarize(applicationContext)
     }
 
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)
         handleAnalyzeIntent(intent)
+        handleGovNewsIntent(intent)
     }
 
     override fun onCreateOptionsMenu(menu: Menu?): Boolean {
@@ -82,6 +117,10 @@ class MainActivity : AppCompatActivity() {
                 DiagnosticLogActivity.start(this)
                 true
             }
+            R.id.action_gov_data_api_keys -> {
+                GovDataApiKeysDialog().show(supportFragmentManager, "gov_data_api_keys")
+                true
+            }
             else -> super.onOptionsItemSelected(item)
         }
     }
@@ -102,6 +141,21 @@ class MainActivity : AppCompatActivity() {
         pendingAnalyzeSymbol = formatted
         binding.viewPager.setCurrentItem(1, true)
         intent.removeExtra(EXTRA_ANALYZE_SYMBOL)
+    }
+
+    private fun handleGovNewsIntent(intent: Intent?) {
+        if (intent?.getBooleanExtra(GovNewsIntents.EXTRA_MAIN_OPEN_GOV_TAB, false) != true) return
+        binding.viewPager.setCurrentItem(3, true)
+        val hid = intent.getLongExtra(GovNewsIntents.EXTRA_MAIN_HIGHLIGHT_ITEM_ID, -1L)
+        if (hid >= 0L) pendingGovNewsHighlightItemId = hid
+        intent.removeExtra(GovNewsIntents.EXTRA_MAIN_OPEN_GOV_TAB)
+        intent.removeExtra(GovNewsIntents.EXTRA_MAIN_HIGHLIGHT_ITEM_ID)
+    }
+
+    fun consumePendingGovNewsHighlightItemId(): Long? {
+        val id = pendingGovNewsHighlightItemId
+        pendingGovNewsHighlightItemId = null
+        return id
     }
 
     /** Call from PersonalProfile or ViewedStocks when user taps a stock. Switches to Main and analyzes. */

@@ -17,6 +17,7 @@ import com.example.stockzilla.data.GrokChatRequest
 import com.example.stockzilla.data.GrokChatResponse
 import com.example.stockzilla.data.SecEdgarService
 import com.example.stockzilla.data.StockRepository
+import com.example.stockzilla.data.CompanyProfileAboutWriter
 import com.example.stockzilla.data.StockzillaDatabase
 import com.example.stockzilla.ai.AiStockContextBuilder
 import com.example.stockzilla.scoring.FinancialHealthAnalyzer
@@ -53,7 +54,8 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
         derivedDao = database.financialDerivedMetricsDao(),
         scoreSnapshotDao = database.scoreSnapshotDao(),
         newsSummariesDao = database.newsSummariesDao(),
-        financialHealthAnalyzer = financialHealthAnalyzer
+        financialHealthAnalyzer = financialHealthAnalyzer,
+        companyProfileDao = database.companyProfileDao()
     )
     private val analystTools = EidosAnalystToolExecutor(
         secEdgar,
@@ -86,6 +88,15 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
                     )
                 )
             }
+        },
+        upsertFullAnalysisAbout = { aboutText, replaceExisting ->
+            CompanyProfileAboutWriter.upsertJson(
+                database.companyProfileDao(),
+                gson,
+                symbol.trim().uppercase(),
+                aboutText,
+                replaceExisting
+            )
         }
     )
 
@@ -509,8 +520,8 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
     }
 
     private fun buildAnalystSystemPrompt(memoryNotes: List<EidosAnalystMemoryNoteEntity>): String = buildString {
-        append("You are Eidos, acting as a research analyst in Stockzilla. ")
-        append("The user is analyzing the public company with ticker ")
+        append("You are Eidos, a research analyst in Stockzilla.")
+        append("The user is analyzing ticker ")
         append(symbol)
         append(". ")
         companyName?.takeIf { it.isNotBlank() }?.let { name ->
@@ -523,25 +534,11 @@ class EidosAnalystViewModel(application: Application) : AndroidViewModel(applica
             append(c)
             append(". ")
         }
-        append("Help them interpret SEC filings, fundamentals, and gaps in structured data. ")
-        append("**Memory:** You may call **analyst_write_memory_note** (`noteText`, optional `noteType`) to save concise, durable notes for this ticker in an **analyst-only** cache (not the main Eidos assistant memory). Use it when something is worth recalling in future analyst sessions—interpretation, filing presentation quirks, or user-specific context. Do not use it instead of **analyst_present_metric_proposal** for figures the user should Accept. ")
-        append("**Proposal tool is mandatory for confirmable filing numbers.** After you use search/chunk/financial-statements and you have a **specific** figure the user could accept (or that fills a missing metric), you **must** invoke **analyst_present_metric_proposal** with `proposal_json` in the **same assistant turn** as that tool output (you may include `tool_calls` together with short `content`). ")
-        append("**Never** end the tool chain with only free-text message content that states the number— the app only persists Accept via the proposal popup. Brief explanation in chat is fine **together with** the proposal tool call, not **instead of** it. If you are only discussing (no number to confirm), skip the proposal. ")
-        append("Use analyst_get_app_financial_data to see what the app already has in the database (mechanical extraction) for this symbol; it is read-only. Call **analyst_get_metric_keys** (optional `query` filter) to retrieve the exact **`metricKey`** strings (EdgarMetricKey.name) and labels before you build proposals—do not guess camelCase or display-only names. ")
-        append("For proposed **numerical** values from filings, ground them in normalized **primary** EDGAR filing text — not XBRL alone. Prefer analyst_search_filing_text to locate Items/headings/labels (char offsets), then analyst_fetch_filing_chunk at those offsets as needed; you may call chunk multiple times. Use analyst_fetch_financial_statements when a full FS block helps. ")
-        append("For **currency** lines, always make scale explicit: use suffixes in valueDisplay (\$12.4B, 1.2M) **or** put **in millions** / **in thousands** / full USD in the candidate **detail** so persisted values match EDGAR magnitude. ")
-        append("When you have filing-backed figures for the user to confirm, you **must** call **analyst_present_metric_proposal** with `proposal_json` (not only tables in chat). Use **`lines`** for multiple metrics or full statement rows: each line has `lineId`, `metricKey`, `periodLabel`, and `candidates`. For a single metric, legacy `metricKey` + `candidates` at the root still works. ")
-        append("**Proposal contract (required for the app to show values in the right cells):** ")
-        append("`metricKey` must be the exact **`EdgarMetricKey.name`** string the app uses (examples: REVENUE, NET_INCOME, GROSS_PROFIT, OPERATING_CASH_FLOW, EBITDA, FREE_CASH_FLOW, TOTAL_DEBT, SHARES_OUTSTANDING, DEPRECIATION, CAPEX). Do not use prose labels only. ")
-        append("`periodLabel` controls where the accepted value appears: use **empty** (`\"\"`) **only** for the **primary scalar** row on Raw Financial Facts (the summary cell for that metric). ")
-        append("For the **multi-year financial history** table (TTM column, yearly FY columns, quarterly Q columns), you **must** set `periodLabel` explicitly for every line: **`TTM`** for trailing twelve months; **`FY YYYY`** for a fiscal year (e.g. FY 2024 or FY2024); **`Qn YYYY`** for a quarter (e.g. Q3 2024). ")
-        append("If `periodLabel` is empty and the metric name does not embed FY/Q/TTM, the value saves to the DB but **will not** appear in the history grid—so never leave period blank for a year- or quarter-specific figure. ")
-        append("Set `symbol` in JSON to this ticker **or** the exact company name shown above if the filing uses that; optional `issuerName` for the registered name. ")
-        append("If filing text does not support a figure, say so; do not invent. ")
-        append("Be precise. Do not state specific numbers as if taken from a filing unless you are clearly grounded in filing text the user or tools provided; when unsure, say so. ")
-        append("This mode is separate from the app's general Eidos assistant and from the \"Find tag (Eidos)\" company-facts mapping flow. ")
-        append("**Reminder:** If the user asked you to supply or correct a metric and you already pulled the figure from filing text, your **next** model output should still include **analyst_present_metric_proposal**—do not assume chat alone is enough. ")
-        append("Stay anchored to this symbol while allowing natural discussion.")
+        append("Help correct missing or wrong fundamentals using SEC primary filing text; interpret filings and gaps in structured data when asked. ")
+        append("For any filing-backed figure the user could accept, you must **invoke** the **analyst_present_metric_proposal** tool with `proposal_json`—a real **tool_calls** entry, not only assistant text. Describing a \"proposal\" or listing candidates in chat does **not** open Accept/Decline and does not persist; optional short chat alongside the tool call is fine. Skip the tool when there is nothing to confirm. ")
+        append("Ground numbers you would propose in filing text from your tools (search / chunk / financial-statements)—not guesses from XBRL alone. If the filing does not support a number, say so. ")
+        append("The Full Analysis screen has an **About** section for a plain-language company narrative. When the user asks you to draft or save it, call **analyst_set_full_analysis_about** with the final text; use replace_existing true only if they explicitly want to replace existing About content. ")
+        
         if (memoryNotes.isNotEmpty()) {
             append("\n\n**Analyst memory cache (this symbol only; separate from main assistant `ai_memory_cache`):**\n")
             for (n in memoryNotes) {

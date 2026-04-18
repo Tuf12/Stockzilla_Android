@@ -58,12 +58,12 @@ The legacy `analyzed_stocks` table has been **removed**. Financial persistence f
 | `financial_derived_metrics` / `FinancialDerivedMetricsEntity` | B — deterministic ratios, growth, benchmarks used for display/peers |
 | `score_snapshots` / `ScoreSnapshotEntity` | C — serialized scoring outputs (versioned by model id in row) |
 | `symbol_tag_overrides` / `SymbolTagOverrideEntity` | A-adjunct — per-symbol XBRL tag overrides for EDGAR parsing (`symbol`, `metricKey`, `taxonomy`, `tag`, `updatedAt`, `source`). PK `(symbol, metricKey)`. |
-| `eidos_analyst_confirmed_facts` / `EidosAnalystConfirmedFactEntity` | **Display adjunct** — user-accepted **Eidos Analyst** values from filing text (not written by mechanical refresh; not merged into `edgar_raw_facts`). Full Analysis joins these rows by **`metricKey` + `periodLabel`**. **`periodLabel` rules** matter for history cells: see [EIDOS_AS_ANALYST.md — Proposal JSON contract](EIDOS_AS_ANALYST.md#proposal-json-contract-for-metrickey-and-periodlabel). |
+| `eidos_analyst_confirmed_facts` / `EidosAnalystConfirmedFactEntity` | **Analyst manifest** — user-accepted **Eidos Analyst** values from filing text. Mechanical EDGAR refresh does **not** delete this table. The app **`applyAnalystConfirmedFacts`** merges these rows into `StockData` before **`saveAnalyzedStock`** updates **`edgar_raw_facts`** / **`financial_derived_metrics`** (and **`rePersistFundamentalsAfterAnalystAccept`** does the same immediately after Accept). Full Analysis still joins manifest rows by **`metricKey` + `periodLabel`** to show **XBRL vs Analyst** lines. **`periodLabel` rules** matter for history cells: see [EIDOS_AS_ANALYST.md — Proposal JSON contract](EIDOS_AS_ANALYST.md#proposal-json-contract-for-metrickey-and-periodlabel). |
 | `eidos_analyst_chat_messages`, `eidos_analyst_audit_events` | Analyst chat and audit trail (separate from main assistant tables). |
 
 Additional tables (same file): `favorites`, `stock_cache`, `stock_industry_peers`, `user_stock_list`, `company_profiles`, `stock_profiles`, `ai_memory_cache`, `ai_conversations`, `ai_messages`, `news_metadata`, `news_summaries`, portfolio tables, etc.
 
-At runtime, **`StockData`** is often assembled by joining raw + derived (+ latest score) for the UI and scoring pipeline — but storage remains separated at the entity level.
+At runtime, **`StockData`** is often assembled by joining raw + derived (+ latest score) for the UI and scoring pipeline. Analyst accepts are **not** a second parallel `StockData` table: they live in **`eidos_analyst_confirmed_facts`** and are **overlaid** onto mechanical `StockData` in code before raw/derived persistence. Other domains remain separated at the entity level.
 
 ---
 

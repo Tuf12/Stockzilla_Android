@@ -64,6 +64,7 @@ dependencies {
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.recyclerview)
     implementation("androidx.viewpager2:viewpager2:1.1.0")
+    implementation("androidx.swiperefreshlayout:swiperefreshlayout:1.1.0")
 
     // Lifecycle dependencies
     implementation(libs.androidx.lifecycle.viewmodel.ktx)
@@ -79,9 +80,12 @@ dependencies {
     implementation(libs.retrofit)
     implementation(libs.converter.gson)
     implementation(libs.gson)
+    implementation("org.jsoup:jsoup:1.17.2")
 
     // Coroutines
     implementation(libs.kotlinx.coroutines.android)
+
+    implementation(libs.androidx.work.runtime.ktx)
 
     // Markdown / HTML rendering for AI assistant messages
     implementation("io.noties.markwon:core:4.6.2")
@@ -95,5 +99,6 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    androidTestImplementation(libs.androidx.room.testing)
 
 }

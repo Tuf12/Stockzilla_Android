@@ -498,6 +498,8 @@ data class UserStockListItemEntity(
 data class CompanyProfileEntity(
     @PrimaryKey val symbol: String,
     val about: String?,
+    /** True after the user taps Save on Full Analysis; AI tools set false when writing. */
+    @ColumnInfo(name = "aboutEditedByUser") val aboutEditedByUser: Boolean = false,
     val updatedAt: Long
 )
 
@@ -983,7 +985,11 @@ interface AiConversationDao {
         """
         SELECT * FROM ai_conversations
         ORDER BY
-            CASE WHEN symbol IS NULL THEN 0 ELSE 1 END,
+            CASE
+                WHEN symbol IS NULL THEN 0
+                WHEN symbol = '__EIDOS_GOV_NEWS__' THEN 1
+                ELSE 2
+            END,
             updatedAt DESC
         """
     )
@@ -1374,9 +1380,10 @@ interface NewsSummariesDao {
         PortfolioCashFlowEntity::class,
         NewsMetadataEntity::class,
         NewsSummaryEntity::class,
-        SymbolTagOverrideEntity::class
+        SymbolTagOverrideEntity::class,
+        GovNewsItemEntity::class
     ],
-    version = 35,
+    version = 37,
     exportSchema = false
 )
 @TypeConverters(DoubleListConverter::class)
@@ -1403,6 +1410,7 @@ abstract class StockzillaDatabase : RoomDatabase() {
         abstract fun portfolioCashFlowDao(): PortfolioCashFlowDao
         abstract fun newsMetadataDao(): NewsMetadataDao
         abstract fun newsSummariesDao(): NewsSummariesDao
+        abstract fun govNewsDao(): GovNewsDao
 
     companion object {
         @Volatile
@@ -1736,6 +1744,49 @@ abstract class StockzillaDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_35_36 = object : Migration(35, 36) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS gov_news_items (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        source_id TEXT NOT NULL,
+                        symbol TEXT,
+                        company_name TEXT,
+                        document_url TEXT NOT NULL,
+                        title TEXT NOT NULL,
+                        short_summary TEXT,
+                        detailed_summary TEXT,
+                        impact TEXT,
+                        published_at INTEGER,
+                        fetched_at INTEGER NOT NULL,
+                        status TEXT NOT NULL
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_gov_news_items_symbol ON gov_news_items(symbol)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_gov_news_items_status ON gov_news_items(status)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_gov_news_items_source_id ON gov_news_items(source_id)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS index_gov_news_items_published_at ON gov_news_items(published_at)"
+                )
+            }
+        }
+
+        val MIGRATION_36_37 = object : Migration(36, 37) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE company_profiles ADD COLUMN aboutEditedByUser INTEGER NOT NULL DEFAULT 0"
+                )
+            }
+        }
+
         val MIGRATION_33_34 = object : Migration(33, 34) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 db.execSQL(
@@ -1950,7 +2001,9 @@ abstract class StockzillaDatabase : RoomDatabase() {
                         MIGRATION_31_32,
                         MIGRATION_32_33,
                         MIGRATION_33_34,
-                        MIGRATION_34_35
+                        MIGRATION_34_35,
+                        MIGRATION_35_36,
+                        MIGRATION_36_37
                     )
                     .build()
                 INSTANCE = instance
